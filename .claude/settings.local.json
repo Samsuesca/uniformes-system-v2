@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat backend/alembic/versions/*.py)",
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(docker --version)",
+      "Bash(docker-compose --version)",
+      "Bash(git --version)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Samsuesca/NEGOCIO-CARACAS/master/script.sql\")",
+      "Bash(docker info)",
+      "Bash(source venv/bin/activate)",
+      "Bash(source backend/venv/bin/activate)",
+      "Bash(python -c \"import sqlalchemy; print(f''SQLAlchemy: {sqlalchemy.__version__}'')\")",
+      "Bash(python -c \"import asyncpg; import redis; import alembic; print(''✅ Todas las dependencias de BD están instaladas'')\")",
+      "Bash(python3 -c \"import sqlalchemy; print(f''SQLAlchemy: {sqlalchemy.__version__}'')\")",
+      "Bash(python3 -c \"import sqlalchemy; import asyncpg; import alembic; import redis; print(''✅ Dependencias DB OK'')\")",
+      "Bash(./venv/bin/python -c \"import sqlalchemy; import asyncpg; import alembic; import redis; print(''✅ Todas las dependencias están instaladas''); print(f''SQLAlchemy: {sqlalchemy.__version__}'')\")",
+      "Bash(./venv/bin/pip list)",
+      "Bash(docker-compose -f ../docker/docker-compose.dev.yml config)",
+      "Bash(docker-compose -f docker/docker-compose.dev.yml up -d postgres redis)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
