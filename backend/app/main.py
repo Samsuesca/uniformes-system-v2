@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.api.routes import health, auth, schools, products, clients
+from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users
 
 
 @asynccontextmanager
@@ -36,8 +36,12 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(schools.router, prefix=f"{settings.API_V1_STR}")
+app.include_router(users.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(products.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(clients.router, prefix=f"{settings.API_V1_STR}")
+app.include_router(sales.router, prefix=f"{settings.API_V1_STR}")
+app.include_router(orders.router, prefix=f"{settings.API_V1_STR}")
+app.include_router(inventory.router, prefix=f"{settings.API_V1_STR}")
 
 
 if __name__ == "__main__":
