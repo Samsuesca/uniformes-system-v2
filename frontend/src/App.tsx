@@ -1,22 +1,50 @@
-function App() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-blue-600 text-white p-4">
-        <h1 className="text-2xl font-bold">Uniformes System v2.0</h1>
-      </header>
-      <main className="container mx-auto p-4">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">¡Bienvenido!</h2>
-          <p className="text-gray-600">
-            Sistema de gestión de uniformes completamente renovado.
-          </p>
-          <div className="mt-4 p-3 bg-green-100 rounded">
-            <p className="text-green-800">✅ Backend conectado exitosamente</p>
-          </div>
-        </div>
-      </main>
-    </div>
-  )
+/**
+ * App Component - Main application with routing
+ */
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './stores/authStore';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+
+// Protected Route component
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 }
 
-export default App
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/login" element={<Login />} />
+
+        {/* Protected Routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Redirect root to dashboard or login */}
+        <Route
+          path="/"
+          element={<Navigate to="/dashboard" replace />}
+        />
+
+        {/* 404 */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
