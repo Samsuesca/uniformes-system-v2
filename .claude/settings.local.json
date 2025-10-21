@@ -21,7 +21,14 @@
       "Bash(./venv/bin/python -c \"import sqlalchemy; import asyncpg; import alembic; import redis; print(''✅ Todas las dependencias están instaladas''); print(f''SQLAlchemy: {sqlalchemy.__version__}'')\")",
       "Bash(./venv/bin/pip list)",
       "Bash(docker-compose -f ../docker/docker-compose.dev.yml config)",
-      "Bash(docker-compose -f docker/docker-compose.dev.yml up -d postgres redis)"
+      "Bash(docker-compose -f docker/docker-compose.dev.yml up -d postgres redis)",
+      "Bash(git add app/main.py)",
+      "Bash(git commit -m \"fix: Allow all CORS origins in development mode\")",
+      "Bash(git push origin develop)",
+      "Bash(./venv/bin/alembic upgrade head)",
+      "Bash(./venv/bin/alembic downgrade -1)",
+      "Bash(./venv/bin/python seed_data.py)",
+      "Bash(git add -A)"
     ],
     "deny": [],
     "ask": []

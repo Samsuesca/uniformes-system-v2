@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime
 from pydantic import Field, field_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
-from app.models.sale import SaleStatus, PaymentMethod
+from app.models.sale import SaleStatus, PaymentMethod, ChangeStatus, ChangeType
 
 
 # ============================================
@@ -28,14 +28,15 @@ class SaleItemCreate(BaseSchema):
     # unit_price and subtotal will be calculated from product
 
 
-class SaleItemInDB(SaleItemBase, SchoolIsolatedSchema, IDModelSchema):
+class SaleItemInDB(SaleItemBase, IDModelSchema):
     """SaleItem as stored in database"""
     sale_id: UUID
 
 
 class SaleItemResponse(SaleItemInDB):
     """SaleItem for API responses"""
-    pass
+
+    model_config = {"from_attributes": True}
 
 
 class SaleItemWithProduct(SaleItemResponse):
@@ -53,8 +54,7 @@ class SaleItemWithProduct(SaleItemResponse):
 class SaleBase(BaseSchema):
     """Base sale schema"""
     client_id: UUID | None = None
-    payment_method: PaymentMethod
-    payment_reference: str | None = Field(None, max_length=100)
+    payment_method: PaymentMethod | None = None
     notes: str | None = None
 
 
@@ -68,26 +68,28 @@ class SaleUpdate(BaseSchema):
     """Schema for updating sale (limited fields)"""
     status: SaleStatus | None = None
     payment_method: PaymentMethod | None = None
-    payment_reference: str | None = Field(None, max_length=100)
     notes: str | None = None
 
 
 class SaleInDB(SaleBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema):
     """Sale as stored in database"""
     code: str
+    user_id: UUID
     status: SaleStatus
-    subtotal: Decimal
-    tax: Decimal
     total: Decimal
+    paid_amount: Decimal
+    sale_date: datetime
 
 
 class SaleResponse(SaleInDB):
     """Sale for API responses"""
-    pass
+    items: list[SaleItemResponse] = []
+
+    model_config = {"from_attributes": True}
 
 
 class SaleWithItems(SaleResponse):
-    """Sale with all items"""
+    """Sale with all items and product details"""
     items: list[SaleItemWithProduct]
     client_name: str | None = None
 
@@ -97,9 +99,12 @@ class SaleListResponse(BaseSchema):
     id: UUID
     code: str
     status: SaleStatus
-    payment_method: PaymentMethod
+    payment_method: PaymentMethod | None
     total: Decimal
+    paid_amount: Decimal
+    client_id: UUID | None
     client_name: str | None
+    sale_date: datetime
     created_at: datetime
     items_count: int = 0
 
@@ -145,3 +150,104 @@ class DailySalesSummary(BaseSchema):
     completed_count: int
     pending_count: int
     cancelled_count: int
+
+
+# ============================================
+# SaleChange Schemas
+# ============================================
+
+class SaleChangeBase(BaseSchema):
+    """Base sale change schema"""
+    change_type: ChangeType
+    returned_quantity: int = Field(..., gt=0)
+    new_product_id: UUID | None = None
+    new_quantity: int = Field(0, ge=0)
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+class SaleChangeCreate(SaleChangeBase):
+    """Schema for creating sale change request"""
+    original_item_id: UUID
+
+    @field_validator('new_product_id', 'new_quantity')
+    def validate_new_product(cls, v, info):
+        """Validate new product fields based on change type"""
+        change_type = info.data.get('change_type')
+
+        # For returns, no new product needed
+        if change_type == ChangeType.RETURN:
+            if info.field_name == 'new_product_id' and v is not None:
+                raise ValueError("Returns should not have a new product")
+            if info.field_name == 'new_quantity' and v > 0:
+                raise ValueError("Returns should not have new quantity")
+
+        # For changes, new product is required
+        elif change_type in [ChangeType.SIZE_CHANGE, ChangeType.PRODUCT_CHANGE, ChangeType.DEFECT]:
+            if info.field_name == 'new_product_id' and v is None:
+                raise ValueError(f"{change_type.value} requires a new product")
+            if info.field_name == 'new_quantity' and v <= 0:
+                raise ValueError(f"{change_type.value} requires new quantity > 0")
+
+        return v
+
+
+class SaleChangeUpdate(BaseSchema):
+    """Schema for updating sale change (approve/reject)"""
+    status: ChangeStatus
+    rejection_reason: str | None = Field(None, max_length=500)
+
+    @field_validator('rejection_reason')
+    def validate_rejection_reason(cls, v, info):
+        """Rejection reason required when rejecting"""
+        status = info.data.get('status')
+        if status == ChangeStatus.REJECTED and not v:
+            raise ValueError("Rejection reason is required when rejecting a change")
+        return v
+
+
+class SaleChangeInDB(SaleChangeBase, IDModelSchema, TimestampSchema):
+    """SaleChange as stored in database"""
+    sale_id: UUID
+    original_item_id: UUID
+    user_id: UUID
+    change_date: datetime
+    new_unit_price: Decimal | None
+    price_adjustment: Decimal
+    status: ChangeStatus
+    rejection_reason: str | None
+
+
+class SaleChangeResponse(SaleChangeInDB):
+    """SaleChange for API responses"""
+    pass
+
+
+class SaleChangeWithDetails(SaleChangeResponse):
+    """SaleChange with detailed product information"""
+    # Original item details
+    original_product_code: str
+    original_product_name: str | None
+    original_product_size: str
+    original_unit_price: Decimal
+
+    # New product details (if applicable)
+    new_product_code: str | None
+    new_product_name: str | None
+    new_product_size: str | None
+
+    # User who processed the change
+    user_username: str
+
+
+class SaleChangeListResponse(BaseSchema):
+    """Simplified sale change response for listings"""
+    id: UUID
+    sale_id: UUID
+    sale_code: str
+    change_type: ChangeType
+    status: ChangeStatus
+    returned_quantity: int
+    new_quantity: int
+    price_adjustment: Decimal
+    change_date: datetime
+    reason: str

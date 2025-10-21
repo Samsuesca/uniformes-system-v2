@@ -27,7 +27,12 @@ class SaleStatus(str, enum.Enum):
 
 
 class Sale(Base):
-    """Sales transactions"""
+    """
+    Sales transactions
+
+    Note: Total = sum of item prices (no tax applied)
+    The business model does not require IVA/tax for now
+    """
     __tablename__ = "sales"
     __table_args__ = (
         UniqueConstraint('school_id', 'code', name='uq_school_sale_code'),
@@ -127,6 +132,111 @@ class SaleItem(Base):
     # Relationships
     sale: Mapped["Sale"] = relationship(back_populates="items")
     product: Mapped["Product"] = relationship(back_populates="sale_items")
+    changes_as_original: Mapped[list["SaleChange"]] = relationship(
+        back_populates="original_item",
+        foreign_keys="SaleChange.original_item_id"
+    )
 
     def __repr__(self) -> str:
         return f"<SaleItem(sale_id='{self.sale_id}', product_id='{self.product_id}', quantity={self.quantity})>"
+
+
+class ChangeStatus(str, enum.Enum):
+    """Change request status"""
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ChangeType(str, enum.Enum):
+    """Type of change"""
+    SIZE_CHANGE = "size_change"  # Cambio de talla
+    PRODUCT_CHANGE = "product_change"  # Cambio de producto
+    RETURN = "return"  # Devolución sin reemplazo
+    DEFECT = "defect"  # Cambio por defecto
+
+
+class SaleChange(Base):
+    """Product changes and returns for sales"""
+    __tablename__ = "sale_changes"
+    __table_args__ = (
+        CheckConstraint('returned_quantity > 0', name='chk_change_returned_qty_positive'),
+        CheckConstraint('new_quantity >= 0', name='chk_change_new_qty_positive'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    sale_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    original_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sale_items.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+
+    # Change details
+    change_type: Mapped[ChangeType] = mapped_column(
+        SQLEnum(ChangeType, name="change_type_enum"),
+        nullable=False
+    )
+    change_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Original product returned
+    returned_quantity: Mapped[int] = mapped_column(nullable=False)
+
+    # New product (if applicable, None for pure returns)
+    new_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="RESTRICT")
+    )
+    new_quantity: Mapped[int] = mapped_column(default=0, nullable=False)
+    new_unit_price: Mapped[float | None] = mapped_column(Numeric(10, 2))
+
+    # Financial adjustment
+    price_adjustment: Mapped[float] = mapped_column(
+        Numeric(10, 2),
+        default=0,
+        nullable=False
+    )  # Positive = customer pays more, Negative = refund
+
+    # Status and notes
+    status: Mapped[ChangeStatus] = mapped_column(
+        SQLEnum(ChangeStatus, name="change_status_enum"),
+        default=ChangeStatus.PENDING,
+        nullable=False
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    sale: Mapped["Sale"] = relationship()
+    original_item: Mapped["SaleItem"] = relationship(
+        back_populates="changes_as_original",
+        foreign_keys=[original_item_id]
+    )
+    new_product: Mapped["Product | None"] = relationship()
+    user: Mapped["User"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<SaleChange(sale_id='{self.sale_id}', type='{self.change_type}', status='{self.status}')>"

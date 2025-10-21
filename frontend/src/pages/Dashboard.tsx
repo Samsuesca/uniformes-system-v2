@@ -1,9 +1,13 @@
 /**
  * Dashboard Page - Main overview with statistics
  */
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { Package, Users, ShoppingCart, FileText, TrendingUp, AlertCircle } from 'lucide-react';
+import { Package, Users, ShoppingCart, FileText, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
+import { dashboardService } from '../services/dashboardService';
+import type { DashboardStats } from '../services/dashboardService';
+import { DEMO_SCHOOL_ID } from '../config/constants';
 
 interface StatCard {
   title: string;
@@ -11,44 +15,63 @@ interface StatCard {
   icon: typeof Package;
   color: string;
   bgColor: string;
-  change?: string;
 }
 
 export default function Dashboard() {
   const { user } = useAuthStore();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const stats: StatCard[] = [
+  // TODO: Get school_id from user context or user_school_roles
+  const schoolId = DEMO_SCHOOL_ID;
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await dashboardService.getStats(schoolId);
+      setStats(data);
+    } catch (err: any) {
+      console.error('Error loading dashboard stats:', err);
+      setError(err.response?.data?.detail || 'Error al cargar estadísticas');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statCards: StatCard[] = [
     {
       title: 'Total Productos',
-      value: '125',
+      value: stats ? stats.total_products.toString() : '-',
       icon: Package,
       color: 'text-blue-600',
       bgColor: 'bg-blue-100',
-      change: '+12%'
     },
     {
       title: 'Clientes',
-      value: '348',
+      value: stats ? stats.total_clients.toString() : '-',
       icon: Users,
       color: 'text-green-600',
       bgColor: 'bg-green-100',
-      change: '+8%'
     },
     {
-      title: 'Ventas del Mes',
-      value: '87',
+      title: 'Ventas Totales',
+      value: stats ? `$${stats.total_sales.toLocaleString()}` : '-',
       icon: ShoppingCart,
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
-      change: '+23%'
     },
     {
       title: 'Encargos Activos',
-      value: '23',
+      value: stats ? stats.total_orders.toString() : '-',
       icon: FileText,
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',
-      change: '-5%'
     },
   ];
 
@@ -64,32 +87,51 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+          <div className="flex items-start">
+            <AlertCircle className="w-6 h-6 text-red-600 mr-3 flex-shrink-0" />
+            <div>
+              <h3 className="text-sm font-medium text-red-800">Error al cargar estadísticas</h3>
+              <p className="mt-1 text-sm text-red-700">{error}</p>
+              <button
+                onClick={loadStats}
+                className="mt-3 text-sm text-red-700 hover:text-red-800 underline"
+              >
+                Reintentar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div
-              key={stat.title}
-              className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 rounded-lg ${stat.bgColor}`}>
-                  <Icon className={`w-6 h-6 ${stat.color}`} />
+        {loading ? (
+          <div className="col-span-full flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <span className="ml-3 text-gray-600">Cargando estadísticas...</span>
+          </div>
+        ) : (
+          statCards.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div
+                key={stat.title}
+                className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`p-3 rounded-lg ${stat.bgColor}`}>
+                    <Icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
                 </div>
-                {stat.change && (
-                  <span className={`text-sm font-medium ${
-                    stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {stat.change}
-                  </span>
-                )}
+                <h3 className="text-2xl font-bold text-gray-800">{stat.value}</h3>
+                <p className="text-sm text-gray-500 mt-1">{stat.title}</p>
               </div>
-              <h3 className="text-2xl font-bold text-gray-800">{stat.value}</h3>
-              <p className="text-sm text-gray-500 mt-1">{stat.title}</p>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* Recent Activity Grid */}

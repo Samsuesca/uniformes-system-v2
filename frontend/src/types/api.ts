@@ -91,6 +91,16 @@ export interface ProductWithInventory extends Product {
   inventory_min_stock: number;
 }
 
+export interface GarmentType {
+  id: string;
+  school_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ============================================
 // Client Types
 // ============================================
@@ -103,11 +113,10 @@ export interface Client {
   phone: string | null;
   email: string | null;
   address: string | null;
-  document_type: string | null;
-  document_number: string | null;
   student_name: string | null;
   student_grade: string | null;
   notes: string | null;
+  balance?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -122,13 +131,24 @@ export interface Sale {
   school_id: string;
   code: string;
   client_id: string | null;
+  user_id: string;
   status: 'pending' | 'completed' | 'cancelled';
-  payment_method: 'cash' | 'transfer' | 'credit' | 'other';
-  payment_reference: string | null;
-  subtotal: number;
-  tax: number;
+  payment_method: 'cash' | 'credit' | 'transfer' | 'card' | null;
   total: number;
+  paid_amount: number;
+  sale_date: string;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaleItem {
+  id: string;
+  sale_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
   created_at: string;
   updated_at: string;
 }

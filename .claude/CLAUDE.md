@@ -15,6 +15,7 @@ Sistema de gestión de uniformes profesional con arquitectura **multi-tenant** (
 - **API REST**: Backend robusto con FastAPI y PostgreSQL
 - **Inventario Inteligente**: Control de stock por colegio, tallas, tipos de prenda
 - **Ventas y Encargos**: POS completo con pedidos personalizados y medidas
+- **Cambios y Devoluciones**: Sistema completo de gestión de cambios con ajuste automático de inventario
 - **Contabilidad**: Movimientos automáticos, gastos, cuentas por pagar
 
 ---
@@ -68,6 +69,7 @@ Cada tabla tiene `school_id` que aísla los datos por colegio.
 **Nivel 4: Operaciones (por colegio)**
 - `clients` - Base de clientes
 - `sales` + `sale_items` - Ventas
+- `sale_changes` - Cambios y devoluciones de ventas
 - `orders` + `order_items` - Encargos personalizados
 
 **Características de la BD:**
@@ -80,10 +82,16 @@ Cada tabla tiene `school_id` que aísla los datos por colegio.
 - Soft deletes (is_active)
 - Cascade delete para aislamiento de datos
 
-### Migración Actual
-- **ID**: `4093d4173dee`
-- **Descripción**: Initial multi-tenant schema
-- **Estado**: Aplicada ✅
+### Migraciones
+1. **ID**: `4093d4173dee`
+   - **Descripción**: Initial multi-tenant schema
+   - **Estado**: Aplicada ✅
+
+2. **ID**: `d868decca943`
+   - **Descripción**: Add sale_changes table
+   - **Estado**: Aplicada ✅
+   - **Tablas**: `sale_changes` (sistema de cambios/devoluciones)
+   - **Enums**: `change_type_enum`, `change_status_enum`
 
 ---
 
@@ -93,40 +101,46 @@ Cada tabla tiene `school_id` que aísla los datos por colegio.
 uniformes-system-v2/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/      # Endpoints REST (mostly empty)
-│   │   ├── core/            # Configuración
-│   │   ├── db/              # ✅ Database session
-│   │   ├── models/          # ✅ SQLAlchemy models (complete)
-│   │   ├── schemas/         # ❌ Pydantic schemas (TODO)
-│   │   ├── services/        # ❌ Business logic (TODO)
-│   │   └── main.py          # FastAPI app
-│   ├── alembic/             # ✅ Migrations
-│   ├── tests/               # ❌ Tests (TODO)
-│   ├── requirements.txt     # Dependencies
-│   └── venv/                # Virtual environment
+│   │   ├── api/
+│   │   │   ├── dependencies.py  # ✅ Auth & permissions
+│   │   │   └── routes/          # ✅ REST endpoints (8 routers)
+│   │   ├── core/                # ✅ Configuration
+│   │   ├── db/                  # ✅ Database session
+│   │   ├── models/              # ✅ SQLAlchemy models (complete)
+│   │   ├── schemas/             # ✅ Pydantic schemas (complete)
+│   │   ├── services/            # ✅ Business logic (8 services)
+│   │   └── main.py              # ✅ FastAPI app
+│   ├── alembic/                 # ✅ Migrations (2 applied)
+│   ├── tests/                   # ❌ Tests (TODO)
+│   ├── requirements.txt         # Dependencies
+│   ├── seed_data.py             # ✅ Seed script
+│   └── venv/                    # Virtual environment
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # ❌ React components (TODO)
-│   │   ├── pages/           # ❌ Views (TODO)
-│   │   ├── stores/          # ❌ Zustand stores (TODO)
-│   │   ├── App.tsx          # ✅ Basic welcome page
-│   │   └── main.tsx
-│   ├── src-tauri/           # Tauri configuration
+│   │   ├── components/          # ✅ Layout component
+│   │   ├── pages/               # ✅ 6 pages (Dashboard, Products, etc.)
+│   │   ├── stores/              # ✅ authStore (Zustand)
+│   │   ├── types/               # ✅ TypeScript interfaces
+│   │   ├── utils/               # ✅ API client (Axios)
+│   │   ├── App.tsx              # ✅ Router + protected routes
+│   │   └── main.tsx             # ✅ Entry point
+│   ├── src-tauri/               # Tauri configuration
 │   └── package.json
 │
 ├── docker/
-│   └── docker-compose.dev.yml  # PostgreSQL + Redis
+│   └── docker-compose.dev.yml   # PostgreSQL + Redis
 │
 ├── docs/
-│   ├── SETUP.md             # Installation guide
-│   ├── DATABASE.md          # DB architecture
-│   ├── GIT_WORKFLOW.md      # Git workflow
-│   └── claude/              # Claude-specific docs
+│   ├── SETUP.md                 # Installation guide
+│   ├── DATABASE.md              # DB architecture
+│   ├── GIT_WORKFLOW.md          # Git workflow
+│   ├── SALE_CHANGES.md          # ✅ Sale changes system docs
+│   └── claude/                  # Claude-specific docs
 │
 └── .claude/
     ├── settings.local.json
-    └── CLAUDE.md            # This file
+    └── CLAUDE.md                # This file
 ```
 
 ---
@@ -142,48 +156,122 @@ uniformes-system-v2/
    - Branches: main, develop, feature/*
 
 2. **Base de Datos**
-   - Modelos SQLAlchemy completos (14 archivos)
+   - Modelos SQLAlchemy completos (15 modelos)
    - Arquitectura multi-tenant diseñada e implementada
    - Alembic configurado
-   - Migración inicial aplicada
-   - 12 tablas creadas en PostgreSQL
+   - 2 migraciones aplicadas
+   - 13 tablas creadas en PostgreSQL (incluye `sale_changes`)
 
-3. **Documentación**
-   - README.md completo
+3. **Backend API (95% completo)**
+   - ✅ Schemas Pydantic (107 schemas con validación)
+   - ✅ CRUD services (8 servicios, ~95 métodos)
+   - ✅ Endpoints REST (43+ endpoints)
+   - ✅ Autenticación JWT (login, roles, permisos)
+   - ✅ Sistema multi-tenancy (filtrado automático por school_id)
+   - ✅ Sistema de cambios/devoluciones completo
+   - ✅ Gestión de inventario con reservas
+   - ✅ Auto-códigos (VNT-YYYY-NNNN, ENC-YYYY-NNNN, etc.)
+
+4. **Frontend (70% completo)**
+   - ✅ Login funcional con JWT
+   - ✅ Dashboard con bienvenida personalizada
+   - ✅ 6 páginas de navegación (Dashboard, Products, Clients, Sales, Orders, Settings)
+   - ✅ Layout con sidebar colapsable
+   - ✅ Routing protegido
+   - ✅ API client con interceptores
+   - ✅ authStore (Zustand) con persistencia
+   - ⚠️ Páginas son placeholders (no cargan datos reales aún)
+
+5. **Documentación**
+   - README.md actualizado
    - SETUP.md (guía de instalación)
    - DATABASE.md (arquitectura de BD)
    - GIT_WORKFLOW.md (workflow Git)
+   - SALE_CHANGES.md (sistema de cambios completo)
    - LICENSE (MIT)
 
-4. **Testing**
-   - Backend inicia correctamente
-   - Frontend Tauri funciona
-   - Base de datos verificada
+6. **Seed Data**
+   - Script seed_data.py funcional
+   - Crea superuser: admin/Admin123
+   - Crea colegio demo con configuración
 
 ### ❌ Pendiente (TODO)
 
-1. **Backend**
-   - [ ] Schemas Pydantic para validación
-   - [ ] CRUD services para cada entidad
-   - [ ] Endpoints REST implementados
-   - [ ] Sistema de autenticación JWT
-   - [ ] Middleware de multi-tenancy
+1. **Backend (5%)**
    - [ ] Tests unitarios
+   - [ ] Reportes y analytics
+   - [ ] Exportación a Excel/PDF
+   - [ ] Webhooks y notificaciones
 
-2. **Frontend**
-   - [ ] Componentes React (layout, forms, tables)
-   - [ ] Páginas/vistas (dashboard, products, sales, etc.)
-   - [ ] Stores Zustand para estado
-   - [ ] Integración con API
-   - [ ] Autenticación UI
-   - [ ] Manejo de errores
+2. **Frontend (30%)**
+   - [ ] Tablas con datos reales de la API
+   - [ ] Formularios CRUD funcionales
+   - [ ] Gestión de cambios/devoluciones UI
+   - [ ] Reportes y gráficos
+   - [ ] Manejo completo de errores
+   - [ ] Loading states
 
 3. **Features**
-   - [ ] Seed data (datos de ejemplo)
-   - [ ] Triggers de base de datos (auto-códigos, inventario)
-   - [ ] Sistema de reportes
-   - [ ] Exportación a Excel/PDF
+   - [ ] Sistema de reportes avanzados
+   - [ ] Dashboard con stats reales
+   - [ ] Notificaciones en tiempo real
+   - [ ] Exportación masiva
    - [ ] CI/CD pipeline
+
+---
+
+## 🔄 Sistema de Cambios y Devoluciones
+
+### Arquitectura
+
+El sistema de cambios permite gestionar devoluciones y cambios de productos ya vendidos con las siguientes características:
+
+**Tipos de Cambios:**
+- `size_change`: Cambio de talla (ej: T14 → T16)
+- `product_change`: Cambio a producto diferente
+- `return`: Devolución sin reemplazo (reembolso)
+- `defect`: Cambio por producto defectuoso
+
+**Estados:**
+- `PENDING`: Creado, pendiente de aprobación
+- `APPROVED`: Aprobado, inventario ajustado
+- `REJECTED`: Rechazado, sin cambios
+
+**Flujo de Trabajo:**
+1. **SELLER** crea solicitud → Sistema valida stock y calcula precio
+2. Estado → `PENDING`
+3. **ADMIN** aprueba o rechaza
+4. Si aprobado → Ajuste automático de inventario (+1 devuelto, -1 nuevo)
+5. Estado → `APPROVED` o `REJECTED`
+
+**Endpoints:**
+```
+POST   /schools/{id}/sales/{id}/changes           # Crear cambio (SELLER+)
+GET    /schools/{id}/sales/{id}/changes           # Listar cambios (VIEWER+)
+PATCH  /schools/{id}/sales/{id}/changes/{id}/approve  # Aprobar (ADMIN+)
+PATCH  /schools/{id}/sales/{id}/changes/{id}/reject   # Rechazar (ADMIN+)
+```
+
+**Lógica de Negocio Clave:**
+```python
+# Cálculo automático de ajuste de precio
+price_adjustment = (new_price * new_qty) - (original_price * returned_qty)
+
+# Para returns (devoluciones)
+price_adjustment = -(original_price * returned_qty)  # Reembolso
+
+# Ajuste de inventario al aprobar
+inventory.adjust_stock(original_product, +returned_qty, "Devolución")
+inventory.adjust_stock(new_product, -new_qty, "Entrega")
+```
+
+**Modelo de Datos:**
+- Tabla: `sale_changes`
+- Enums: `change_type_enum`, `change_status_enum`
+- Relaciones: `sale_id`, `original_item_id`, `new_product_id`, `user_id`
+- Auditoría: Completa con created_at, updated_at, user_id
+
+Ver [docs/SALE_CHANGES.md](../docs/SALE_CHANGES.md) para documentación completa.
 
 ---
 
@@ -350,14 +438,40 @@ El usuario tenía un sistema anterior con PostgreSQL (script SQL disponible en G
 - Antiguo: Sync queries
 - Nuevo: Async/await
 
-### Prioridades de Desarrollo
+### Decisiones de Diseño Importantes
 
-**Próximos pasos sugeridos:**
-1. Schemas Pydantic (validación de entrada/salida)
-2. CRUD endpoints básicos (products, sales)
-3. Autenticación JWT
-4. Seed data para testing
-5. Frontend básico (listados, forms)
+**Sistema de Cambios/Devoluciones:**
+- **Razón**: En la versión anterior usaba triggers PostgreSQL. En v2.0 usamos lógica en servicios Python para mejor control, testing y mantenimiento.
+- **Enfoque**: Workflow con aprobación (PENDING → APPROVED/REJECTED) en vez de automático
+- **Validación**: Stock se valida al crear Y al aprobar (por si cambió entre medio)
+- **Transacciones**: Todos los ajustes de inventario son atómicos
+
+**Multi-Tenancy:**
+- `school_id` en TODAS las tablas de negocio
+- Services base (`SchoolIsolatedService`) fuerzan filtrado automático
+- Endpoints requieren `school_id` en URL
+- Dependency injection valida acceso del usuario al colegio
+
+**Códigos Auto-generados:**
+- Formato: `PREFIX-YYYY-NNNN` (ej: VNT-2025-0001)
+- Secuencial por año y por colegio
+- Generados en servicios, no triggers
+
+### Próximos pasos sugeridos
+
+**Alta prioridad:**
+1. ✅ ~~Schemas Pydantic~~ (completado)
+2. ✅ ~~CRUD services~~ (completado)
+3. ✅ ~~Autenticación JWT~~ (completado)
+4. ✅ ~~Frontend básico~~ (login + navegación)
+5. Conectar frontend con API real (tablas, forms)
+6. Tests unitarios para servicios críticos
+
+**Media prioridad:**
+7. Dashboard con stats reales
+8. UI para gestión de cambios/devoluciones
+9. Reportes y exportación
+10. Notificaciones
 
 ---
 
@@ -391,3 +505,11 @@ El usuario tenía un sistema anterior con PostgreSQL (script SQL disponible en G
 **Última actualización**: 2025-10-19
 **Versión del proyecto**: v2.0.0-dev
 **Estado**: En desarrollo activo
+
+**Cambios recientes:**
+- ✅ Sistema de cambios/devoluciones implementado (modelo, servicios, endpoints, docs)
+- ✅ Frontend básico funcional (login, navegación, 6 páginas placeholder)
+- ✅ 43+ endpoints REST con autenticación JWT
+- ✅ 8 servicios de negocio completos
+- ✅ 107 schemas Pydantic con validación
+- ✅ Migración sale_changes aplicada

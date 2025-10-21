@@ -64,6 +64,29 @@ async def list_clients(
 
 
 @router.get(
+    "/{client_id}",
+    response_model=ClientResponse,
+    dependencies=[Depends(require_school_access(UserRole.VIEWER))]
+)
+async def get_client(
+    school_id: UUID,
+    client_id: UUID,
+    db: DatabaseSession
+):
+    """Get a specific client by ID"""
+    client_service = ClientService(db)
+    client = await client_service.get(client_id, school_id)
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    return ClientResponse.model_validate(client)
+
+
+@router.get(
     "/search",
     response_model=list[ClientListResponse],
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]

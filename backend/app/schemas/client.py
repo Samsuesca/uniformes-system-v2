@@ -12,21 +12,11 @@ class ClientBase(BaseSchema):
     phone: str | None = Field(None, max_length=20)
     email: EmailStr | None = None
     address: str | None = None
-    document_type: str | None = Field(None, max_length=10)
-    document_number: str | None = Field(None, max_length=50)
     notes: str | None = None
 
     # Student information (optional - for parents/students)
     student_name: str | None = Field(None, max_length=255)
     student_grade: str | None = Field(None, max_length=50)
-
-    @field_validator('document_type')
-    @classmethod
-    def validate_document_type(cls, v: str | None) -> str | None:
-        """Validate document type"""
-        if v and v.upper() not in ['CC', 'CE', 'TI', 'NIT', 'PASSPORT']:
-            raise ValueError('Document type must be: CC, CE, TI, NIT, or PASSPORT')
-        return v.upper() if v else None
 
 
 class ClientCreate(ClientBase, SchoolIsolatedSchema):
@@ -41,8 +31,6 @@ class ClientUpdate(BaseSchema):
     phone: str | None = Field(None, max_length=20)
     email: EmailStr | None = None
     address: str | None = None
-    document_type: str | None = Field(None, max_length=10)
-    document_number: str | None = Field(None, max_length=50)
     notes: str | None = None
     student_name: str | None = Field(None, max_length=255)
     student_grade: str | None = Field(None, max_length=50)

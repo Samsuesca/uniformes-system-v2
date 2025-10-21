@@ -7,6 +7,7 @@ Sistema de gestión de uniformes profesional con **arquitectura multi-tenant**, 
 - ✅ **Multi-Colegio (Multi-Tenant)**: Gestiona múltiples instituciones con datos completamente aislados
 - ✅ **Inventario Inteligente**: Control de stock por colegio, tallas, tipos de prenda
 - ✅ **Ventas y Encargos**: Sistema completo de POS con pedidos personalizados
+- ✅ **Cambios y Devoluciones**: Sistema completo de gestión de cambios con ajuste automático de inventario y contabilidad
 - ✅ **Contabilidad Integrada**: Movimientos, gastos, cuentas por pagar
 - ✅ **Aplicación Nativa**: Desktop app multiplataforma (Windows, macOS, Linux)
 - ✅ **API REST**: Backend robusto con documentación automática
@@ -238,6 +239,45 @@ El sistema permite gestionar **múltiples colegios** desde una sola instalación
 - **Reportes separados**: Cada colegio ve solo su información
 
 Ver [docs/DATABASE.md](docs/DATABASE.md) para detalles de la arquitectura.
+
+## 🔄 Sistema de Cambios y Devoluciones
+
+El sistema incluye un módulo completo para gestionar cambios de productos ya vendidos:
+
+### Tipos de Cambios Soportados
+- **Cambio de Talla** (`size_change`): Ej. Camisa T14 → T16
+- **Cambio de Producto** (`product_change`): Cambiar a un producto completamente diferente
+- **Devolución** (`return`): Devolución sin reemplazo (reembolso)
+- **Defecto** (`defect`): Cambio por producto defectuoso
+
+### Flujo de Trabajo
+1. **Vendedor crea solicitud**: Se valida stock y se calcula ajuste de precio automáticamente
+2. **Sistema crea registro PENDING**: Queda pendiente de aprobación
+3. **Admin aprueba/rechaza**:
+   - **Aprobado**: Se ajusta inventario automáticamente (+1 producto devuelto, -1 producto nuevo)
+   - **Rechazado**: No se realizan cambios en inventario
+
+### Características
+- ✅ Validación automática de stock antes de aprobar
+- ✅ Cálculo automático de diferencia de precio
+- ✅ Ajustes de inventario atómicos
+- ✅ Auditoría completa de todos los cambios
+- ✅ Restricciones por roles (SELLER crea, ADMIN aprueba)
+
+### Ejemplo de Uso
+```http
+POST /api/v1/schools/{school_id}/sales/{sale_id}/changes
+{
+  "change_type": "size_change",
+  "original_item_id": "uuid-del-item-original",
+  "new_product_id": "uuid-del-nuevo-producto",
+  "returned_quantity": 1,
+  "new_quantity": 1,
+  "reason": "Cliente necesita talla más grande"
+}
+```
+
+Ver documentación completa en [docs/SALE_CHANGES.md](docs/SALE_CHANGES.md)
 
 ## 🧪 Testing
 
