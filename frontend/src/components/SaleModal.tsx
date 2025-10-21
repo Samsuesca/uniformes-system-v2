@@ -87,6 +87,24 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       return;
     }
 
+    // Get product and check stock
+    const product = products.find(p => p.id === currentItem.product_id);
+    if (!product) {
+      setError('Producto no encontrado');
+      return;
+    }
+
+    // Calculate total quantity (existing + new)
+    const existingItem = items.find(item => item.product_id === currentItem.product_id);
+    const totalQuantity = (existingItem?.quantity || 0) + currentItem.quantity;
+
+    // Check stock availability
+    const availableStock = product.inventory_quantity ?? product.stock ?? 0;
+    if (totalQuantity > availableStock) {
+      setError(`Stock insuficiente para ${product.name}. Disponible: ${availableStock}, solicitado: ${totalQuantity}`);
+      return;
+    }
+
     // Check if product already in items
     const existingIndex = items.findIndex(item => item.product_id === currentItem.product_id);
     if (existingIndex >= 0) {
@@ -249,12 +267,41 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   >
                     <option value="">Selecciona un producto</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} - {product.size} - ${Number(product.price).toLocaleString()}
-                      </option>
-                    ))}
+                    {products.map((product) => {
+                      const stock = product.inventory_quantity ?? product.stock ?? 0;
+                      const lowStock = stock < 5;
+                      const outOfStock = stock === 0;
+                      return (
+                        <option
+                          key={product.id}
+                          value={product.id}
+                          disabled={outOfStock}
+                        >
+                          {product.name} - {product.size} - ${Number(product.price).toLocaleString()}
+                          {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {/* Stock indicator for selected product */}
+                  {currentItem.product_id && (
+                    <p className="mt-1 text-sm">
+                      {(() => {
+                        const product = products.find(p => p.id === currentItem.product_id);
+                        const stock = product?.inventory_quantity ?? product?.stock ?? 0;
+                        const alreadySelected = items.find(i => i.product_id === currentItem.product_id)?.quantity || 0;
+                        const available = stock - alreadySelected;
+
+                        if (available === 0) {
+                          return <span className="text-red-600 font-medium">⚠️ Sin stock disponible</span>;
+                        } else if (available < 5) {
+                          return <span className="text-orange-600 font-medium">⚠️ Stock bajo: {available} unidades disponibles</span>;
+                        } else {
+                          return <span className="text-green-600">✓ {available} unidades disponibles</span>;
+                        }
+                      })()}
+                    </p>
+                  )}
                 </div>
 
                 {/* Quantity */}

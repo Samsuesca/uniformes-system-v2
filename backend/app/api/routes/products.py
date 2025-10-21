@@ -113,7 +113,7 @@ async def create_product(
 
 @router.get(
     "/products",
-    response_model=list[ProductResponse],
+    response_model=list[ProductWithInventory],  # Changed to support inventory fields
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
 async def list_products(

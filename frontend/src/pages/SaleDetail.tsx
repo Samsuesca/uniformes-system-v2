@@ -178,7 +178,6 @@ export default function SaleDetail() {
 
   const handlePrint = async () => {
     console.log('🖨️ Print button clicked - INICIO');
-    alert('Botón presionado - iniciando guardado de recibo...');
 
     try {
       console.log('🖨️ Calling handleSaveReceipt...');
@@ -186,7 +185,8 @@ export default function SaleDetail() {
       console.log('🖨️ handleSaveReceipt completed');
     } catch (error) {
       console.error('❌ Error in handlePrint:', error);
-      alert(`Error al intentar guardar: ${error}`);
+      console.error('❌ Error stack:', error);
+      alert(`Error al guardar el recibo:\n\n${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

@@ -251,14 +251,30 @@ class ProductService(SchoolIsolatedService[Product]):
         # Convert to ProductWithInventory schema
         products_with_inv = []
         for product in products:
-            inv = product.inventory[0] if product.inventory else None
-            products_with_inv.append(
-                ProductWithInventory(
-                    **product.__dict__,
-                    inventory_quantity=inv.quantity if inv else 0,
-                    inventory_min_stock=inv.min_stock_alert if inv else 5
-                )
-            )
+            inv = product.inventory  # inventory is a single object, not a list (uselist=False)
+
+            # Create dict with product data
+            product_dict = {
+                'id': product.id,
+                'school_id': product.school_id,
+                'code': product.code,
+                'garment_type_id': product.garment_type_id,
+                'name': product.name,
+                'size': product.size,
+                'color': product.color,
+                'gender': product.gender,
+                'price': product.price,
+                'cost': product.cost,
+                'description': product.description,
+                'image_url': product.image_url,
+                'is_active': product.is_active,
+                'created_at': product.created_at,
+                'updated_at': product.updated_at,
+                'inventory_quantity': inv.quantity if inv else 0,
+                'inventory_min_stock': inv.min_stock_alert if inv else 5
+            }
+
+            products_with_inv.append(ProductWithInventory(**product_dict))
 
         return products_with_inv
 

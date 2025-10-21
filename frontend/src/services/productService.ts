@@ -8,8 +8,10 @@ export const productService = {
   /**
    * Get all products for a school
    */
-  async getProducts(schoolId: string): Promise<Product[]> {
-    const response = await apiClient.get<Product[]>(`/schools/${schoolId}/products`);
+  async getProducts(schoolId: string, withInventory: boolean = true): Promise<Product[]> {
+    const response = await apiClient.get<Product[]>(`/schools/${schoolId}/products`, {
+      params: { with_inventory: withInventory }
+    });
     return response.data;
   },
 

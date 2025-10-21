@@ -84,6 +84,10 @@ export interface Product {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Inventory fields (when with_inventory=true)
+  inventory_quantity?: number;
+  inventory_min_stock?: number;
+  stock?: number; // Alias for inventory_quantity
 }
 
 export interface ProductWithInventory extends Product {

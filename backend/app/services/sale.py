@@ -122,6 +122,9 @@ class SaleService(SchoolIsolatedService[Sale]):
 
         await self.db.flush()
 
+        # Refresh sale with items loaded
+        await self.db.refresh(sale, ["items"])
+
         return sale
 
     async def get_sale_with_items(

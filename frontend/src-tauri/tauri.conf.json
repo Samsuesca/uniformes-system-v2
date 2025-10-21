@@ -12,16 +12,19 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Uniformes System",
         "width": 1400,
         "height": 900,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "devtools": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["default"]
     }
   },
   "bundle": {
