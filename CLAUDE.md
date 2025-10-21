@@ -172,15 +172,20 @@ uniformes-system-v2/
    - ✅ Gestión de inventario con reservas
    - ✅ Auto-códigos (VNT-YYYY-NNNN, ENC-YYYY-NNNN, etc.)
 
-4. **Frontend (70% completo)**
+4. **Frontend (85% completo)**
    - ✅ Login funcional con JWT
    - ✅ Dashboard con bienvenida personalizada
-   - ✅ 6 páginas de navegación (Dashboard, Products, Clients, Sales, Orders, Settings)
+   - ✅ 7 páginas de navegación (Dashboard, Products, Clients, Sales, SaleDetail, SaleChanges, Orders, Settings)
    - ✅ Layout con sidebar colapsable
    - ✅ Routing protegido
    - ✅ API client con interceptores
    - ✅ authStore (Zustand) con persistencia
-   - ⚠️ Páginas son placeholders (no cargan datos reales aún)
+   - ✅ Sistema de ventas completo (lista, detalle, impresión)
+   - ✅ Sistema de cambios/devoluciones UI completo
+   - ✅ Gestión de productos con stock en tiempo real
+   - ✅ Validación de stock al crear ventas
+   - ✅ Impresión de recibos con Tauri
+   - ⚠️ Algunas páginas aún son placeholders (Clients, Orders, Settings)
 
 5. **Documentación**
    - README.md actualizado
@@ -464,14 +469,16 @@ El usuario tenía un sistema anterior con PostgreSQL (script SQL disponible en G
 2. ✅ ~~CRUD services~~ (completado)
 3. ✅ ~~Autenticación JWT~~ (completado)
 4. ✅ ~~Frontend básico~~ (login + navegación)
-5. Conectar frontend con API real (tablas, forms)
-6. Tests unitarios para servicios críticos
+5. ✅ ~~Sistema de ventas UI completo~~ (completado)
+6. ✅ ~~UI para gestión de cambios/devoluciones~~ (completado)
+7. Conectar páginas pendientes con API (Clients, Orders)
+8. Tests unitarios para servicios críticos
 
 **Media prioridad:**
-7. Dashboard con stats reales
-8. UI para gestión de cambios/devoluciones
-9. Reportes y exportación
-10. Notificaciones
+9. Dashboard con stats reales
+10. Reportes y exportación
+11. Notificaciones
+12. Sistema de encargos personalizados UI
 
 ---
 
@@ -502,14 +509,22 @@ El usuario tenía un sistema anterior con PostgreSQL (script SQL disponible en G
 
 ---
 
-**Última actualización**: 2025-10-19
+**Última actualización**: 2025-10-20
 **Versión del proyecto**: v2.0.0-dev
 **Estado**: En desarrollo activo
 
-**Cambios recientes:**
-- ✅ Sistema de cambios/devoluciones implementado (modelo, servicios, endpoints, docs)
-- ✅ Frontend básico funcional (login, navegación, 6 páginas placeholder)
-- ✅ 43+ endpoints REST con autenticación JWT
-- ✅ 8 servicios de negocio completos
-- ✅ 107 schemas Pydantic con validación
-- ✅ Migración sale_changes aplicada
+**Cambios recientes (2025-10-20):**
+- ✅ Sistema de cambios/devoluciones UI completo implementado
+  - Frontend: SaleChangeModal para solicitar cambios
+  - Frontend: SaleChanges página admin para aprobar/rechazar
+  - Frontend: Historial de cambios en SaleDetail
+  - Integración completa con backend API
+  - Validación de stock en tiempo real
+- ✅ Sistema de ventas UI completo
+  - Lista de ventas con filtros
+  - Detalle de venta con productos
+  - Impresión de recibos con Tauri
+  - Validación de stock al agregar productos
+- ✅ Gestión de productos con stock visual
+- ✅ 7 páginas funcionales en frontend
+- ✅ Navegación completa con sidebar actualizado

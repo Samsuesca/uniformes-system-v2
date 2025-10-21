@@ -4,11 +4,13 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2 } from 'lucide-react';
+import SaleChangeModal from '../components/SaleChangeModal';
+import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { saleService } from '../services/saleService';
+import { saleChangeService } from '../services/saleChangeService';
 import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
-import type { Sale, SaleItem, Client, Product } from '../types/api';
+import type { Sale, SaleItem, Client, Product, SaleChangeListItem } from '../types/api';
 import { DEMO_SCHOOL_ID } from '../config/constants';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -64,8 +66,10 @@ export default function SaleDetail() {
   const [items, setItems] = useState<SaleItem[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [products, setProducts] = useState<Map<string, Product>>(new Map());
+  const [changes, setChanges] = useState<SaleChangeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
 
   const schoolId = DEMO_SCHOOL_ID;
 
@@ -103,11 +107,25 @@ export default function SaleDetail() {
         allProducts.forEach(p => productsMap.set(p.id, p));
         setProducts(productsMap);
       }
+
+      // Load sale changes
+      await loadChanges();
     } catch (err: any) {
       console.error('Error loading sale detail:', err);
       setError(err.response?.data?.detail || 'Error al cargar los detalles de la venta');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadChanges = async () => {
+    try {
+      if (!saleId) return;
+      const changesData = await saleChangeService.getSaleChanges(schoolId, saleId);
+      setChanges(changesData);
+    } catch (err: any) {
+      console.error('Error loading changes:', err);
+      // Don't set error state, just log it - changes are optional
     }
   };
 
@@ -174,6 +192,38 @@ export default function SaleDetail() {
   const getProductCode = (productId: string) => {
     const product = products.get(productId);
     return product?.code || productId;
+  };
+
+  const getChangeTypeLabel = (type: string) => {
+    switch (type) {
+      case 'size_change': return 'Cambio de Talla';
+      case 'product_change': return 'Cambio de Producto';
+      case 'return': return 'Devolución';
+      case 'defect': return 'Producto Defectuoso';
+      default: return type;
+    }
+  };
+
+  const getChangeStatusColor = (status: string) => {
+    switch (status) {
+      case 'APPROVED': return 'bg-green-100 text-green-800';
+      case 'PENDING': return 'bg-yellow-100 text-yellow-800';
+      case 'REJECTED': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getChangeStatusIcon = (status: string) => {
+    switch (status) {
+      case 'APPROVED': return <CheckCircle className="w-4 h-4" />;
+      case 'PENDING': return <Clock className="w-4 h-4" />;
+      case 'REJECTED': return <XCircle className="w-4 h-4" />;
+      default: return null;
+    }
+  };
+
+  const handleChangeSuccess = () => {
+    loadChanges();
   };
 
   const handlePrint = async () => {
@@ -440,13 +490,22 @@ export default function SaleDetail() {
             <h1 className="text-2xl font-bold text-gray-800">Detalle de Venta</h1>
             <p className="text-gray-600 mt-1">{sale.code}</p>
           </div>
-          <button
-            onClick={handlePrint}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
-          >
-            <Printer className="w-5 h-5 mr-2" />
-            Imprimir Recibo
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setIsChangeModalOpen(true)}
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+            >
+              <RefreshCw className="w-5 h-5 mr-2" />
+              Cambio/Devolución
+            </button>
+            <button
+              onClick={handlePrint}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+            >
+              <Printer className="w-5 h-5 mr-2" />
+              Imprimir Recibo
+            </button>
+          </div>
         </div>
       </div>
 
@@ -583,6 +642,90 @@ export default function SaleDetail() {
 
       </div> {/* End printable-section */}
       </div> {/* End printable-wrapper */}
+
+      {/* Sale Changes History */}
+      {changes.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden mt-6 print-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+              <RefreshCw className="w-5 h-5 mr-2" />
+              Historial de Cambios y Devoluciones
+            </h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tipo
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cant. Devuelta
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cant. Nueva
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ajuste Precio
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estado
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Motivo
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {changes.map((change) => (
+                  <tr key={change.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatDate(change.change_date)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {getChangeTypeLabel(change.change_type)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {change.returned_quantity}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {change.new_quantity}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                      <span className={change.price_adjustment >= 0 ? 'text-green-600' : 'text-red-600'}>
+                        ${Number(change.price_adjustment).toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 inline-flex items-center gap-1 text-xs font-semibold rounded-full ${getChangeStatusColor(change.status)}`}>
+                        {getChangeStatusIcon(change.status)}
+                        {change.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {change.reason || '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Sale Change Modal */}
+      <SaleChangeModal
+        isOpen={isChangeModalOpen}
+        onClose={() => setIsChangeModalOpen(false)}
+        onSuccess={handleChangeSuccess}
+        schoolId={schoolId}
+        saleId={saleId!}
+        saleItems={items}
+      />
     </Layout>
   );
 }

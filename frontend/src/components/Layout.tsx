@@ -10,6 +10,7 @@ import {
   Users,
   ShoppingCart,
   FileText,
+  RefreshCw,
   Settings,
   LogOut,
   Menu,
@@ -32,6 +33,7 @@ const navigation: NavItem[] = [
   { name: 'Productos', path: '/products', icon: Package },
   { name: 'Clientes', path: '/clients', icon: Users },
   { name: 'Ventas', path: '/sales', icon: ShoppingCart },
+  { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw },
   { name: 'Encargos', path: '/orders', icon: FileText },
   { name: 'Configuración', path: '/settings', icon: Settings },
 ];

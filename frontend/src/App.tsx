@@ -9,6 +9,7 @@ import Products from './pages/Products';
 import Clients from './pages/Clients';
 import Sales from './pages/Sales';
 import SaleDetail from './pages/SaleDetail';
+import SaleChanges from './pages/SaleChanges';
 import Orders from './pages/Orders';
 import Settings from './pages/Settings';
 
@@ -68,6 +69,14 @@ function App() {
           element={
             <ProtectedRoute>
               <SaleDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sale-changes"
+          element={
+            <ProtectedRoute>
+              <SaleChanges />
             </ProtectedRoute>
           }
         />

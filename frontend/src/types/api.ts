@@ -158,6 +158,53 @@ export interface SaleItem {
 }
 
 // ============================================
+// Sale Change Types
+// ============================================
+
+export type ChangeType = 'size_change' | 'product_change' | 'return' | 'defect';
+export type ChangeStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface SaleChange {
+  id: string;
+  sale_id: string;
+  original_item_id: string;
+  new_product_id: string | null;
+  change_type: ChangeType;
+  status: ChangeStatus;
+  returned_quantity: number;
+  new_quantity: number;
+  price_adjustment: number;
+  reason: string | null;
+  rejection_reason: string | null;
+  change_date: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaleChangeCreate {
+  original_item_id: string;
+  new_product_id?: string;
+  change_type: ChangeType;
+  returned_quantity: number;
+  new_quantity?: number;
+  reason?: string;
+}
+
+export interface SaleChangeListItem {
+  id: string;
+  sale_id: string;
+  sale_code: string;
+  change_type: ChangeType;
+  status: ChangeStatus;
+  returned_quantity: number;
+  new_quantity: number;
+  price_adjustment: number;
+  change_date: string;
+  reason: string | null;
+}
+
+// ============================================
 // API Response Types
 // ============================================
 
