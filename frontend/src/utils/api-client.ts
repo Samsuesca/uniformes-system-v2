@@ -2,18 +2,28 @@
  * API Client - Axios instance configured for backend communication
  */
 import axios, { AxiosError, AxiosResponse } from 'axios';
-
-// API Base URL - adjust based on environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+import { useConfigStore } from '../stores/configStore';
 
 // Create Axios instance
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 30000, // 30 seconds
 });
+
+// Dynamic baseURL interceptor - uses current config from store
+apiClient.interceptors.request.use(
+  (config) => {
+    // Get current API URL from config store
+    const apiUrl = useConfigStore.getState().apiUrl;
+    config.baseURL = `${apiUrl}/api/v1`;
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // Request interceptor - add auth token
 apiClient.interceptors.request.use(

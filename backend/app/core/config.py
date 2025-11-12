@@ -24,12 +24,18 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
+    # Server
+    BACKEND_HOST: str = "0.0.0.0"  # Listen on all interfaces
+    BACKEND_PORT: int = 8000
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "tauri://localhost",
         "http://localhost:3000",
         "http://localhost:8080",
         "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite dev server
+        # For LAN testing (will be overridden in .env for specific IPs)
     ]
     
     class Config:
