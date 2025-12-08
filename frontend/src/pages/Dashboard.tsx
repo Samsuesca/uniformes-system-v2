@@ -3,11 +3,11 @@
  */
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { useSchoolStore } from '../stores/schoolStore';
 import { Package, Users, ShoppingCart, FileText, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { dashboardService } from '../services/dashboardService';
 import type { DashboardStats } from '../services/dashboardService';
-import { DEMO_SCHOOL_ID } from '../config/constants';
 
 interface StatCard {
   title: string;
@@ -19,16 +19,18 @@ interface StatCard {
 
 export default function Dashboard() {
   const { user } = useAuthStore();
+  const { currentSchool } = useSchoolStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // TODO: Get school_id from user context or user_school_roles
-  const schoolId = DEMO_SCHOOL_ID;
+  const schoolId = currentSchool?.id || '';
 
   useEffect(() => {
-    loadStats();
-  }, []);
+    if (schoolId) {
+      loadStats();
+    }
+  }, [schoolId]);
 
   const loadStats = async () => {
     try {
@@ -79,17 +81,17 @@ export default function Dashboard() {
     <Layout>
       {/* Welcome Section */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
+        <h1 className="text-3xl font-bold font-display text-primary tracking-tight">
           ¡Bienvenido, {user?.full_name || user?.username}!
         </h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-slate-500 mt-2 text-lg">
           Aquí está el resumen de tu sistema de uniformes
         </p>
       </div>
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
           <div className="flex items-start">
             <AlertCircle className="w-6 h-6 text-red-600 mr-3 flex-shrink-0" />
             <div>
@@ -97,7 +99,7 @@ export default function Dashboard() {
               <p className="mt-1 text-sm text-red-700">{error}</p>
               <button
                 onClick={loadStats}
-                className="mt-3 text-sm text-red-700 hover:text-red-800 underline"
+                className="mt-3 text-sm text-red-700 hover:text-red-800 underline font-medium"
               >
                 Reintentar
               </button>
@@ -110,8 +112,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {loading ? (
           <div className="col-span-full flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            <span className="ml-3 text-gray-600">Cargando estadísticas...</span>
+            <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+            <span className="ml-3 text-slate-600 font-medium">Cargando estadísticas...</span>
           </div>
         ) : (
           statCards.map((stat) => {
@@ -119,15 +121,15 @@ export default function Dashboard() {
             return (
               <div
                 key={stat.title}
-                className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow"
+                className="bg-white rounded-xl shadow-sm border border-surface-200 p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <div className={`p-3 rounded-lg ${stat.bgColor}`}>
-                    <Icon className={`w-6 h-6 ${stat.color}`} />
+                  <div className={`p-3 rounded-xl bg-brand-50 text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-colors duration-300`}>
+                    <Icon className={`w-6 h-6`} />
                   </div>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-800">{stat.value}</h3>
-                <p className="text-sm text-gray-500 mt-1">{stat.title}</p>
+                <h3 className="text-3xl font-bold font-display text-primary tracking-tight">{stat.value}</h3>
+                <p className="text-sm text-slate-500 mt-1 font-medium">{stat.title}</p>
               </div>
             );
           })
@@ -137,47 +139,51 @@ export default function Dashboard() {
       {/* Recent Activity Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Sales */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 overflow-hidden">
           <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
             <TrendingUp className="w-5 h-5 mr-2 text-green-600" />
             Ventas Recientes
           </h3>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-                <div>
-                  <p className="font-medium text-gray-800">VNT-2024-00{i}</p>
-                  <p className="text-sm text-gray-500">Cliente {i}</p>
+          <div className="overflow-x-auto -mx-6 px-6">
+            <div className="min-w-[280px] space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0 gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-800 truncate">VNT-2024-00{i}</p>
+                    <p className="text-sm text-gray-500 truncate">Cliente {i}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-semibold text-gray-800">$150,000</p>
+                    <p className="text-xs text-gray-500">Hace 2h</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-800">$150,000</p>
-                  <p className="text-xs text-gray-500">Hace 2h</p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Low Stock Alerts */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 overflow-hidden">
           <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
             <AlertCircle className="w-5 h-5 mr-2 text-orange-600" />
             Alertas de Stock Bajo
           </h3>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-                <div>
-                  <p className="font-medium text-gray-800">Camisa Talla M</p>
-                  <p className="text-sm text-gray-500">PRD-00{i}</p>
+          <div className="overflow-x-auto -mx-6 px-6">
+            <div className="min-w-[280px] space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0 gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-800 truncate">Camisa Talla M</p>
+                    <p className="text-sm text-gray-500 truncate">PRD-00{i}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                      {3 - i} unidades
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                    {3 - i} unidades
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

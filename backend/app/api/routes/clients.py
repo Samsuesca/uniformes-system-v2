@@ -102,3 +102,65 @@ async def search_clients(
     clients = await client_service.search_clients(school_id, q, limit=limit)
 
     return [ClientListResponse.model_validate(c) for c in clients]
+
+
+@router.patch(
+    "/{client_id}",
+    response_model=ClientResponse,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def update_client(
+    school_id: UUID,
+    client_id: UUID,
+    client_data: ClientUpdate,
+    db: DatabaseSession
+):
+    """Update a client (requires SELLER role)"""
+    client_service = ClientService(db)
+
+    client = await client_service.get(client_id, school_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    try:
+        updated_client = await client_service.update(
+            client_id,
+            school_id,
+            client_data.model_dump(exclude_unset=True)
+        )
+        await db.commit()
+        return ClientResponse.model_validate(updated_client)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete(
+    "/{client_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def delete_client(
+    school_id: UUID,
+    client_id: UUID,
+    db: DatabaseSession
+):
+    """Delete a client (soft delete, requires ADMIN role)"""
+    client_service = ClientService(db)
+
+    client = await client_service.get(client_id, school_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    # Soft delete by setting is_active to False
+    await client_service.update(client_id, school_id, {"is_active": False})
+    await db.commit()

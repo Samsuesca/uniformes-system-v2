@@ -12,11 +12,22 @@ from app.db.base import Base
 
 
 class UserRole(str, enum.Enum):
-    """User roles in the system"""
-    OWNER = "owner"        # Propietario del colegio
-    ADMIN = "admin"        # Administrador
-    SELLER = "seller"      # Vendedor
-    VIEWER = "viewer"      # Solo lectura
+    """
+    User roles in the system (hierarchical, highest to lowest)
+
+    Permissions by role:
+    - OWNER: Full access + user management + school settings
+    - ADMIN: Full business data (sales, inventory, accounting, reports)
+    - SELLER: Create/read sales, read inventory, manage clients/orders
+    - VIEWER: Read-only access to sales, inventory, clients
+
+    Note: DEVELOPER access is controlled via is_superuser flag.
+    Superusers bypass all role checks and can access/modify anything.
+    """
+    OWNER = "owner"        # Propietario - full access + user mgmt
+    ADMIN = "admin"        # Administrador - business data access
+    SELLER = "seller"      # Vendedor - sales, clients, orders
+    VIEWER = "viewer"      # Solo lectura - read only
 
 
 class User(Base):

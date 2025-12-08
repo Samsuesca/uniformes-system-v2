@@ -17,8 +17,8 @@ Probar el sistema distribuido en red local antes del deployment a cloud. Backend
 ### ✅ Logros Principales
 
 1. **Sistema Distribuido Funcionando**
-   - Mac como servidor backend (IP: 192.168.18.48)
-   - Windows como cliente desktop (IP: 192.168.18.43)
+   - Mac como servidor backend (IP: 192.168.18.48) (Yo samuel estoy desarrollando en este pc)
+   - Windows como cliente desktop (IP: 192.168.18.43) (este pc es para uso del administrador y-o vendedores del negocio. ejemplo: consuelo)
    - Comunicación exitosa en red local
 
 2. **App Tauri Compilada**

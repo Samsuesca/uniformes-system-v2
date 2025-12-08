@@ -6,12 +6,11 @@ import Layout from '../components/Layout';
 import ProductModal from '../components/ProductModal';
 import { Package, Plus, Search, AlertCircle, Loader2 } from 'lucide-react';
 import { productService } from '../services/productService';
+import { useSchoolStore } from '../stores/schoolStore';
 import type { Product } from '../types/api';
-import { useAuthStore } from '../stores/authStore';
-import { DEMO_SCHOOL_ID } from '../config/constants';
 
 export default function Products() {
-  const { user } = useAuthStore();
+  const { currentSchool } = useSchoolStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +19,7 @@ export default function Products() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-  // TODO: Get school_id from user context or user_school_roles
-  const schoolId = DEMO_SCHOOL_ID;
+  const schoolId = currentSchool?.id || '';
 
   useEffect(() => {
     loadProducts();
@@ -143,7 +141,7 @@ export default function Products() {
 
       {/* Products Table */}
       {!loading && !error && filteredProducts.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

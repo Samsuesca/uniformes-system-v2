@@ -57,6 +57,8 @@ class Order(Base):
     delivery_date: Mapped[datetime | None] = mapped_column(DateTime)
     expected_delivery_days: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
 
+    subtotal: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    tax: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     paid_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     # balance computed automatically as (total - paid_amount)
@@ -100,13 +102,17 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan"
     )
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Order(code='{self.code}', total={self.total}, status='{self.status}')>"
 
 
 class OrderItem(Base):
-    """Detail of products per order"""
+    """Detail of products per order (encargos personalizados)"""
     __tablename__ = "order_items"
     __table_args__ = (
         CheckConstraint('quantity > 0', name='chk_order_item_quantity_positive'),
@@ -123,10 +129,23 @@ class OrderItem(Base):
         nullable=False,
         index=True
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
+    school_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("products.id", ondelete="RESTRICT"),
+        ForeignKey("schools.id", ondelete="CASCADE"),
         nullable=False,
+        index=True
+    )
+    garment_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("garment_types.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+    # product_id is optional - only set when order is fulfilled from inventory
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -134,9 +153,18 @@ class OrderItem(Base):
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
 
+    # Custom order specifications
+    size: Mapped[str | None] = mapped_column(String(10))
+    color: Mapped[str | None] = mapped_column(String(50))
+    gender: Mapped[str | None] = mapped_column(String(10))  # unisex, male, female
+    custom_measurements: Mapped[dict | None] = mapped_column(JSONB)
+    embroidery_text: Mapped[str | None] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(Text)
+
     # Relationships
     order: Mapped["Order"] = relationship(back_populates="items")
-    product: Mapped["Product"] = relationship(back_populates="order_items")
+    garment_type: Mapped["GarmentType"] = relationship()
+    product: Mapped["Product | None"] = relationship(back_populates="order_items")
 
     def __repr__(self) -> str:
         return f"<OrderItem(order_id='{self.order_id}', product_id='{self.product_id}', quantity={self.quantity})>"

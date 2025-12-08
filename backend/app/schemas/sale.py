@@ -4,7 +4,7 @@ Sale and SaleItem Schemas
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
 from app.models.sale import SaleStatus, PaymentMethod, ChangeStatus, ChangeType
 
@@ -169,26 +169,28 @@ class SaleChangeCreate(SaleChangeBase):
     """Schema for creating sale change request"""
     original_item_id: UUID
 
-    @field_validator('new_product_id', 'new_quantity')
-    def validate_new_product(cls, v, info):
-        """Validate new product fields based on change type"""
-        change_type = info.data.get('change_type')
+    @model_validator(mode='after')
+    def validate_change_type_fields(self):
+        """Validate fields based on change type after all fields are set"""
+        change_type = self.change_type
+        new_product_id = self.new_product_id
+        new_quantity = self.new_quantity
 
         # For returns, no new product needed
         if change_type == ChangeType.RETURN:
-            if info.field_name == 'new_product_id' and v is not None:
+            if new_product_id is not None:
                 raise ValueError("Returns should not have a new product")
-            if info.field_name == 'new_quantity' and v > 0:
+            if new_quantity > 0:
                 raise ValueError("Returns should not have new quantity")
 
         # For changes, new product is required
         elif change_type in [ChangeType.SIZE_CHANGE, ChangeType.PRODUCT_CHANGE, ChangeType.DEFECT]:
-            if info.field_name == 'new_product_id' and v is None:
+            if new_product_id is None:
                 raise ValueError(f"{change_type.value} requires a new product")
-            if info.field_name == 'new_quantity' and v <= 0:
+            if new_quantity <= 0:
                 raise ValueError(f"{change_type.value} requires new quantity > 0")
 
-        return v
+        return self
 
 
 class SaleChangeUpdate(BaseSchema):

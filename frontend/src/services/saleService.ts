@@ -2,11 +2,7 @@
  * Sale Service - API calls for sales
  */
 import apiClient from '../utils/api-client';
-import type { Sale, SaleItem } from '../types/api';
-
-export interface SaleWithItems extends Sale {
-  items: SaleItem[];
-}
+import type { Sale, SaleWithItems, SaleListItem } from '../types/api';
 
 export interface SaleItemCreate {
   product_id: string;
@@ -24,10 +20,10 @@ export interface SaleCreate {
 
 export const saleService = {
   /**
-   * Get all sales for a school
+   * Get all sales for a school (returns list items with summary info)
    */
-  async getSales(schoolId: string): Promise<Sale[]> {
-    const response = await apiClient.get<Sale[]>(`/schools/${schoolId}/sales`);
+  async getSales(schoolId: string): Promise<SaleListItem[]> {
+    const response = await apiClient.get<SaleListItem[]>(`/schools/${schoolId}/sales`);
     return response.data;
   },
 

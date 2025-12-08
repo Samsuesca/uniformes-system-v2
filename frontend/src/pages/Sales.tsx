@@ -8,12 +8,13 @@ import SaleModal from '../components/SaleModal';
 import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign } from 'lucide-react';
 import { saleService } from '../services/saleService';
 import { clientService } from '../services/clientService';
-import type { Sale } from '../types/api';
-import { DEMO_SCHOOL_ID } from '../config/constants';
+import { useSchoolStore } from '../stores/schoolStore';
+import type { SaleListItem } from '../types/api';
 
 export default function Sales() {
   const navigate = useNavigate();
-  const [sales, setSales] = useState<Sale[]>([]);
+  const { currentSchool } = useSchoolStore();
+  const [sales, setSales] = useState<SaleListItem[]>([]);
   const [clients, setClients] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const schoolId = DEMO_SCHOOL_ID;
+  const schoolId = currentSchool?.id || '';
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
@@ -197,7 +198,7 @@ export default function Sales() {
 
       {/* Sales Table */}
       {!loading && !error && filteredSales.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

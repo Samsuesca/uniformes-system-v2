@@ -10,6 +10,12 @@ from app.services.inventory import InventoryService
 from app.services.client import ClientService
 from app.services.sale import SaleService
 from app.services.order import OrderService
+from app.services.accounting import (
+    TransactionService,
+    ExpenseService,
+    DailyCashRegisterService,
+    AccountingService
+)
 
 __all__ = [
     # Base
@@ -24,4 +30,9 @@ __all__ = [
     "ClientService",
     "SaleService",
     "OrderService",
+    # Accounting
+    "TransactionService",
+    "ExpenseService",
+    "DailyCashRegisterService",
+    "AccountingService",
 ]

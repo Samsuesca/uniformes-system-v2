@@ -122,10 +122,15 @@ class LoginRequest(BaseSchema):
     password: str
 
 
+class UserWithRoles(UserResponse):
+    """User response including school roles"""
+    school_roles: list["UserSchoolRoleResponse"] = []
+
+
 class LoginResponse(BaseSchema):
-    """Login response with token and user info"""
+    """Login response with token and user info including roles"""
     token: Token
-    user: UserResponse
+    user: UserWithRoles
 
 
 class PasswordChange(BaseSchema):

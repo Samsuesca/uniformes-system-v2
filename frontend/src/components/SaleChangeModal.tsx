@@ -91,17 +91,21 @@ export default function SaleChangeModal({
     setError(null);
 
     try {
+      // Build the payload based on change type
+      // For returns: don't include new_product_id at all (omit the field), set new_quantity to 0
+      // For other types: include new_product_id and new_quantity
       const changeData: SaleChangeCreate = {
         original_item_id: formData.original_item_id,
         change_type: formData.change_type,
         returned_quantity: formData.returned_quantity,
-        reason: formData.reason || undefined,
+        reason: formData.reason.trim() || 'Sin motivo especificado',
+        new_quantity: formData.change_type === 'return' ? 0 : formData.new_quantity,
       };
 
-      // Only add new product fields if not a return
-      if (formData.change_type !== 'return') {
+      // Only include new_product_id for non-return changes
+      // For returns, we omit the field entirely so backend receives undefined/null properly
+      if (formData.change_type !== 'return' && formData.new_product_id) {
         changeData.new_product_id = formData.new_product_id;
-        changeData.new_quantity = formData.new_quantity;
       }
 
       await saleChangeService.createChange(schoolId, saleId, changeData);
@@ -109,7 +113,17 @@ export default function SaleChangeModal({
       onClose();
     } catch (err: any) {
       console.error('Error creating change:', err);
-      setError(err.response?.data?.detail || 'Error al crear la solicitud de cambio');
+      // Handle validation errors from backend
+      let errorMessage = 'Error al crear la solicitud de cambio';
+      if (err.response?.data?.detail) {
+        if (typeof err.response.data.detail === 'string') {
+          errorMessage = err.response.data.detail;
+        } else if (Array.isArray(err.response.data.detail)) {
+          // Pydantic validation errors come as array
+          errorMessage = err.response.data.detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join(', ');
+        }
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

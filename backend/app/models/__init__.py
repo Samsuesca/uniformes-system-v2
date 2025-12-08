@@ -11,8 +11,14 @@ from app.models.user import User, UserSchoolRole, UserRole
 from app.models.school import School
 from app.models.product import GarmentType, Product, Inventory
 from app.models.client import Client
-from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus
+from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus
 from app.models.order import Order, OrderItem, OrderStatus
+from app.models.accounting import (
+    Transaction, TransactionType,
+    Expense, ExpenseCategory,
+    DailyCashRegister,
+    AccPaymentMethod
+)
 
 __all__ = [
     "Base",
@@ -33,8 +39,18 @@ __all__ = [
     "SaleItem",
     "PaymentMethod",
     "SaleStatus",
+    "SaleChange",
+    "ChangeType",
+    "ChangeStatus",
     # Order models
     "Order",
     "OrderItem",
     "OrderStatus",
+    # Accounting models
+    "Transaction",
+    "TransactionType",
+    "Expense",
+    "ExpenseCategory",
+    "DailyCashRegister",
+    "AccPaymentMethod",
 ]

@@ -8,7 +8,8 @@ from app.api.dependencies import DatabaseSession, CurrentUser, require_school_ac
 from app.models.user import UserRole
 from app.models.order import OrderStatus
 from app.schemas.order import (
-    OrderCreate, OrderUpdate, OrderPayment, OrderResponse, OrderListResponse
+    OrderCreate, OrderUpdate, OrderPayment, OrderResponse, OrderListResponse,
+    OrderWithItems, OrderItemResponse
 )
 from app.services.order import OrderService
 
@@ -102,7 +103,7 @@ async def list_orders(
 
 @router.get(
     "/{order_id}",
-    response_model=OrderResponse,
+    response_model=OrderWithItems,
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
 async def get_order(
@@ -110,7 +111,7 @@ async def get_order(
     order_id: UUID,
     db: DatabaseSession
 ):
-    """Get order with items"""
+    """Get order with items and client info"""
     order_service = OrderService(db)
     order = await order_service.get_order_with_items(order_id, school_id)
 
@@ -120,7 +121,50 @@ async def get_order(
             detail="Order not found"
         )
 
-    return OrderResponse.model_validate(order)
+    # Build response with client and items info
+    items_response = []
+    for item in order.items:
+        item_dict = {
+            "id": item.id,
+            "order_id": item.order_id,
+            "school_id": item.school_id,
+            "garment_type_id": item.garment_type_id,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "subtotal": item.subtotal,
+            "size": item.size,
+            "color": item.color,
+            "gender": item.gender,
+            "custom_measurements": item.custom_measurements,
+            "embroidery_text": item.embroidery_text,
+            "notes": item.notes,
+            "garment_type_name": item.garment_type.name if item.garment_type else "Unknown",
+            "garment_type_category": item.garment_type.category if item.garment_type else None,
+            "requires_embroidery": item.garment_type.requires_embroidery if item.garment_type else False,
+            "has_custom_measurements": bool(item.custom_measurements)
+        }
+        items_response.append(item_dict)
+
+    return OrderWithItems(
+        id=order.id,
+        school_id=order.school_id,
+        code=order.code,
+        client_id=order.client_id,
+        status=order.status,
+        delivery_date=order.delivery_date,
+        notes=order.notes,
+        subtotal=order.subtotal,
+        tax=order.tax,
+        total=order.total,
+        paid_amount=order.paid_amount,
+        balance=order.balance,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+        items=items_response,
+        client_name=order.client.name if order.client else "Unknown",
+        client_phone=order.client.phone if order.client else None,
+        student_name=order.client.student_name if order.client else None
+    )
 
 
 @router.post(

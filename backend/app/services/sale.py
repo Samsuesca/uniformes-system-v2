@@ -331,7 +331,7 @@ class SaleService(SchoolIsolatedService[Sale]):
 
         # Execute inventory adjustments
         # 1. Return original product to inventory
-        await inv_service.adjust_stock(
+        await inv_service.add_stock(
             change.original_item.product_id,
             school_id,
             change.returned_quantity,
@@ -350,10 +350,10 @@ class SaleService(SchoolIsolatedService[Sale]):
             if not has_stock:
                 raise ValueError("Stock ya no disponible para el nuevo producto")
 
-            await inv_service.adjust_stock(
+            await inv_service.remove_stock(
                 change.new_product_id,
                 school_id,
-                -change.new_quantity,
+                change.new_quantity,
                 f"Entrega - Cambio #{change.id}"
             )
 

@@ -4,7 +4,10 @@ Authentication Endpoints
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import DatabaseSession, CurrentUser
-from app.schemas.user import LoginRequest, LoginResponse, Token, UserResponse, PasswordChange
+from app.schemas.user import (
+    LoginRequest, LoginResponse, UserResponse, UserWithRoles,
+    PasswordChange, UserSchoolRoleResponse
+)
 from app.services.user import UserService
 
 
@@ -19,7 +22,7 @@ async def login(
     """
     Login with username/email and password
 
-    Returns JWT access token and user information
+    Returns JWT access token and user information including school roles.
     """
     user_service = UserService(db)
 
@@ -42,9 +45,20 @@ async def login(
         username=user.username
     )
 
+    # Get user's school roles
+    school_roles = await user_service.get_user_schools(user.id)
+    school_roles_response = [
+        UserSchoolRoleResponse.model_validate(role)
+        for role in school_roles
+    ]
+
+    # Build user response with roles
+    user_data = UserResponse.model_validate(user).model_dump()
+    user_with_roles = UserWithRoles(**user_data, school_roles=school_roles_response)
+
     return LoginResponse(
         token=token,
-        user=UserResponse.model_validate(user)
+        user=user_with_roles
     )
 
 

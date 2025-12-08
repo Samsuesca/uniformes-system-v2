@@ -93,6 +93,10 @@ class Sale(Base):
         back_populates="sale",
         cascade="all, delete-orphan"
     )
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="sale",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Sale(code='{self.code}', total={self.total}, status='{self.status}')>"
@@ -189,7 +193,7 @@ class SaleChange(Base):
 
     # Change details
     change_type: Mapped[ChangeType] = mapped_column(
-        SQLEnum(ChangeType, name="change_type_enum"),
+        SQLEnum(ChangeType, name="change_type_enum", values_callable=lambda x: [e.value for e in x]),
         nullable=False
     )
     change_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -214,7 +218,7 @@ class SaleChange(Base):
 
     # Status and notes
     status: Mapped[ChangeStatus] = mapped_column(
-        SQLEnum(ChangeStatus, name="change_status_enum"),
+        SQLEnum(ChangeStatus, name="change_status_enum", values_callable=lambda x: [e.value for e in x]),
         default=ChangeStatus.PENDING,
         nullable=False
     )

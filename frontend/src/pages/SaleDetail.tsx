@@ -11,7 +11,7 @@ import { saleChangeService } from '../services/saleChangeService';
 import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
 import type { Sale, SaleItem, Client, Product, SaleChangeListItem } from '../types/api';
-import { DEMO_SCHOOL_ID } from '../config/constants';
+import { useSchoolStore } from '../stores/schoolStore';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 
@@ -62,6 +62,7 @@ const printStyles = `
 export default function SaleDetail() {
   const { saleId } = useParams<{ saleId: string }>();
   const navigate = useNavigate();
+  const { currentSchool } = useSchoolStore();
   const [sale, setSale] = useState<Sale | null>(null);
   const [items, setItems] = useState<SaleItem[]>([]);
   const [client, setClient] = useState<Client | null>(null);
@@ -71,7 +72,7 @@ export default function SaleDetail() {
   const [error, setError] = useState<string | null>(null);
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
 
-  const schoolId = DEMO_SCHOOL_ID;
+  const schoolId = currentSchool?.id || '';
 
   useEffect(() => {
     if (saleId) {
@@ -281,8 +282,6 @@ export default function SaleDetail() {
 
   const generateReceiptHTML = (): string => {
     if (!sale) return '';
-
-    const subtotal = items.reduce((sum, item) => sum + Number(item.subtotal), 0);
 
     return `
 <!DOCTYPE html>

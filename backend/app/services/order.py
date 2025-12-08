@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import GarmentType
@@ -77,7 +77,7 @@ class OrderService(SchoolIsolatedService[Order]):
 
             subtotal += item_subtotal
 
-        # Calculate tax
+        # Calculate tax (19% IVA)
         tax_rate = Decimal("0.19")
         tax = subtotal * tax_rate
         total = subtotal + tax
@@ -117,16 +117,19 @@ class OrderService(SchoolIsolatedService[Order]):
         order_id: UUID,
         school_id: UUID
     ) -> Order | None:
-        """Get order with items loaded"""
+        """Get order with items, client and garment types loaded"""
         result = await self.db.execute(
             select(Order)
-            .options(selectinload(Order.items))
+            .options(
+                selectinload(Order.items).selectinload(OrderItem.garment_type),
+                joinedload(Order.client)
+            )
             .where(
                 Order.id == order_id,
                 Order.school_id == school_id
             )
         )
-        return result.scalar_one_or_none()
+        return result.unique().scalar_one_or_none()
 
     async def add_payment(
         self,

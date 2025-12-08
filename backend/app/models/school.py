@@ -85,5 +85,19 @@ class School(Base):
         cascade="all, delete-orphan"
     )
 
+    # Accounting relationships
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="school",
+        cascade="all, delete-orphan"
+    )
+    expenses: Mapped[list["Expense"]] = relationship(
+        back_populates="school",
+        cascade="all, delete-orphan"
+    )
+    cash_registers: Mapped[list["DailyCashRegister"]] = relationship(
+        back_populates="school",
+        cascade="all, delete-orphan"
+    )
+
     def __repr__(self) -> str:
         return f"<School(code='{self.code}', name='{self.name}')>"
