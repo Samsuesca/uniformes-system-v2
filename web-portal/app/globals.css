@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Premium Fonts */
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-outfit);
+
+  /* Brand Colors - Deep Royal Blue */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+
+  /* Primary - Deep Navy */
+  --color-primary: #0f172a;
+  --color-primary-light: #1e293b;
+
+  /* Surface - Light Backgrounds */
+  --color-surface-50: #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-200: #e2e8f0;
+
+  /* Base Colors */
+  --color-background: var(--color-surface-50);
+  --color-foreground: var(--color-primary);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
