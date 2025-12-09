@@ -18,12 +18,13 @@ interface InventoryAdjustment {
   productName: string;
   currentStock: number;
   isGlobal: boolean;
+  schoolId?: string;  // For school products
 }
 
 type TabType = 'school' | 'global';
 
 export default function Products() {
-  const { currentSchool } = useSchoolStore();
+  const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
   const { user } = useAuthStore();
 
   // Tab state
@@ -41,6 +42,7 @@ export default function Products() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
+  const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -51,21 +53,34 @@ export default function Products() {
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove' | 'set'>('add');
   const [submitting, setSubmitting] = useState(false);
 
-  const schoolId = currentSchool?.id || '';
+  // For creating new products, use school filter or current school
+  const schoolIdForCreate = schoolFilter || currentSchool?.id || availableSchools[0]?.id || '';
   const isSuperuser = user?.is_superuser || false;
 
   useEffect(() => {
-    if (schoolId) {
-      loadProducts();
+    // Load schools if not already loaded
+    if (availableSchools.length === 0) {
+      loadSchools();
     }
+    loadProducts();
     loadGlobalProducts();
-  }, [schoolId]);
+  }, []);
+
+  // Reload when school filter changes
+  useEffect(() => {
+    loadProducts();
+  }, [schoolFilter]);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await productService.getProducts(schoolId);
+      // Load products from all schools or filtered by school
+      const data = await productService.getAllProducts({
+        school_id: schoolFilter || undefined,
+        with_stock: true,
+        limit: 500
+      });
       setProducts(data);
     } catch (err: any) {
       console.error('Error loading products:', err);
@@ -110,6 +125,7 @@ export default function Products() {
       productName: product.name || product.code,
       currentStock: product.inventory_quantity ?? 0,
       isGlobal: false,
+      schoolId: (product as any).school_id || currentSchool?.id,
     });
     setAdjustmentAmount('');
     setAdjustmentReason('');
@@ -175,7 +191,7 @@ export default function Products() {
         await loadGlobalProducts();
       } else {
         // Adjust school inventory
-        await apiClient.post(`/schools/${schoolId}/inventory/product/${inventoryModal.productId}/adjust`, {
+        await apiClient.post(`/schools/${inventoryModal.schoolId}/inventory/product/${inventoryModal.productId}/adjust`, {
           adjustment,
           reason: adjustmentReason || `Ajuste manual: ${adjustmentType === 'add' ? 'Agregar' : adjustmentType === 'remove' ? 'Remover' : 'Establecer'} ${amount} unidades`,
         });
@@ -196,7 +212,8 @@ export default function Products() {
     const matchesSearch = searchTerm === '' ||
       product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.size.toLowerCase().includes(searchTerm.toLowerCase());
+      product.size.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product as any).school_name?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesSize = sizeFilter === '' || product.size === sizeFilter;
 
@@ -229,6 +246,11 @@ export default function Products() {
           <h1 className="text-2xl font-bold text-gray-800">Productos</h1>
           <p className="text-gray-600 mt-1">
             {isLoading ? 'Cargando...' : `${currentProducts.length} productos encontrados`}
+            {activeTab === 'school' && schoolFilter && availableSchools.length > 1 && (
+              <span className="ml-2 text-blue-600">
+                • Filtrado por colegio
+              </span>
+            )}
           </p>
         </div>
         {activeTab === 'school' && (
@@ -291,8 +313,8 @@ export default function Products() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
@@ -302,6 +324,23 @@ export default function Products() {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
+
+          {/* School Filter - Only show for school products tab and if user has multiple schools */}
+          {activeTab === 'school' && availableSchools.length > 1 && (
+            <select
+              value={schoolFilter}
+              onChange={(e) => setSchoolFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">Todos los colegios</option>
+              {availableSchools.map(school => (
+                <option key={school.id} value={school.id}>
+                  {school.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <select
             value={sizeFilter}
             onChange={(e) => setSizeFilter(e.target.value)}
@@ -351,6 +390,11 @@ export default function Products() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Codigo
                 </th>
+                {activeTab === 'school' && availableSchools.length > 1 && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Colegio
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Nombre
                 </th>
@@ -382,12 +426,23 @@ export default function Products() {
                   const minStock = product.inventory_min_stock ?? 5;
                   const isLowStock = stock <= minStock && stock > 0;
                   const isOutOfStock = stock === 0;
+                  const schoolName = (product as any).school_name;
 
                   return (
                     <tr key={product.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {product.code}
                       </td>
+                      {availableSchools.length > 1 && (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <Building2 className="w-4 h-4 mr-2 text-gray-400" />
+                            <span className="truncate max-w-[120px]" title={schoolName || ''}>
+                              {schoolName || 'Sin colegio'}
+                            </span>
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {product.name || '-'}
                       </td>
@@ -524,17 +579,17 @@ export default function Products() {
           <h3 className={`text-lg font-medium mb-2 ${
             activeTab === 'global' ? 'text-green-900' : 'text-blue-900'
           }`}>
-            {searchTerm || sizeFilter ? 'No se encontraron productos' : 'No hay productos'}
+            {searchTerm || sizeFilter || schoolFilter ? 'No se encontraron productos' : 'No hay productos'}
           </h3>
           <p className={activeTab === 'global' ? 'text-green-700 mb-4' : 'text-blue-700 mb-4'}>
-            {searchTerm || sizeFilter
+            {searchTerm || sizeFilter || schoolFilter
               ? 'Intenta ajustar los filtros de busqueda'
               : activeTab === 'global'
               ? 'Los productos globales son configurados por el administrador'
               : 'Comienza agregando tu primer producto al catalogo'
             }
           </p>
-          {!searchTerm && !sizeFilter && activeTab === 'school' && (
+          {!searchTerm && !sizeFilter && !schoolFilter && activeTab === 'school' && (
             <button
               onClick={() => handleOpenModal()}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg inline-flex items-center"
@@ -551,7 +606,7 @@ export default function Products() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSuccess={handleSuccess}
-        schoolId={schoolId}
+        schoolId={schoolIdForCreate}
         product={selectedProduct}
       />
 

@@ -1,23 +1,24 @@
 /**
- * Orders Page - List and manage custom orders (encargos)
+ * Orders Page - List and manage custom orders (encargos) - Multi-school view
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OrderModal from '../components/OrderModal';
-import { FileText, Plus, Search, AlertCircle, Loader2, Calendar, Package, Clock, CheckCircle, XCircle, Truck, Eye } from 'lucide-react';
+import { FileText, Plus, Search, AlertCircle, Loader2, Calendar, Package, Clock, CheckCircle, XCircle, Truck, Eye, Building2 } from 'lucide-react';
 import { orderService } from '../services/orderService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { OrderListItem, OrderStatus } from '../types/api';
 
 export default function Orders() {
   const navigate = useNavigate();
-  const { currentSchool } = useSchoolStore();
+  const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
+  const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Stats
@@ -28,11 +29,21 @@ export default function Orders() {
     delivered: 0,
   });
 
-  const schoolId = currentSchool?.id || '';
+  // For creating new orders, use current school or first available
+  const schoolIdForCreate = currentSchool?.id || availableSchools[0]?.id || '';
 
   useEffect(() => {
+    // Load schools if not already loaded
+    if (availableSchools.length === 0) {
+      loadSchools();
+    }
     loadOrders();
-  }, [statusFilter]);
+  }, []);
+
+  // Reload when filters change
+  useEffect(() => {
+    loadOrders();
+  }, [statusFilter, schoolFilter]);
 
   const handleSuccess = () => {
     loadOrders();
@@ -42,11 +53,19 @@ export default function Orders() {
     try {
       setLoading(true);
       setError(null);
-      const data = await orderService.getOrders(schoolId, statusFilter || undefined);
+
+      // Load orders from all schools or filtered
+      const data = await orderService.getAllOrders({
+        school_id: schoolFilter || undefined,
+        status: statusFilter || undefined,
+        limit: 100
+      });
       setOrders(data);
 
-      // Calculate stats
-      const allOrders = statusFilter ? await orderService.getOrders(schoolId) : data;
+      // Calculate stats from current data
+      const allOrders = (statusFilter || schoolFilter)
+        ? await orderService.getAllOrders({ school_id: schoolFilter || undefined })
+        : data;
       setStats({
         pending: allOrders.filter(o => o.status === 'pending').length,
         inProduction: allOrders.filter(o => o.status === 'in_production').length,
@@ -66,9 +85,24 @@ export default function Orders() {
     const searchLower = searchTerm.toLowerCase();
     return searchTerm === '' ||
       order.code.toLowerCase().includes(searchLower) ||
-      order.client_name.toLowerCase().includes(searchLower) ||
-      order.student_name?.toLowerCase().includes(searchLower);
+      (order.client_name && order.client_name.toLowerCase().includes(searchLower)) ||
+      (order.student_name && order.student_name.toLowerCase().includes(searchLower));
   });
+
+  const getSourceBadge = (source: string | null | undefined) => {
+    if (!source) return null;
+    const sourceConfig: Record<string, { label: string; color: string }> = {
+      desktop_app: { label: 'Desktop', color: 'bg-blue-100 text-blue-700' },
+      web_portal: { label: 'Web', color: 'bg-purple-100 text-purple-700' },
+      api: { label: 'API', color: 'bg-gray-100 text-gray-700' }
+    };
+    const config = sourceConfig[source] || { label: source, color: 'bg-gray-100 text-gray-700' };
+    return (
+      <span className={`ml-2 px-1.5 py-0.5 text-xs rounded ${config.color}`}>
+        {config.label}
+      </span>
+    );
+  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Sin fecha';
@@ -136,6 +170,11 @@ export default function Orders() {
           <h1 className="text-2xl font-bold text-gray-800">Encargos</h1>
           <p className="text-gray-600 mt-1">
             {loading ? 'Cargando...' : `${filteredOrders.length} encargos encontrados`}
+            {schoolFilter && availableSchools.length > 1 && (
+              <span className="ml-2 text-blue-600">
+                • Filtrado por colegio
+              </span>
+            )}
           </p>
         </div>
         <button
@@ -152,7 +191,7 @@ export default function Orders() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={handleSuccess}
-        schoolId={schoolId}
+        schoolId={schoolIdForCreate}
       />
 
       {/* Stats */}
@@ -200,8 +239,8 @@ export default function Orders() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
@@ -211,6 +250,23 @@ export default function Orders() {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
+
+          {/* School Filter - Only show if user has multiple schools */}
+          {availableSchools.length > 1 && (
+            <select
+              value={schoolFilter}
+              onChange={(e) => setSchoolFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">Todos los colegios</option>
+              {availableSchools.map(school => (
+                <option key={school.id} value={school.id}>
+                  {school.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as OrderStatus | '')}
@@ -262,6 +318,11 @@ export default function Orders() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Código
                 </th>
+                {availableSchools.length > 1 && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Colegio
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Cliente
                 </th>
@@ -294,9 +355,20 @@ export default function Orders() {
                   <tr key={order.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-gray-900">{order.code}</span>
+                      {getSourceBadge(order.source)}
                     </td>
+                    {availableSchools.length > 1 && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="flex items-center">
+                          <Building2 className="w-4 h-4 mr-2 text-gray-400" />
+                          <span className="truncate max-w-[120px]" title={order.school_name || ''}>
+                            {order.school_name || 'Sin colegio'}
+                          </span>
+                        </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{order.client_name}</div>
+                      <div className="text-sm text-gray-900">{order.client_name || 'Sin cliente'}</div>
                       {order.student_name && (
                         <div className="text-xs text-gray-500">{order.student_name}</div>
                       )}
@@ -348,15 +420,15 @@ export default function Orders() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-12 text-center">
           <FileText className="w-16 h-16 text-blue-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-blue-900 mb-2">
-            {searchTerm || statusFilter ? 'No se encontraron encargos' : 'No hay encargos'}
+            {searchTerm || statusFilter || schoolFilter ? 'No se encontraron encargos' : 'No hay encargos'}
           </h3>
           <p className="text-blue-700 mb-4">
-            {searchTerm || statusFilter
+            {searchTerm || statusFilter || schoolFilter
               ? 'Intenta ajustar los filtros de búsqueda'
               : 'Comienza creando tu primer encargo'
             }
           </p>
-          {!searchTerm && !statusFilter && (
+          {!searchTerm && !statusFilter && !schoolFilter && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg inline-flex items-center"

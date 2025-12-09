@@ -204,6 +204,7 @@ export interface SaleListItem {
   id: string;
   code: string;
   status: 'pending' | 'completed' | 'cancelled';
+  source: 'desktop_app' | 'web_portal' | 'api' | null;
   payment_method: 'cash' | 'credit' | 'transfer' | 'card' | null;
   total: number;
   paid_amount: number;
@@ -212,6 +213,12 @@ export interface SaleListItem {
   sale_date: string;
   created_at: string;
   items_count: number;
+  // Track who made the sale
+  user_id: string | null;
+  user_name: string | null;
+  // Multi-school support
+  school_id: string | null;
+  school_name: string | null;
 }
 
 // ============================================
@@ -326,13 +333,20 @@ export interface OrderListItem {
   id: string;
   code: string;
   status: OrderStatus;
-  client_name: string;
+  source: 'desktop_app' | 'web_portal' | 'api' | null;
+  client_name: string | null;
   student_name: string | null;
   delivery_date: string | null;
   total: number;
   balance: number;
   created_at: string;
   items_count: number;
+  // Track who created the order
+  user_id: string | null;
+  user_name: string | null;
+  // Multi-school support
+  school_id: string | null;
+  school_name: string | null;
 }
 
 export interface OrderCreate {

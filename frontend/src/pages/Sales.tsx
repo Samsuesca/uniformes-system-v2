@@ -1,28 +1,28 @@
 /**
- * Sales Page - List and manage sales
+ * Sales Page - List and manage sales (Multi-school view)
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleModal from '../components/SaleModal';
-import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign } from 'lucide-react';
+import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign, Building2 } from 'lucide-react';
 import { saleService } from '../services/saleService';
-import { clientService } from '../services/clientService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { SaleListItem } from '../types/api';
 
 export default function Sales() {
   const navigate = useNavigate();
-  const { currentSchool } = useSchoolStore();
+  const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
   const [sales, setSales] = useState<SaleListItem[]>([]);
-  const [clients, setClients] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const schoolId = currentSchool?.id || '';
+  // For creating new sales, use current school or first available
+  const schoolIdForCreate = currentSchool?.id || availableSchools[0]?.id || '';
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
@@ -33,29 +33,30 @@ export default function Sales() {
   };
 
   useEffect(() => {
+    // Load schools if not already loaded
+    if (availableSchools.length === 0) {
+      loadSchools();
+    }
     loadSales();
   }, []);
+
+  // Reload when school filter changes
+  useEffect(() => {
+    loadSales();
+  }, [schoolFilter]);
 
   const loadSales = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Load sales and clients in parallel
-      const [salesData, clientsData] = await Promise.all([
-        saleService.getSales(schoolId),
-        clientService.getClients(schoolId)
-      ]);
+      // Load sales from all schools or filtered by school
+      const salesData = await saleService.getAllSales({
+        school_id: schoolFilter || undefined,
+        limit: 100
+      });
 
       setSales(salesData);
-
-      // Create a map of client_id -> client_name
-      const clientMap = new Map<string, string>();
-      clientsData.forEach(client => {
-        clientMap.set(client.id, client.name);
-      });
-      setClients(clientMap);
-
     } catch (err: any) {
       console.error('Error loading sales:', err);
       setError(err.response?.data?.detail || 'Error al cargar ventas');
@@ -64,15 +65,31 @@ export default function Sales() {
     }
   };
 
-  // Filter sales
+  // Filter sales locally by search and status
   const filteredSales = sales.filter(sale => {
     const matchesSearch = searchTerm === '' ||
-      sale.code.toLowerCase().includes(searchTerm.toLowerCase());
+      sale.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (sale.client_name && sale.client_name.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = statusFilter === '' || sale.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
+
+  const getSourceBadge = (source: string | null | undefined) => {
+    if (!source) return null;
+    const sourceConfig: Record<string, { label: string; color: string }> = {
+      desktop_app: { label: 'Desktop', color: 'bg-blue-100 text-blue-700' },
+      web_portal: { label: 'Web', color: 'bg-purple-100 text-purple-700' },
+      api: { label: 'API', color: 'bg-gray-100 text-gray-700' }
+    };
+    const config = sourceConfig[source] || { label: source, color: 'bg-gray-100 text-gray-700' };
+    return (
+      <span className={`ml-2 px-1.5 py-0.5 text-xs rounded ${config.color}`}>
+        {config.label}
+      </span>
+    );
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -131,6 +148,11 @@ export default function Sales() {
           <h1 className="text-2xl font-bold text-gray-800">Ventas</h1>
           <p className="text-gray-600 mt-1">
             {loading ? 'Cargando...' : `${filteredSales.length} ventas encontradas`}
+            {schoolFilter && availableSchools.length > 1 && (
+              <span className="ml-2 text-blue-600">
+                • Filtrado por colegio
+              </span>
+            )}
           </p>
         </div>
         <button
@@ -144,23 +166,40 @@ export default function Sales() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por código de venta..."
+              placeholder="Buscar por código o cliente..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
+
+          {/* School Filter - Only show if user has multiple schools */}
+          {availableSchools.length > 1 && (
+            <select
+              value={schoolFilter}
+              onChange={(e) => setSchoolFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">Todos los colegios</option>
+              {availableSchools.map(school => (
+                <option key={school.id} value={school.id}>
+                  {school.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           >
-            <option value="">Todas las ventas</option>
+            <option value="">Todos los estados</option>
             <option value="completed">Completadas</option>
             <option value="paid">Pagadas</option>
             <option value="pending">Pendientes</option>
@@ -208,6 +247,11 @@ export default function Sales() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Fecha
                 </th>
+                {availableSchools.length > 1 && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Colegio
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Cliente
                 </th>
@@ -230,6 +274,7 @@ export default function Sales() {
                 <tr key={sale.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {sale.code}
+                    {getSourceBadge(sale.source)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
@@ -237,10 +282,20 @@ export default function Sales() {
                       {formatDate(sale.sale_date)}
                     </div>
                   </td>
+                  {availableSchools.length > 1 && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center">
+                        <Building2 className="w-4 h-4 mr-2 text-gray-400" />
+                        <span className="truncate max-w-[150px]" title={sale.school_name || ''}>
+                          {sale.school_name || 'Sin colegio'}
+                        </span>
+                      </div>
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
                       <User className="w-4 h-4 mr-2 text-gray-400" />
-                      {sale.client_id ? clients.get(sale.client_id) || 'Cliente desconocido' : 'Sin cliente'}
+                      {sale.client_name || 'Venta directa'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
@@ -278,15 +333,15 @@ export default function Sales() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-12 text-center">
           <ShoppingCart className="w-16 h-16 text-blue-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-blue-900 mb-2">
-            {searchTerm || statusFilter ? 'No se encontraron ventas' : 'No hay ventas registradas'}
+            {searchTerm || statusFilter || schoolFilter ? 'No se encontraron ventas' : 'No hay ventas registradas'}
           </h3>
           <p className="text-blue-700 mb-4">
-            {searchTerm || statusFilter
+            {searchTerm || statusFilter || schoolFilter
               ? 'Intenta ajustar los filtros de búsqueda'
               : 'Comienza creando tu primera venta'
             }
           </p>
-          {!searchTerm && !statusFilter && (
+          {!searchTerm && !statusFilter && !schoolFilter && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg inline-flex items-center"
@@ -303,7 +358,7 @@ export default function Sales() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSuccess={handleSuccess}
-        schoolId={schoolId}
+        schoolId={schoolIdForCreate}
       />
     </Layout>
   );
