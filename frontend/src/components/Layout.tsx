@@ -38,6 +38,7 @@ interface NavItem {
   name: string;
   path: string;
   icon: typeof LayoutDashboard;
+  requiresAccounting?: boolean; // Only visible if user can access accounting
 }
 
 const navigation: NavItem[] = [
@@ -47,8 +48,8 @@ const navigation: NavItem[] = [
   { name: 'Ventas', path: '/sales', icon: ShoppingCart },
   { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw },
   { name: 'Encargos', path: '/orders', icon: FileText },
-  { name: 'Contabilidad', path: '/accounting', icon: Calculator },
-  { name: 'Reportes', path: '/reports', icon: BarChart3 },
+  { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true },
+  { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true },
   { name: 'Configuración', path: '/settings', icon: Settings },
 ];
 
@@ -63,7 +64,7 @@ export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore();
   const { currentSchool, availableSchools, loadSchools, selectSchool } = useSchoolStore();
   const { isOnline } = useConfigStore();
-  const { role, isSuperuser } = useUserRole();
+  const { role, isSuperuser, canAccessAccounting } = useUserRole();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [schoolDropdownOpen, setSchoolDropdownOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -124,24 +125,26 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Navigation */}
         <nav className="mt-6 px-3 space-y-1">
-          {navigation.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+          {navigation
+            .filter((item) => !item.requiresAccounting || canAccessAccounting)
+            .map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
 
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
-                    ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/20 font-medium'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                  }`}
-              >
-                <Icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-white'}`} />
-                <span className="font-medium">{item.name}</span>
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
+                      ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/20 font-medium'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                >
+                  <Icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-white'}`} />
+                  <span className="font-medium">{item.name}</span>
+                </button>
+              );
+            })}
 
           {/* Admin Navigation (Superuser Only) */}
           {isSuperuser && (
