@@ -19,6 +19,7 @@ interface AuthState {
   logout: () => void;
   clearError: () => void;
   getCurrentUser: () => Promise<void>;
+  updateUser: (userData: Partial<User>) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -92,6 +93,14 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           // Token is invalid, logout
           get().logout();
+        }
+      },
+
+      // Update user data locally (after profile edit)
+      updateUser: (userData: Partial<User>) => {
+        const { user } = get();
+        if (user) {
+          set({ user: { ...user, ...userData } });
         }
       },
     }),
