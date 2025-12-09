@@ -323,3 +323,330 @@ class DailyCashRegister(Base):
 
     def __repr__(self) -> str:
         return f"<DailyCashRegister({self.register_date}: Income=${self.total_income}, Expenses=${self.total_expenses})>"
+
+
+# ============================================
+# Balance General Models (Assets, Liabilities, Equity)
+# ============================================
+
+class AccountType(str, enum.Enum):
+    """Types of accounting accounts"""
+    # Activos
+    ASSET_CURRENT = "asset_current"           # Activo Corriente (efectivo, cuentas por cobrar, inventario)
+    ASSET_FIXED = "asset_fixed"               # Activo Fijo (equipos, muebles, maquinaria)
+    ASSET_OTHER = "asset_other"               # Otros Activos
+
+    # Pasivos
+    LIABILITY_CURRENT = "liability_current"   # Pasivo Corriente (cuentas por pagar, deudas corto plazo)
+    LIABILITY_LONG = "liability_long"         # Pasivo a Largo Plazo (préstamos, hipotecas)
+    LIABILITY_OTHER = "liability_other"       # Otros Pasivos
+
+    # Patrimonio
+    EQUITY_CAPITAL = "equity_capital"         # Capital
+    EQUITY_RETAINED = "equity_retained"       # Utilidades Retenidas
+    EQUITY_OTHER = "equity_other"             # Otro Patrimonio
+
+
+class BalanceAccount(Base):
+    """
+    Balance sheet accounts - For tracking assets, liabilities, and equity.
+
+    This allows manual entry of balance sheet items that aren't tracked
+    automatically by sales/expenses (like equipment, loans, capital).
+    """
+    __tablename__ = "balance_accounts"
+    __table_args__ = (
+        CheckConstraint('balance >= 0 OR account_type LIKE \'liability%\' OR account_type LIKE \'equity%\'',
+                        name='chk_balance_account_sign'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("schools.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Account details
+    account_type: Mapped[AccountType] = mapped_column(
+        SQLEnum(AccountType, name="account_type_enum"),
+        nullable=False,
+        index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    code: Mapped[str | None] = mapped_column(String(50))  # Optional accounting code
+
+    # Current balance
+    balance: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        default=Decimal("0"),
+        nullable=False
+    )
+
+    # For depreciable assets
+    original_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    accumulated_depreciation: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    useful_life_years: Mapped[int | None] = mapped_column()
+
+    # For debts/loans
+    interest_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # Annual %
+    due_date: Mapped[date | None] = mapped_column(Date)
+    creditor: Mapped[str | None] = mapped_column(String(255))  # Who we owe
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Audit
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    school: Mapped["School"] = relationship()
+    entries: Mapped[list["BalanceEntry"]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan"
+    )
+
+    @property
+    def net_value(self) -> Decimal:
+        """Net value (for depreciable assets: original - depreciation)"""
+        if self.original_value and self.accumulated_depreciation:
+            return self.original_value - self.accumulated_depreciation
+        return self.balance
+
+    def __repr__(self) -> str:
+        return f"<BalanceAccount({self.account_type.value}: {self.name} = ${self.balance})>"
+
+
+class BalanceEntry(Base):
+    """
+    Journal entries for balance accounts - tracks changes over time.
+
+    Every change to a balance account creates an entry for audit trail.
+    """
+    __tablename__ = "balance_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("schools.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Entry details
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)  # Positive or negative
+    balance_after: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)  # Balance after this entry
+
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(100))  # Invoice #, receipt, etc.
+
+    # Audit
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    account: Mapped["BalanceAccount"] = relationship(back_populates="entries")
+    school: Mapped["School"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<BalanceEntry({self.entry_date}: ${self.amount} -> Balance: ${self.balance_after})>"
+
+
+class AccountsReceivable(Base):
+    """
+    Accounts receivable - Money owed TO the business by clients.
+
+    Tracked separately from sales to allow more detailed management.
+    """
+    __tablename__ = "accounts_receivable"
+    __table_args__ = (
+        CheckConstraint('amount > 0', name='chk_ar_amount_positive'),
+        CheckConstraint('amount_paid >= 0', name='chk_ar_paid_positive'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("schools.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clients.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    sale_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Receivable details
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    amount_paid: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0"),
+        nullable=False
+    )
+
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # Status
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_overdue: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    # Audit
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    school: Mapped["School"] = relationship()
+    client: Mapped["Client | None"] = relationship()
+    sale: Mapped["Sale | None"] = relationship()
+
+    @property
+    def balance(self) -> Decimal:
+        """Remaining balance to collect"""
+        return self.amount - self.amount_paid
+
+    def __repr__(self) -> str:
+        return f"<AccountsReceivable(${self.amount} - Paid: ${self.amount_paid})>"
+
+
+class AccountsPayable(Base):
+    """
+    Accounts payable - Money owed BY the business to suppliers/creditors.
+
+    For tracking what the business owes (separate from regular expenses).
+    """
+    __tablename__ = "accounts_payable"
+    __table_args__ = (
+        CheckConstraint('amount > 0', name='chk_ap_amount_positive'),
+        CheckConstraint('amount_paid >= 0', name='chk_ap_paid_positive'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("schools.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Payable details
+    vendor: Mapped[str] = mapped_column(String(255), nullable=False)  # Supplier/creditor name
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    amount_paid: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0"),
+        nullable=False
+    )
+
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(100))  # inventory, services, etc.
+    invoice_number: Mapped[str | None] = mapped_column(String(100))
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+    due_date: Mapped[date | None] = mapped_column(Date)
+
+    # Status
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_overdue: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    # Audit
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    school: Mapped["School"] = relationship()
+
+    @property
+    def balance(self) -> Decimal:
+        """Remaining balance to pay"""
+        return self.amount - self.amount_paid
+
+    def __repr__(self) -> str:
+        return f"<AccountsPayable({self.vendor}: ${self.amount} - Paid: ${self.amount_paid})>"

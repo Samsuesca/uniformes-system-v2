@@ -11,7 +11,10 @@ from sqlalchemy.orm import selectinload
 from app.models.accounting import (
     Transaction, TransactionType, AccPaymentMethod,
     Expense, ExpenseCategory,
-    DailyCashRegister
+    DailyCashRegister,
+    # Balance General models
+    AccountType, BalanceAccount, BalanceEntry,
+    AccountsReceivable, AccountsPayable
 )
 from app.models.sale import Sale
 from app.models.order import Order
@@ -19,7 +22,14 @@ from app.schemas.accounting import (
     TransactionCreate, ExpenseCreate, ExpenseUpdate, ExpensePayment,
     DailyCashRegisterCreate, DailyCashRegisterClose,
     CashFlowSummary, DailyFinancialSummary, MonthlyFinancialReport,
-    ExpensesByCategory, IncomeBySource, AccountingDashboard
+    ExpensesByCategory, IncomeBySource, AccountingDashboard,
+    # Balance General schemas
+    BalanceAccountCreate, BalanceAccountUpdate,
+    BalanceEntryCreate,
+    AccountsReceivableCreate, AccountsReceivableUpdate, AccountsReceivablePayment,
+    AccountsPayableCreate, AccountsPayableUpdate, AccountsPayablePayment,
+    BalanceGeneralSummary, BalanceAccountsByType, BalanceGeneralDetailed,
+    ReceivablesPayablesSummary, BalanceAccountListResponse
 )
 from app.services.base import SchoolIsolatedService
 
@@ -623,4 +633,554 @@ class AccountingService:
             income_breakdown=cash_flow.income_by_method,
             expense_breakdown=cash_flow.expenses_by_category,
             daily_summaries=daily_summaries
+        )
+
+
+# ============================================
+# Balance General Services
+# ============================================
+
+class BalanceAccountService(SchoolIsolatedService[BalanceAccount]):
+    """Service for Balance Account operations"""
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(BalanceAccount, db)
+
+    async def create_account(
+        self,
+        data: BalanceAccountCreate,
+        created_by: UUID | None = None
+    ) -> BalanceAccount:
+        """Create a new balance account"""
+        account = BalanceAccount(
+            school_id=data.school_id,
+            account_type=data.account_type,
+            name=data.name,
+            description=data.description,
+            code=data.code,
+            balance=data.balance,
+            original_value=data.original_value,
+            accumulated_depreciation=data.accumulated_depreciation,
+            useful_life_years=data.useful_life_years,
+            interest_rate=data.interest_rate,
+            due_date=data.due_date,
+            creditor=data.creditor,
+            created_by=created_by
+        )
+        self.db.add(account)
+        await self.db.flush()
+        await self.db.refresh(account)
+        return account
+
+    async def update_account(
+        self,
+        account_id: UUID,
+        school_id: UUID,
+        data: BalanceAccountUpdate
+    ) -> BalanceAccount | None:
+        """Update a balance account"""
+        return await self.update(
+            account_id,
+            school_id,
+            data.model_dump(exclude_unset=True)
+        )
+
+    async def get_accounts_by_type(
+        self,
+        school_id: UUID,
+        account_type: AccountType
+    ) -> list[BalanceAccount]:
+        """Get all accounts of a specific type"""
+        result = await self.db.execute(
+            select(BalanceAccount).where(
+                BalanceAccount.school_id == school_id,
+                BalanceAccount.account_type == account_type,
+                BalanceAccount.is_active == True
+            ).order_by(BalanceAccount.name)
+        )
+        return list(result.scalars().all())
+
+    async def get_all_active_accounts(
+        self,
+        school_id: UUID
+    ) -> list[BalanceAccount]:
+        """Get all active accounts grouped by type"""
+        result = await self.db.execute(
+            select(BalanceAccount).where(
+                BalanceAccount.school_id == school_id,
+                BalanceAccount.is_active == True
+            ).order_by(BalanceAccount.account_type, BalanceAccount.name)
+        )
+        return list(result.scalars().all())
+
+
+class BalanceEntryService(SchoolIsolatedService[BalanceEntry]):
+    """Service for Balance Entry operations"""
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(BalanceEntry, db)
+        self.account_service = BalanceAccountService(db)
+
+    async def create_entry(
+        self,
+        data: BalanceEntryCreate,
+        created_by: UUID | None = None
+    ) -> BalanceEntry:
+        """Create a new balance entry and update account balance"""
+        # Get account
+        account = await self.account_service.get(data.account_id, data.school_id)
+        if not account:
+            raise ValueError("Cuenta no encontrada")
+
+        # Calculate new balance
+        new_balance = account.balance + data.amount
+
+        # Create entry
+        entry = BalanceEntry(
+            account_id=data.account_id,
+            school_id=data.school_id,
+            entry_date=data.entry_date,
+            amount=data.amount,
+            balance_after=new_balance,
+            description=data.description,
+            reference=data.reference,
+            created_by=created_by
+        )
+        self.db.add(entry)
+
+        # Update account balance
+        account.balance = new_balance
+
+        await self.db.flush()
+        await self.db.refresh(entry)
+        return entry
+
+    async def get_entries_for_account(
+        self,
+        account_id: UUID,
+        school_id: UUID,
+        limit: int = 50
+    ) -> list[BalanceEntry]:
+        """Get recent entries for an account"""
+        result = await self.db.execute(
+            select(BalanceEntry).where(
+                BalanceEntry.account_id == account_id,
+                BalanceEntry.school_id == school_id
+            ).order_by(BalanceEntry.entry_date.desc(), BalanceEntry.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+class AccountsReceivableService(SchoolIsolatedService[AccountsReceivable]):
+    """Service for Accounts Receivable operations"""
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(AccountsReceivable, db)
+        self.transaction_service = TransactionService(db)
+
+    async def create_receivable(
+        self,
+        data: AccountsReceivableCreate,
+        created_by: UUID | None = None
+    ) -> AccountsReceivable:
+        """Create a new accounts receivable"""
+        receivable = AccountsReceivable(
+            school_id=data.school_id,
+            client_id=data.client_id,
+            sale_id=data.sale_id,
+            amount=data.amount,
+            description=data.description,
+            invoice_date=data.invoice_date,
+            due_date=data.due_date,
+            notes=data.notes,
+            created_by=created_by
+        )
+        self.db.add(receivable)
+        await self.db.flush()
+        await self.db.refresh(receivable)
+        return receivable
+
+    async def record_payment(
+        self,
+        receivable_id: UUID,
+        school_id: UUID,
+        payment: AccountsReceivablePayment,
+        created_by: UUID | None = None
+    ) -> AccountsReceivable | None:
+        """Record a payment on accounts receivable"""
+        receivable = await self.get(receivable_id, school_id)
+        if not receivable:
+            return None
+
+        # Calculate new paid amount
+        new_paid = receivable.amount_paid + payment.amount
+        if new_paid > receivable.amount:
+            raise ValueError("El pago excede el monto pendiente")
+
+        # Update receivable
+        receivable.amount_paid = new_paid
+        receivable.is_paid = (new_paid >= receivable.amount)
+
+        # Create income transaction
+        transaction = Transaction(
+            school_id=school_id,
+            type=TransactionType.INCOME,
+            amount=payment.amount,
+            payment_method=payment.payment_method,
+            description=f"Cobro cuenta por cobrar: {receivable.description[:50]}",
+            category="receivables",
+            transaction_date=date.today(),
+            created_by=created_by
+        )
+        self.db.add(transaction)
+
+        await self.db.flush()
+        await self.db.refresh(receivable)
+        return receivable
+
+    async def get_pending_receivables(
+        self,
+        school_id: UUID
+    ) -> list[AccountsReceivable]:
+        """Get all unpaid receivables"""
+        result = await self.db.execute(
+            select(AccountsReceivable).where(
+                AccountsReceivable.school_id == school_id,
+                AccountsReceivable.is_paid == False
+            ).order_by(AccountsReceivable.due_date.asc().nullslast())
+        )
+        return list(result.scalars().all())
+
+    async def update_overdue_status(self, school_id: UUID) -> int:
+        """Update is_overdue flag for all receivables"""
+        today = date.today()
+        result = await self.db.execute(
+            select(AccountsReceivable).where(
+                AccountsReceivable.school_id == school_id,
+                AccountsReceivable.is_paid == False,
+                AccountsReceivable.due_date != None,
+                AccountsReceivable.due_date < today
+            )
+        )
+        count = 0
+        for receivable in result.scalars().all():
+            if not receivable.is_overdue:
+                receivable.is_overdue = True
+                count += 1
+        await self.db.flush()
+        return count
+
+
+class AccountsPayableService(SchoolIsolatedService[AccountsPayable]):
+    """Service for Accounts Payable operations"""
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(AccountsPayable, db)
+        self.transaction_service = TransactionService(db)
+
+    async def create_payable(
+        self,
+        data: AccountsPayableCreate,
+        created_by: UUID | None = None
+    ) -> AccountsPayable:
+        """Create a new accounts payable"""
+        payable = AccountsPayable(
+            school_id=data.school_id,
+            vendor=data.vendor,
+            amount=data.amount,
+            description=data.description,
+            category=data.category,
+            invoice_number=data.invoice_number,
+            invoice_date=data.invoice_date,
+            due_date=data.due_date,
+            notes=data.notes,
+            created_by=created_by
+        )
+        self.db.add(payable)
+        await self.db.flush()
+        await self.db.refresh(payable)
+        return payable
+
+    async def record_payment(
+        self,
+        payable_id: UUID,
+        school_id: UUID,
+        payment: AccountsPayablePayment,
+        created_by: UUID | None = None
+    ) -> AccountsPayable | None:
+        """Record a payment on accounts payable"""
+        payable = await self.get(payable_id, school_id)
+        if not payable:
+            return None
+
+        # Calculate new paid amount
+        new_paid = payable.amount_paid + payment.amount
+        if new_paid > payable.amount:
+            raise ValueError("El pago excede el monto pendiente")
+
+        # Update payable
+        payable.amount_paid = new_paid
+        payable.is_paid = (new_paid >= payable.amount)
+
+        # Create expense transaction
+        transaction = Transaction(
+            school_id=school_id,
+            type=TransactionType.EXPENSE,
+            amount=payment.amount,
+            payment_method=payment.payment_method,
+            description=f"Pago a {payable.vendor}: {payable.description[:50]}",
+            category="payables",
+            transaction_date=date.today(),
+            created_by=created_by
+        )
+        self.db.add(transaction)
+
+        await self.db.flush()
+        await self.db.refresh(payable)
+        return payable
+
+    async def get_pending_payables(
+        self,
+        school_id: UUID
+    ) -> list[AccountsPayable]:
+        """Get all unpaid payables"""
+        result = await self.db.execute(
+            select(AccountsPayable).where(
+                AccountsPayable.school_id == school_id,
+                AccountsPayable.is_paid == False
+            ).order_by(AccountsPayable.due_date.asc().nullslast())
+        )
+        return list(result.scalars().all())
+
+    async def update_overdue_status(self, school_id: UUID) -> int:
+        """Update is_overdue flag for all payables"""
+        today = date.today()
+        result = await self.db.execute(
+            select(AccountsPayable).where(
+                AccountsPayable.school_id == school_id,
+                AccountsPayable.is_paid == False,
+                AccountsPayable.due_date != None,
+                AccountsPayable.due_date < today
+            )
+        )
+        count = 0
+        for payable in result.scalars().all():
+            if not payable.is_overdue:
+                payable.is_overdue = True
+                count += 1
+        await self.db.flush()
+        return count
+
+
+class BalanceGeneralService:
+    """High-level service for Balance General reports"""
+
+    ACCOUNT_TYPE_LABELS = {
+        AccountType.ASSET_CURRENT: "Activo Corriente",
+        AccountType.ASSET_FIXED: "Activo Fijo",
+        AccountType.ASSET_OTHER: "Otros Activos",
+        AccountType.LIABILITY_CURRENT: "Pasivo Corriente",
+        AccountType.LIABILITY_LONG: "Pasivo a Largo Plazo",
+        AccountType.LIABILITY_OTHER: "Otros Pasivos",
+        AccountType.EQUITY_CAPITAL: "Capital",
+        AccountType.EQUITY_RETAINED: "Utilidades Retenidas",
+        AccountType.EQUITY_OTHER: "Otro Patrimonio",
+    }
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.account_service = BalanceAccountService(db)
+        self.receivable_service = AccountsReceivableService(db)
+        self.payable_service = AccountsPayableService(db)
+
+    async def get_balance_general_summary(
+        self,
+        school_id: UUID
+    ) -> BalanceGeneralSummary:
+        """Get balance general summary"""
+        accounts = await self.account_service.get_all_active_accounts(school_id)
+
+        # Calculate totals by category
+        totals = {
+            "current_assets": Decimal("0"),
+            "fixed_assets": Decimal("0"),
+            "other_assets": Decimal("0"),
+            "current_liabilities": Decimal("0"),
+            "long_liabilities": Decimal("0"),
+            "other_liabilities": Decimal("0"),
+            "equity": Decimal("0"),
+        }
+
+        for account in accounts:
+            value = account.net_value
+            if account.account_type == AccountType.ASSET_CURRENT:
+                totals["current_assets"] += value
+            elif account.account_type == AccountType.ASSET_FIXED:
+                totals["fixed_assets"] += value
+            elif account.account_type == AccountType.ASSET_OTHER:
+                totals["other_assets"] += value
+            elif account.account_type == AccountType.LIABILITY_CURRENT:
+                totals["current_liabilities"] += value
+            elif account.account_type == AccountType.LIABILITY_LONG:
+                totals["long_liabilities"] += value
+            elif account.account_type == AccountType.LIABILITY_OTHER:
+                totals["other_liabilities"] += value
+            else:  # Equity types
+                totals["equity"] += value
+
+        total_assets = totals["current_assets"] + totals["fixed_assets"] + totals["other_assets"]
+        total_liabilities = totals["current_liabilities"] + totals["long_liabilities"] + totals["other_liabilities"]
+        total_equity = totals["equity"]
+
+        # Check if balanced (with small tolerance for rounding)
+        is_balanced = abs(total_assets - (total_liabilities + total_equity)) < Decimal("0.01")
+
+        return BalanceGeneralSummary(
+            as_of_date=date.today(),
+            total_current_assets=totals["current_assets"],
+            total_fixed_assets=totals["fixed_assets"],
+            total_other_assets=totals["other_assets"],
+            total_assets=total_assets,
+            total_current_liabilities=totals["current_liabilities"],
+            total_long_liabilities=totals["long_liabilities"],
+            total_other_liabilities=totals["other_liabilities"],
+            total_liabilities=total_liabilities,
+            total_equity=total_equity,
+            is_balanced=is_balanced
+        )
+
+    async def get_balance_general_detailed(
+        self,
+        school_id: UUID
+    ) -> BalanceGeneralDetailed:
+        """Get detailed balance general with account breakdown"""
+        accounts = await self.account_service.get_all_active_accounts(school_id)
+
+        # Group accounts by type
+        accounts_by_type: dict[AccountType, list[BalanceAccount]] = {}
+        for account in accounts:
+            if account.account_type not in accounts_by_type:
+                accounts_by_type[account.account_type] = []
+            accounts_by_type[account.account_type].append(account)
+
+        def make_group(account_type: AccountType) -> BalanceAccountsByType:
+            accts = accounts_by_type.get(account_type, [])
+            return BalanceAccountsByType(
+                account_type=account_type,
+                account_type_label=self.ACCOUNT_TYPE_LABELS[account_type],
+                accounts=[
+                    BalanceAccountListResponse(
+                        id=a.id,
+                        account_type=a.account_type,
+                        name=a.name,
+                        code=a.code,
+                        balance=a.balance,
+                        net_value=a.net_value,
+                        is_active=a.is_active
+                    )
+                    for a in accts
+                ],
+                total=sum(a.net_value for a in accts)
+            )
+
+        current_assets = make_group(AccountType.ASSET_CURRENT)
+        fixed_assets = make_group(AccountType.ASSET_FIXED)
+        other_assets = make_group(AccountType.ASSET_OTHER)
+
+        current_liabilities = make_group(AccountType.LIABILITY_CURRENT)
+        long_liabilities = make_group(AccountType.LIABILITY_LONG)
+        other_liabilities = make_group(AccountType.LIABILITY_OTHER)
+
+        equity = [
+            make_group(AccountType.EQUITY_CAPITAL),
+            make_group(AccountType.EQUITY_RETAINED),
+            make_group(AccountType.EQUITY_OTHER),
+        ]
+
+        total_assets = current_assets.total + fixed_assets.total + other_assets.total
+        total_liabilities = current_liabilities.total + long_liabilities.total + other_liabilities.total
+        total_equity = sum(e.total for e in equity)
+
+        is_balanced = abs(total_assets - (total_liabilities + total_equity)) < Decimal("0.01")
+
+        return BalanceGeneralDetailed(
+            as_of_date=date.today(),
+            current_assets=current_assets,
+            fixed_assets=fixed_assets,
+            other_assets=other_assets,
+            current_liabilities=current_liabilities,
+            long_liabilities=long_liabilities,
+            other_liabilities=other_liabilities,
+            equity=equity,
+            total_assets=total_assets,
+            total_liabilities=total_liabilities,
+            total_equity=total_equity,
+            is_balanced=is_balanced
+        )
+
+    async def get_receivables_payables_summary(
+        self,
+        school_id: UUID
+    ) -> ReceivablesPayablesSummary:
+        """Get summary of accounts receivable and payable"""
+        # Update overdue statuses first
+        await self.receivable_service.update_overdue_status(school_id)
+        await self.payable_service.update_overdue_status(school_id)
+
+        # Receivables summary
+        receivables = await self.db.execute(
+            select(
+                func.count(AccountsReceivable.id).label('count'),
+                func.coalesce(func.sum(AccountsReceivable.amount), 0).label('total'),
+                func.coalesce(func.sum(AccountsReceivable.amount_paid), 0).label('paid'),
+                func.coalesce(
+                    func.sum(
+                        func.case(
+                            (AccountsReceivable.is_overdue == True, AccountsReceivable.amount - AccountsReceivable.amount_paid),
+                            else_=0
+                        )
+                    ), 0
+                ).label('overdue')
+            ).where(
+                AccountsReceivable.school_id == school_id
+            )
+        )
+        r = receivables.one()
+
+        # Payables summary
+        payables = await self.db.execute(
+            select(
+                func.count(AccountsPayable.id).label('count'),
+                func.coalesce(func.sum(AccountsPayable.amount), 0).label('total'),
+                func.coalesce(func.sum(AccountsPayable.amount_paid), 0).label('paid'),
+                func.coalesce(
+                    func.sum(
+                        func.case(
+                            (AccountsPayable.is_overdue == True, AccountsPayable.amount - AccountsPayable.amount_paid),
+                            else_=0
+                        )
+                    ), 0
+                ).label('overdue')
+            ).where(
+                AccountsPayable.school_id == school_id
+            )
+        )
+        p = payables.one()
+
+        receivables_pending = Decimal(str(r.total)) - Decimal(str(r.paid))
+        payables_pending = Decimal(str(p.total)) - Decimal(str(p.paid))
+
+        return ReceivablesPayablesSummary(
+            total_receivables=Decimal(str(r.total)),
+            receivables_collected=Decimal(str(r.paid)),
+            receivables_pending=receivables_pending,
+            receivables_overdue=Decimal(str(r.overdue)),
+            receivables_count=r.count,
+            total_payables=Decimal(str(p.total)),
+            payables_paid=Decimal(str(p.paid)),
+            payables_pending=payables_pending,
+            payables_overdue=Decimal(str(p.overdue)),
+            payables_count=p.count,
+            net_position=receivables_pending - payables_pending
         )

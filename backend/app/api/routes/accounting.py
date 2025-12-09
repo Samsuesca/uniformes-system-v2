@@ -8,14 +8,26 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access
 from app.models.user import UserRole
 from app.models.accounting import TransactionType, ExpenseCategory
+from app.models.accounting import AccountType
 from app.schemas.accounting import (
     TransactionCreate, TransactionResponse, TransactionListResponse,
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
     DailyCashRegisterCreate, DailyCashRegisterClose, DailyCashRegisterResponse,
-    CashFlowSummary, MonthlyFinancialReport, AccountingDashboard, ExpensesByCategory
+    CashFlowSummary, MonthlyFinancialReport, AccountingDashboard, ExpensesByCategory,
+    # Balance General schemas
+    BalanceAccountCreate, BalanceAccountUpdate, BalanceAccountResponse, BalanceAccountListResponse,
+    BalanceEntryCreate, BalanceEntryResponse,
+    AccountsReceivableCreate, AccountsReceivableUpdate, AccountsReceivableResponse,
+    AccountsReceivableListResponse, AccountsReceivablePayment,
+    AccountsPayableCreate, AccountsPayableUpdate, AccountsPayableResponse,
+    AccountsPayableListResponse, AccountsPayablePayment,
+    BalanceGeneralSummary, BalanceGeneralDetailed, ReceivablesPayablesSummary
 )
 from app.services.accounting import (
-    TransactionService, ExpenseService, DailyCashRegisterService, AccountingService
+    TransactionService, ExpenseService, DailyCashRegisterService, AccountingService,
+    # Balance General services
+    BalanceAccountService, BalanceEntryService,
+    AccountsReceivableService, AccountsPayableService, BalanceGeneralService
 )
 
 
@@ -581,6 +593,640 @@ async def close_cash_register(
 
         await db.commit()
         return DailyCashRegisterResponse.model_validate(register)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+# ============================================
+# Balance General - Summary & Reports
+# ============================================
+
+@router.get(
+    "/balance-general/summary",
+    response_model=BalanceGeneralSummary,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_balance_general_summary(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get balance general (balance sheet) summary (requires ADMIN role)
+
+    Shows totals for:
+    - Assets (current, fixed, other)
+    - Liabilities (current, long-term, other)
+    - Equity
+    """
+    service = BalanceGeneralService(db)
+    return await service.get_balance_general_summary(school_id)
+
+
+@router.get(
+    "/balance-general/detailed",
+    response_model=BalanceGeneralDetailed,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_balance_general_detailed(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get detailed balance general with account breakdown (requires ADMIN role)
+    """
+    service = BalanceGeneralService(db)
+    return await service.get_balance_general_detailed(school_id)
+
+
+@router.get(
+    "/receivables-payables/summary",
+    response_model=ReceivablesPayablesSummary,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_receivables_payables_summary(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get summary of accounts receivable and payable (requires ADMIN role)
+
+    Shows:
+    - Receivables: total, collected, pending, overdue
+    - Payables: total, paid, pending, overdue
+    - Net position
+    """
+    service = BalanceGeneralService(db)
+    return await service.get_receivables_payables_summary(school_id)
+
+
+# ============================================
+# Balance Accounts (Activos, Pasivos, Patrimonio)
+# ============================================
+
+@router.post(
+    "/balance-accounts",
+    response_model=BalanceAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def create_balance_account(
+    school_id: UUID,
+    account_data: BalanceAccountCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Create a new balance account (requires ADMIN role)
+
+    Use this to add manual entries like:
+    - Assets: equipment, furniture, inventory value
+    - Liabilities: loans, debts
+    - Equity: capital, retained earnings
+    """
+    account_data.school_id = school_id
+
+    service = BalanceAccountService(db)
+
+    try:
+        account = await service.create_account(
+            account_data,
+            created_by=current_user.id
+        )
+        await db.commit()
+        return BalanceAccountResponse.model_validate(account)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/balance-accounts",
+    response_model=list[BalanceAccountListResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def list_balance_accounts(
+    school_id: UUID,
+    db: DatabaseSession,
+    account_type: AccountType = Query(None, description="Filter by account type"),
+    is_active: bool = Query(True, description="Filter by active status")
+):
+    """
+    List balance accounts (requires ADMIN role)
+    """
+    service = BalanceAccountService(db)
+
+    if account_type:
+        accounts = await service.get_accounts_by_type(school_id, account_type)
+    else:
+        accounts = await service.get_all_active_accounts(school_id)
+
+    if not is_active:
+        # Get all including inactive
+        accounts = await service.get_multi(
+            school_id=school_id,
+            filters={"is_active": is_active} if is_active is not None else None
+        )
+
+    return [
+        BalanceAccountListResponse(
+            id=a.id,
+            account_type=a.account_type,
+            name=a.name,
+            code=a.code,
+            balance=a.balance,
+            net_value=a.net_value,
+            is_active=a.is_active
+        )
+        for a in accounts
+    ]
+
+
+@router.get(
+    "/balance-accounts/{account_id}",
+    response_model=BalanceAccountResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_balance_account(
+    school_id: UUID,
+    account_id: UUID,
+    db: DatabaseSession
+):
+    """Get balance account by ID (requires ADMIN role)"""
+    service = BalanceAccountService(db)
+    account = await service.get(account_id, school_id)
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Balance account not found"
+        )
+
+    return BalanceAccountResponse.model_validate(account)
+
+
+@router.patch(
+    "/balance-accounts/{account_id}",
+    response_model=BalanceAccountResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def update_balance_account(
+    school_id: UUID,
+    account_id: UUID,
+    account_data: BalanceAccountUpdate,
+    db: DatabaseSession
+):
+    """Update a balance account (requires ADMIN role)"""
+    service = BalanceAccountService(db)
+
+    try:
+        account = await service.update_account(account_id, school_id, account_data)
+
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Balance account not found"
+            )
+
+        await db.commit()
+        return BalanceAccountResponse.model_validate(account)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post(
+    "/balance-accounts/{account_id}/entries",
+    response_model=BalanceEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def create_balance_entry(
+    school_id: UUID,
+    account_id: UUID,
+    entry_data: BalanceEntryCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Create a balance entry (journal entry) for an account (requires ADMIN role)
+
+    Automatically updates the account balance.
+    Use positive amounts for increases, negative for decreases.
+    """
+    entry_data.school_id = school_id
+    entry_data.account_id = account_id
+
+    service = BalanceEntryService(db)
+
+    try:
+        entry = await service.create_entry(
+            entry_data,
+            created_by=current_user.id
+        )
+        await db.commit()
+        return BalanceEntryResponse.model_validate(entry)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/balance-accounts/{account_id}/entries",
+    response_model=list[BalanceEntryResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def list_balance_entries(
+    school_id: UUID,
+    account_id: UUID,
+    db: DatabaseSession,
+    limit: int = Query(50, ge=1, le=200)
+):
+    """
+    List recent entries for a balance account (requires ADMIN role)
+    """
+    service = BalanceEntryService(db)
+    entries = await service.get_entries_for_account(account_id, school_id, limit)
+
+    return [BalanceEntryResponse.model_validate(e) for e in entries]
+
+
+# ============================================
+# Accounts Receivable (Cuentas por Cobrar)
+# ============================================
+
+@router.post(
+    "/receivables",
+    response_model=AccountsReceivableResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def create_receivable(
+    school_id: UUID,
+    receivable_data: AccountsReceivableCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Create a new accounts receivable (requires ADMIN role)
+
+    For tracking money owed TO the business by clients.
+    """
+    receivable_data.school_id = school_id
+
+    service = AccountsReceivableService(db)
+
+    try:
+        receivable = await service.create_receivable(
+            receivable_data,
+            created_by=current_user.id
+        )
+        await db.commit()
+        return AccountsReceivableResponse.model_validate(receivable)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/receivables",
+    response_model=list[AccountsReceivableListResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def list_receivables(
+    school_id: UUID,
+    db: DatabaseSession,
+    is_paid: bool = Query(None, description="Filter by payment status"),
+    is_overdue: bool = Query(None, description="Filter by overdue status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    List accounts receivable (requires ADMIN role)
+    """
+    service = AccountsReceivableService(db)
+
+    filters = {}
+    if is_paid is not None:
+        filters["is_paid"] = is_paid
+    if is_overdue is not None:
+        filters["is_overdue"] = is_overdue
+
+    receivables = await service.get_multi(
+        school_id=school_id,
+        skip=skip,
+        limit=limit,
+        filters=filters if filters else None
+    )
+
+    return [
+        AccountsReceivableListResponse(
+            id=r.id,
+            client_id=r.client_id,
+            client_name=r.client.name if r.client else None,
+            amount=r.amount,
+            amount_paid=r.amount_paid,
+            balance=r.balance,
+            invoice_date=r.invoice_date,
+            due_date=r.due_date,
+            is_paid=r.is_paid,
+            is_overdue=r.is_overdue
+        )
+        for r in receivables
+    ]
+
+
+@router.get(
+    "/receivables/pending",
+    response_model=list[AccountsReceivableListResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_pending_receivables(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get all pending (unpaid) receivables (requires ADMIN role)
+    """
+    service = AccountsReceivableService(db)
+    receivables = await service.get_pending_receivables(school_id)
+
+    return [
+        AccountsReceivableListResponse(
+            id=r.id,
+            client_id=r.client_id,
+            client_name=r.client.name if r.client else None,
+            amount=r.amount,
+            amount_paid=r.amount_paid,
+            balance=r.balance,
+            invoice_date=r.invoice_date,
+            due_date=r.due_date,
+            is_paid=r.is_paid,
+            is_overdue=r.is_overdue
+        )
+        for r in receivables
+    ]
+
+
+@router.get(
+    "/receivables/{receivable_id}",
+    response_model=AccountsReceivableResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_receivable(
+    school_id: UUID,
+    receivable_id: UUID,
+    db: DatabaseSession
+):
+    """Get receivable by ID (requires ADMIN role)"""
+    service = AccountsReceivableService(db)
+    receivable = await service.get(receivable_id, school_id)
+
+    if not receivable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Receivable not found"
+        )
+
+    return AccountsReceivableResponse.model_validate(receivable)
+
+
+@router.post(
+    "/receivables/{receivable_id}/pay",
+    response_model=AccountsReceivableResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def pay_receivable(
+    school_id: UUID,
+    receivable_id: UUID,
+    payment: AccountsReceivablePayment,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Record a payment on accounts receivable (requires ADMIN role)
+
+    Creates an income transaction automatically.
+    """
+    service = AccountsReceivableService(db)
+
+    try:
+        receivable = await service.record_payment(
+            receivable_id,
+            school_id,
+            payment,
+            created_by=current_user.id
+        )
+
+        if not receivable:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Receivable not found"
+            )
+
+        await db.commit()
+        return AccountsReceivableResponse.model_validate(receivable)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+# ============================================
+# Accounts Payable (Cuentas por Pagar)
+# ============================================
+
+@router.post(
+    "/payables",
+    response_model=AccountsPayableResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def create_payable(
+    school_id: UUID,
+    payable_data: AccountsPayableCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Create a new accounts payable (requires ADMIN role)
+
+    For tracking money owed BY the business to suppliers.
+    """
+    payable_data.school_id = school_id
+
+    service = AccountsPayableService(db)
+
+    try:
+        payable = await service.create_payable(
+            payable_data,
+            created_by=current_user.id
+        )
+        await db.commit()
+        return AccountsPayableResponse.model_validate(payable)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/payables",
+    response_model=list[AccountsPayableListResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def list_payables(
+    school_id: UUID,
+    db: DatabaseSession,
+    is_paid: bool = Query(None, description="Filter by payment status"),
+    is_overdue: bool = Query(None, description="Filter by overdue status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    List accounts payable (requires ADMIN role)
+    """
+    service = AccountsPayableService(db)
+
+    filters = {}
+    if is_paid is not None:
+        filters["is_paid"] = is_paid
+    if is_overdue is not None:
+        filters["is_overdue"] = is_overdue
+
+    payables = await service.get_multi(
+        school_id=school_id,
+        skip=skip,
+        limit=limit,
+        filters=filters if filters else None
+    )
+
+    return [
+        AccountsPayableListResponse(
+            id=p.id,
+            vendor=p.vendor,
+            amount=p.amount,
+            amount_paid=p.amount_paid,
+            balance=p.balance,
+            category=p.category,
+            invoice_date=p.invoice_date,
+            due_date=p.due_date,
+            is_paid=p.is_paid,
+            is_overdue=p.is_overdue
+        )
+        for p in payables
+    ]
+
+
+@router.get(
+    "/payables/pending",
+    response_model=list[AccountsPayableListResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_pending_payables(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get all pending (unpaid) payables (requires ADMIN role)
+    """
+    service = AccountsPayableService(db)
+    payables = await service.get_pending_payables(school_id)
+
+    return [
+        AccountsPayableListResponse(
+            id=p.id,
+            vendor=p.vendor,
+            amount=p.amount,
+            amount_paid=p.amount_paid,
+            balance=p.balance,
+            category=p.category,
+            invoice_date=p.invoice_date,
+            due_date=p.due_date,
+            is_paid=p.is_paid,
+            is_overdue=p.is_overdue
+        )
+        for p in payables
+    ]
+
+
+@router.get(
+    "/payables/{payable_id}",
+    response_model=AccountsPayableResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_payable(
+    school_id: UUID,
+    payable_id: UUID,
+    db: DatabaseSession
+):
+    """Get payable by ID (requires ADMIN role)"""
+    service = AccountsPayableService(db)
+    payable = await service.get(payable_id, school_id)
+
+    if not payable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payable not found"
+        )
+
+    return AccountsPayableResponse.model_validate(payable)
+
+
+@router.post(
+    "/payables/{payable_id}/pay",
+    response_model=AccountsPayableResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def pay_payable(
+    school_id: UUID,
+    payable_id: UUID,
+    payment: AccountsPayablePayment,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Record a payment on accounts payable (requires ADMIN role)
+
+    Creates an expense transaction automatically.
+    """
+    service = AccountsPayableService(db)
+
+    try:
+        payable = await service.record_payment(
+            payable_id,
+            school_id,
+            payment,
+            created_by=current_user.id
+        )
+
+        if not payable:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Payable not found"
+            )
+
+        await db.commit()
+        return AccountsPayableResponse.model_validate(payable)
     except ValueError as e:
         await db.rollback()
         raise HTTPException(

@@ -20,7 +20,13 @@ from app.models.accounting import (
     Transaction, TransactionType,
     Expense, ExpenseCategory,
     DailyCashRegister,
-    AccPaymentMethod
+    AccPaymentMethod,
+    # Balance General models
+    AccountType,
+    BalanceAccount,
+    BalanceEntry,
+    AccountsReceivable,
+    AccountsPayable,
 )
 
 __all__ = [
@@ -60,4 +66,10 @@ __all__ = [
     "ExpenseCategory",
     "DailyCashRegister",
     "AccPaymentMethod",
+    # Balance General models
+    "AccountType",
+    "BalanceAccount",
+    "BalanceEntry",
+    "AccountsReceivable",
+    "AccountsPayable",
 ]

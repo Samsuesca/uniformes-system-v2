@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime, date
 from pydantic import Field, field_validator, model_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
-from app.models.accounting import TransactionType, AccPaymentMethod, ExpenseCategory
+from app.models.accounting import TransactionType, AccPaymentMethod, ExpenseCategory, AccountType
 
 
 # ============================================
@@ -287,3 +287,327 @@ class AccountingDashboard(BaseSchema):
 
     # Recent transactions
     recent_transactions: list[TransactionListResponse]
+
+
+# ============================================
+# Balance General Schemas
+# ============================================
+
+class BalanceAccountBase(BaseSchema):
+    """Base balance account schema"""
+    account_type: AccountType
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    code: str | None = Field(None, max_length=50)
+    balance: Decimal = Field(default=Decimal("0"))
+    # For depreciable assets
+    original_value: Decimal | None = None
+    accumulated_depreciation: Decimal | None = None
+    useful_life_years: int | None = Field(None, ge=1)
+    # For debts/loans
+    interest_rate: Decimal | None = Field(None, ge=0, le=100)
+    due_date: date | None = None
+    creditor: str | None = Field(None, max_length=255)
+
+
+class BalanceAccountCreate(BalanceAccountBase, SchoolIsolatedSchema):
+    """Schema for creating a balance account"""
+    pass
+
+
+class BalanceAccountUpdate(BaseSchema):
+    """Schema for updating a balance account"""
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    code: str | None = Field(None, max_length=50)
+    balance: Decimal | None = None
+    original_value: Decimal | None = None
+    accumulated_depreciation: Decimal | None = None
+    useful_life_years: int | None = Field(None, ge=1)
+    interest_rate: Decimal | None = Field(None, ge=0, le=100)
+    due_date: date | None = None
+    creditor: str | None = Field(None, max_length=255)
+    is_active: bool | None = None
+
+
+class BalanceAccountInDB(BalanceAccountBase, SchoolIsolatedSchema, IDModelSchema):
+    """Balance account as stored in database"""
+    is_active: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BalanceAccountResponse(BalanceAccountInDB):
+    """Balance account for API responses"""
+    net_value: Decimal = Field(..., description="Net value after depreciation")
+
+    model_config = {"from_attributes": True}
+
+
+class BalanceAccountListResponse(BaseSchema):
+    """Simplified balance account for listings"""
+    id: UUID
+    account_type: AccountType
+    name: str
+    code: str | None
+    balance: Decimal
+    net_value: Decimal
+    is_active: bool
+
+
+# ============================================
+# Balance Entry Schemas
+# ============================================
+
+class BalanceEntryBase(BaseSchema):
+    """Base balance entry schema"""
+    entry_date: date
+    amount: Decimal  # Can be positive or negative
+    description: str = Field(..., min_length=1, max_length=500)
+    reference: str | None = Field(None, max_length=100)
+
+
+class BalanceEntryCreate(BalanceEntryBase, SchoolIsolatedSchema):
+    """Schema for creating a balance entry"""
+    account_id: UUID
+
+
+class BalanceEntryInDB(BalanceEntryBase, SchoolIsolatedSchema, IDModelSchema):
+    """Balance entry as stored in database"""
+    account_id: UUID
+    balance_after: Decimal
+    created_by: UUID | None
+    created_at: datetime
+
+
+class BalanceEntryResponse(BalanceEntryInDB):
+    """Balance entry for API responses"""
+
+    model_config = {"from_attributes": True}
+
+
+class BalanceEntryWithAccount(BalanceEntryResponse):
+    """Balance entry with account details"""
+    account_name: str
+    account_type: AccountType
+
+
+# ============================================
+# Accounts Receivable Schemas
+# ============================================
+
+class AccountsReceivableBase(BaseSchema):
+    """Base accounts receivable schema"""
+    amount: Decimal = Field(..., gt=0)
+    description: str = Field(..., min_length=1, max_length=500)
+    invoice_date: date
+    due_date: date | None = None
+    notes: str | None = None
+
+
+class AccountsReceivableCreate(AccountsReceivableBase, SchoolIsolatedSchema):
+    """Schema for creating accounts receivable"""
+    client_id: UUID | None = None
+    sale_id: UUID | None = None
+
+
+class AccountsReceivableUpdate(BaseSchema):
+    """Schema for updating accounts receivable"""
+    description: str | None = Field(None, min_length=1, max_length=500)
+    due_date: date | None = None
+    notes: str | None = None
+
+
+class AccountsReceivablePayment(BaseSchema):
+    """Schema for recording payment on receivable"""
+    amount: Decimal = Field(..., gt=0)
+    payment_method: AccPaymentMethod
+    notes: str | None = None
+
+
+class AccountsReceivableInDB(AccountsReceivableBase, SchoolIsolatedSchema, IDModelSchema):
+    """Accounts receivable as stored in database"""
+    client_id: UUID | None
+    sale_id: UUID | None
+    amount_paid: Decimal
+    is_paid: bool
+    is_overdue: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AccountsReceivableResponse(AccountsReceivableInDB):
+    """Accounts receivable for API responses"""
+    balance: Decimal = Field(..., description="Remaining balance to collect")
+
+    model_config = {"from_attributes": True}
+
+
+class AccountsReceivableWithDetails(AccountsReceivableResponse):
+    """Accounts receivable with related entity details"""
+    client_name: str | None = None
+    sale_code: str | None = None
+
+
+class AccountsReceivableListResponse(BaseSchema):
+    """Simplified accounts receivable for listings"""
+    id: UUID
+    client_id: UUID | None
+    client_name: str | None
+    amount: Decimal
+    amount_paid: Decimal
+    balance: Decimal
+    invoice_date: date
+    due_date: date | None
+    is_paid: bool
+    is_overdue: bool
+
+
+# ============================================
+# Accounts Payable Schemas
+# ============================================
+
+class AccountsPayableBase(BaseSchema):
+    """Base accounts payable schema"""
+    vendor: str = Field(..., min_length=1, max_length=255)
+    amount: Decimal = Field(..., gt=0)
+    description: str = Field(..., min_length=1, max_length=500)
+    category: str | None = Field(None, max_length=100)
+    invoice_number: str | None = Field(None, max_length=100)
+    invoice_date: date
+    due_date: date | None = None
+    notes: str | None = None
+
+
+class AccountsPayableCreate(AccountsPayableBase, SchoolIsolatedSchema):
+    """Schema for creating accounts payable"""
+    pass
+
+
+class AccountsPayableUpdate(BaseSchema):
+    """Schema for updating accounts payable"""
+    vendor: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, min_length=1, max_length=500)
+    category: str | None = Field(None, max_length=100)
+    invoice_number: str | None = Field(None, max_length=100)
+    due_date: date | None = None
+    notes: str | None = None
+
+
+class AccountsPayablePayment(BaseSchema):
+    """Schema for recording payment on payable"""
+    amount: Decimal = Field(..., gt=0)
+    payment_method: AccPaymentMethod
+    notes: str | None = None
+
+
+class AccountsPayableInDB(AccountsPayableBase, SchoolIsolatedSchema, IDModelSchema):
+    """Accounts payable as stored in database"""
+    amount_paid: Decimal
+    is_paid: bool
+    is_overdue: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AccountsPayableResponse(AccountsPayableInDB):
+    """Accounts payable for API responses"""
+    balance: Decimal = Field(..., description="Remaining balance to pay")
+
+    model_config = {"from_attributes": True}
+
+
+class AccountsPayableListResponse(BaseSchema):
+    """Simplified accounts payable for listings"""
+    id: UUID
+    vendor: str
+    amount: Decimal
+    amount_paid: Decimal
+    balance: Decimal
+    category: str | None
+    invoice_date: date
+    due_date: date | None
+    is_paid: bool
+    is_overdue: bool
+
+
+# ============================================
+# Balance General Summary Schemas
+# ============================================
+
+class BalanceGeneralSummary(BaseSchema):
+    """Balance general (balance sheet) summary"""
+    as_of_date: date
+
+    # Activos
+    total_current_assets: Decimal  # Efectivo, inventario, cuentas por cobrar
+    total_fixed_assets: Decimal    # Equipos, maquinaria
+    total_other_assets: Decimal
+    total_assets: Decimal
+
+    # Pasivos
+    total_current_liabilities: Decimal  # Cuentas por pagar
+    total_long_liabilities: Decimal     # Préstamos largo plazo
+    total_other_liabilities: Decimal
+    total_liabilities: Decimal
+
+    # Patrimonio
+    total_equity: Decimal
+
+    # Check: Assets = Liabilities + Equity
+    is_balanced: bool
+
+
+class BalanceAccountsByType(BaseSchema):
+    """Accounts grouped by type for balance sheet display"""
+    account_type: AccountType
+    account_type_label: str  # Human-readable label
+    accounts: list[BalanceAccountListResponse]
+    total: Decimal
+
+
+class BalanceGeneralDetailed(BaseSchema):
+    """Detailed balance general with account breakdown"""
+    as_of_date: date
+
+    # Assets breakdown
+    current_assets: BalanceAccountsByType
+    fixed_assets: BalanceAccountsByType
+    other_assets: BalanceAccountsByType
+
+    # Liabilities breakdown
+    current_liabilities: BalanceAccountsByType
+    long_liabilities: BalanceAccountsByType
+    other_liabilities: BalanceAccountsByType
+
+    # Equity breakdown
+    equity: list[BalanceAccountsByType]
+
+    # Totals
+    total_assets: Decimal
+    total_liabilities: Decimal
+    total_equity: Decimal
+    is_balanced: bool
+
+
+class ReceivablesPayablesSummary(BaseSchema):
+    """Summary of accounts receivable and payable"""
+    # Receivables (Cuentas por Cobrar)
+    total_receivables: Decimal
+    receivables_collected: Decimal
+    receivables_pending: Decimal
+    receivables_overdue: Decimal
+    receivables_count: int
+
+    # Payables (Cuentas por Pagar)
+    total_payables: Decimal
+    payables_paid: Decimal
+    payables_pending: Decimal
+    payables_overdue: Decimal
+    payables_count: int
+
+    # Net position
+    net_position: Decimal  # receivables_pending - payables_pending
