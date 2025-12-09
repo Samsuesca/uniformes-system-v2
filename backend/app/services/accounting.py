@@ -4,7 +4,7 @@ Accounting Service - Transactions, Expenses, and Cash Flow Management
 from uuid import UUID
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import select, func, and_, extract
+from sqlalchemy import select, func, and_, extract, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1136,7 +1136,7 @@ class BalanceGeneralService:
                 func.coalesce(func.sum(AccountsReceivable.amount_paid), 0).label('paid'),
                 func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (AccountsReceivable.is_overdue == True, AccountsReceivable.amount - AccountsReceivable.amount_paid),
                             else_=0
                         )
@@ -1156,7 +1156,7 @@ class BalanceGeneralService:
                 func.coalesce(func.sum(AccountsPayable.amount_paid), 0).label('paid'),
                 func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (AccountsPayable.is_overdue == True, AccountsPayable.amount - AccountsPayable.amount_paid),
                             else_=0
                         )
