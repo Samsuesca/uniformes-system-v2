@@ -8,9 +8,9 @@ export const productService = {
   /**
    * Get all products for a school
    */
-  async getProducts(schoolId: string, withInventory: boolean = true): Promise<Product[]> {
+  async getProducts(schoolId: string, withInventory: boolean = true, limit: number = 500): Promise<Product[]> {
     const response = await apiClient.get<Product[]>(`/schools/${schoolId}/products`, {
-      params: { with_inventory: withInventory }
+      params: { with_inventory: withInventory, limit }
     });
     return response.data;
   },
@@ -35,7 +35,7 @@ export const productService = {
    * Update a product
    */
   async updateProduct(schoolId: string, productId: string, data: Partial<Product>): Promise<Product> {
-    const response = await apiClient.patch<Product>(`/schools/${schoolId}/products/${productId}`, data);
+    const response = await apiClient.put<Product>(`/schools/${schoolId}/products/${productId}`, data);
     return response.data;
   },
 

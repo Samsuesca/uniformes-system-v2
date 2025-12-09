@@ -130,6 +130,41 @@ async def update_user(
     return UserResponse.model_validate(user)
 
 
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_user(
+    user_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentSuperuser
+):
+    """
+    Delete a user (superuser only)
+
+    Note: Cannot delete yourself
+    """
+    # Prevent self-deletion
+    if current_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete your own account"
+        )
+
+    user_service = UserService(db)
+    user = await user_service.get(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Delete user (cascade will remove school roles)
+    await user_service.delete(user_id)
+    await db.commit()
+
+
 # ==========================================
 # User-School Roles
 # ==========================================

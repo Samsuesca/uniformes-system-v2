@@ -1,16 +1,26 @@
 /**
- * Products Page - List and manage products
+ * Products Page - List and manage products with inventory
  */
 import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import ProductModal from '../components/ProductModal';
-import { Package, Plus, Search, AlertCircle, Loader2 } from 'lucide-react';
+import { Package, Plus, Search, AlertCircle, Loader2, Edit2, PackagePlus, X, Save } from 'lucide-react';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
+import { useAuthStore } from '../stores/authStore';
+import apiClient from '../utils/api-client';
 import type { Product } from '../types/api';
+
+interface InventoryAdjustment {
+  productId: string;
+  productCode: string;
+  productName: string;
+  currentStock: number;
+}
 
 export default function Products() {
   const { currentSchool } = useSchoolStore();
+  const { user } = useAuthStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,11 +29,21 @@ export default function Products() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
+  // Inventory adjustment modal state
+  const [inventoryModal, setInventoryModal] = useState<InventoryAdjustment | null>(null);
+  const [adjustmentAmount, setAdjustmentAmount] = useState<string>('');
+  const [adjustmentReason, setAdjustmentReason] = useState<string>('');
+  const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove' | 'set'>('add');
+  const [submitting, setSubmitting] = useState(false);
+
   const schoolId = currentSchool?.id || '';
+  const isSuperuser = user?.is_superuser || false;
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    if (schoolId) {
+      loadProducts();
+    }
+  }, [schoolId]);
 
   const loadProducts = async () => {
     try {
@@ -51,6 +71,69 @@ export default function Products() {
 
   const handleSuccess = () => {
     loadProducts();
+  };
+
+  // Open inventory adjustment modal
+  const handleOpenInventoryModal = (product: Product) => {
+    setInventoryModal({
+      productId: product.id,
+      productCode: product.code,
+      productName: product.name || product.code,
+      currentStock: product.inventory_quantity ?? 0,
+    });
+    setAdjustmentAmount('');
+    setAdjustmentReason('');
+    setAdjustmentType('add');
+  };
+
+  // Close inventory modal
+  const handleCloseInventoryModal = () => {
+    setInventoryModal(null);
+    setAdjustmentAmount('');
+    setAdjustmentReason('');
+  };
+
+  // Submit inventory adjustment
+  const handleAdjustInventory = async () => {
+    if (!inventoryModal || !adjustmentAmount) return;
+
+    const amount = parseInt(adjustmentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setError('La cantidad debe ser un número positivo');
+      return;
+    }
+
+    let adjustment: number;
+    if (adjustmentType === 'add') {
+      adjustment = amount;
+    } else if (adjustmentType === 'remove') {
+      adjustment = -amount;
+      if (inventoryModal.currentStock + adjustment < 0) {
+        setError('No puede quedar stock negativo');
+        return;
+      }
+    } else {
+      // 'set' - calculate difference
+      adjustment = amount - inventoryModal.currentStock;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      await apiClient.post(`/schools/${schoolId}/inventory/product/${inventoryModal.productId}/adjust`, {
+        adjustment,
+        reason: adjustmentReason || `Ajuste manual: ${adjustmentType === 'add' ? 'Agregar' : adjustmentType === 'remove' ? 'Remover' : 'Establecer'} ${amount} unidades`,
+      });
+
+      handleCloseInventoryModal();
+      await loadProducts();
+    } catch (err: any) {
+      console.error('Error adjusting inventory:', err);
+      setError(err.response?.data?.detail || 'Error al ajustar inventario');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Filter products
@@ -126,10 +209,10 @@ export default function Products() {
           <div className="flex items-start">
             <AlertCircle className="w-6 h-6 text-red-600 mr-3 flex-shrink-0" />
             <div>
-              <h3 className="text-sm font-medium text-red-800">Error al cargar productos</h3>
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
               <p className="mt-1 text-sm text-red-700">{error}</p>
               <button
-                onClick={loadProducts}
+                onClick={() => { setError(null); loadProducts(); }}
                 className="mt-3 text-sm text-red-700 hover:text-red-800 underline"
               >
                 Reintentar
@@ -165,6 +248,9 @@ export default function Products() {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Estado
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Acciones
                 </th>
               </tr>
             </thead>
@@ -212,6 +298,28 @@ export default function Products() {
                         {product.is_active ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Edit Product Button */}
+                        <button
+                          onClick={() => handleOpenModal(product)}
+                          className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                          title="Editar producto"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        {/* Adjust Inventory Button - only for superusers/admins */}
+                        {isSuperuser && (
+                          <button
+                            onClick={() => handleOpenInventoryModal(product)}
+                            className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                            title="Ajustar inventario"
+                          >
+                            <PackagePlus className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -253,6 +361,158 @@ export default function Products() {
         schoolId={schoolId}
         product={selectedProduct}
       />
+
+      {/* Inventory Adjustment Modal */}
+      {inventoryModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={handleCloseInventoryModal}
+          />
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Ajustar Inventario
+                </h2>
+                <button
+                  onClick={handleCloseInventoryModal}
+                  className="text-gray-400 hover:text-gray-600 transition"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4">
+                {/* Product Info */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600">Producto:</p>
+                  <p className="font-medium text-gray-900">{inventoryModal.productCode}</p>
+                  <p className="text-sm text-gray-700">{inventoryModal.productName}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Stock actual:</span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                      {inventoryModal.currentStock} unidades
+                    </span>
+                  </div>
+                </div>
+
+                {/* Adjustment Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tipo de ajuste
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAdjustmentType('add')}
+                      className={`flex-1 py-2 px-4 rounded-lg border transition ${
+                        adjustmentType === 'add'
+                          ? 'bg-green-100 border-green-500 text-green-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      + Agregar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjustmentType('remove')}
+                      className={`flex-1 py-2 px-4 rounded-lg border transition ${
+                        adjustmentType === 'remove'
+                          ? 'bg-red-100 border-red-500 text-red-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      - Remover
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjustmentType('set')}
+                      className={`flex-1 py-2 px-4 rounded-lg border transition ${
+                        adjustmentType === 'set'
+                          ? 'bg-blue-100 border-blue-500 text-blue-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      = Establecer
+                    </button>
+                  </div>
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {adjustmentType === 'set' ? 'Nuevo stock' : 'Cantidad'} *
+                  </label>
+                  <input
+                    type="number"
+                    value={adjustmentAmount}
+                    onChange={(e) => setAdjustmentAmount(e.target.value)}
+                    min="0"
+                    placeholder={adjustmentType === 'set' ? 'Ej: 50' : 'Ej: 10'}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  />
+                  {adjustmentType !== 'set' && adjustmentAmount && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      Nuevo stock: {
+                        adjustmentType === 'add'
+                          ? inventoryModal.currentStock + parseInt(adjustmentAmount || '0')
+                          : Math.max(0, inventoryModal.currentStock - parseInt(adjustmentAmount || '0'))
+                      } unidades
+                    </p>
+                  )}
+                </div>
+
+                {/* Reason */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Razón (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={adjustmentReason}
+                    onChange={(e) => setAdjustmentReason(e.target.value)}
+                    placeholder="Ej: Reposición de inventario, Corrección de conteo..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+                <button
+                  type="button"
+                  onClick={handleCloseInventoryModal}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdjustInventory}
+                  disabled={submitting || !adjustmentAmount}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Guardar Ajuste
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
