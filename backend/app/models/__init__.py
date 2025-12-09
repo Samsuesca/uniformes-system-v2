@@ -9,7 +9,10 @@ from app.db.base import Base
 # Import all models
 from app.models.user import User, UserSchoolRole, UserRole
 from app.models.school import School
-from app.models.product import GarmentType, Product, Inventory
+from app.models.product import (
+    GarmentType, Product, Inventory,
+    GlobalGarmentType, GlobalProduct, GlobalInventory
+)
 from app.models.client import Client
 from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus
 from app.models.order import Order, OrderItem, OrderStatus
@@ -32,6 +35,10 @@ __all__ = [
     "GarmentType",
     "Product",
     "Inventory",
+    # Global product models
+    "GlobalGarmentType",
+    "GlobalProduct",
+    "GlobalInventory",
     # Client models
     "Client",
     # Sale models

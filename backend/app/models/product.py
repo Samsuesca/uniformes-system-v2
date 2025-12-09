@@ -123,6 +123,132 @@ class Product(Base):
         return f"<Product(code='{self.code}', size='{self.size}', price='{self.price}')>"
 
 
+class GlobalGarmentType(Base):
+    """Global garment types for shared products (zapatos, medias, jeans, blusas)"""
+    __tablename__ = "global_garment_types"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(50))
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    products: Mapped[list["GlobalProduct"]] = relationship(
+        back_populates="garment_type",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<GlobalGarmentType(name='{self.name}')>"
+
+
+class GlobalProduct(Base):
+    """Global products shared across all schools (zapatos, medias, jeans, blusas)"""
+    __tablename__ = "global_products"
+    __table_args__ = (
+        UniqueConstraint('code', name='uq_global_product_code'),
+        CheckConstraint('price >= 0', name='chk_global_product_price_positive'),
+        CheckConstraint('cost >= 0', name='chk_global_product_cost_positive'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    garment_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("global_garment_types.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+
+    code: Mapped[str] = mapped_column(String(50), nullable=False)  # GLB-TEN-001
+    name: Mapped[str | None] = mapped_column(String(255))
+
+    # Attributes
+    size: Mapped[str] = mapped_column(String(20), nullable=False)  # T27-T34, Única, Niño, Hombre
+    color: Mapped[str | None] = mapped_column(String(50))
+    gender: Mapped[str | None] = mapped_column(String(10))
+
+    # Pricing (same for all schools)
+    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    cost: Mapped[float | None] = mapped_column(Numeric(10, 2))
+
+    description: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(String(500))
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    garment_type: Mapped["GlobalGarmentType"] = relationship(back_populates="products")
+    inventory: Mapped["GlobalInventory | None"] = relationship(
+        back_populates="product",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<GlobalProduct(code='{self.code}', size='{self.size}', price='{self.price}')>"
+
+
+class GlobalInventory(Base):
+    """Shared inventory for global products"""
+    __tablename__ = "global_inventory"
+    __table_args__ = (
+        UniqueConstraint('product_id', name='uq_global_product_inventory'),
+        CheckConstraint('quantity >= 0', name='chk_global_inventory_quantity_positive'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("global_products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    min_stock_alert: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+
+    last_updated: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    product: Mapped["GlobalProduct"] = relationship(back_populates="inventory")
+
+    def __repr__(self) -> str:
+        return f"<GlobalInventory(product_id='{self.product_id}', quantity={self.quantity})>"
+
+
 class Inventory(Base):
     """Available stock per product"""
     __tablename__ = "inventory"

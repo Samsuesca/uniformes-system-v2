@@ -175,3 +175,119 @@ class InventoryReport(BaseSchema):
     low_stock_count: int
     out_of_stock_count: int
     low_stock_products: list[LowStockProduct]
+
+
+# ============================================
+# Global GarmentType Schemas
+# ============================================
+
+class GlobalGarmentTypeBase(BaseSchema):
+    """Base global garment type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    description: str | None = None
+    category: str | None = Field(None, max_length=50)
+
+
+class GlobalGarmentTypeCreate(GlobalGarmentTypeBase):
+    """Schema for creating global garment type"""
+    pass
+
+
+class GlobalGarmentTypeUpdate(BaseSchema):
+    """Schema for updating global garment type"""
+    name: str | None = Field(None, min_length=2, max_length=100)
+    description: str | None = None
+    category: str | None = Field(None, max_length=50)
+    is_active: bool | None = None
+
+
+class GlobalGarmentTypeResponse(GlobalGarmentTypeBase, IDModelSchema, TimestampSchema):
+    """Global GarmentType for API responses"""
+    is_active: bool
+
+
+# ============================================
+# Global Product Schemas
+# ============================================
+
+class GlobalProductBase(BaseSchema):
+    """Base global product schema"""
+    name: str | None = Field(None, max_length=255)
+    size: str = Field(..., max_length=20)
+    color: str | None = Field(None, max_length=50)
+    gender: str | None = Field(None, max_length=10)
+    price: Decimal = Field(..., ge=0)
+    cost: Decimal | None = Field(None, ge=0)
+    description: str | None = None
+    image_url: str | None = Field(None, max_length=500)
+
+    @field_validator('gender')
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        """Validate gender field"""
+        if v and v not in ['unisex', 'male', 'female']:
+            raise ValueError('Gender must be: unisex, male, or female')
+        return v
+
+
+class GlobalProductCreate(GlobalProductBase):
+    """Schema for creating global product"""
+    garment_type_id: UUID
+
+
+class GlobalProductUpdate(BaseSchema):
+    """Schema for updating global product"""
+    name: str | None = Field(None, max_length=255)
+    size: str | None = Field(None, max_length=20)
+    color: str | None = Field(None, max_length=50)
+    gender: str | None = Field(None, max_length=10)
+    price: Decimal | None = Field(None, ge=0)
+    cost: Decimal | None = Field(None, ge=0)
+    description: str | None = None
+    image_url: str | None = Field(None, max_length=500)
+    is_active: bool | None = None
+
+
+class GlobalProductResponse(GlobalProductBase, IDModelSchema, TimestampSchema):
+    """Global Product for API responses"""
+    code: str
+    garment_type_id: UUID
+    is_active: bool
+
+
+class GlobalProductWithInventory(GlobalProductResponse):
+    """Global Product with inventory information"""
+    inventory_quantity: int = 0
+    inventory_min_stock: int = 5
+
+
+# ============================================
+# Global Inventory Schemas
+# ============================================
+
+class GlobalInventoryBase(BaseSchema):
+    """Base global inventory schema"""
+    quantity: int = Field(..., ge=0)
+    min_stock_alert: int = Field(default=5, ge=0)
+
+
+class GlobalInventoryCreate(GlobalInventoryBase):
+    """Schema for creating global inventory"""
+    product_id: UUID
+
+
+class GlobalInventoryUpdate(BaseSchema):
+    """Schema for updating global inventory"""
+    quantity: int | None = Field(None, ge=0)
+    min_stock_alert: int | None = Field(None, ge=0)
+
+
+class GlobalInventoryAdjust(BaseSchema):
+    """Schema for adjusting global inventory quantity"""
+    adjustment: int  # Can be positive or negative
+    reason: str | None = Field(None, max_length=255)
+
+
+class GlobalInventoryResponse(GlobalInventoryBase, IDModelSchema):
+    """Global Inventory for API responses"""
+    product_id: UUID

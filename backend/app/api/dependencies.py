@@ -282,6 +282,21 @@ CurrentSuperuser = Annotated[User, Depends(get_current_superuser)]
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 
 
+async def require_superuser(
+    current_user: Annotated[User, Depends(get_current_user)]
+) -> User:
+    """
+    Dependency to require superuser access.
+    Use as: dependencies=[Depends(require_superuser)]
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+    return current_user
+
+
 # Permission check helpers
 def can_manage_users(role: UserRole | None) -> bool:
     """Check if role can manage users (OWNER only)"""
