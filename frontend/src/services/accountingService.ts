@@ -15,7 +15,27 @@ import type {
   CashFlowSummary,
   ExpensesByCategory,
   TransactionType,
-  ExpenseCategory
+  ExpenseCategory,
+  // Balance General types
+  BalanceGeneralSummary,
+  BalanceGeneralDetailed,
+  ReceivablesPayablesSummary,
+  BalanceAccount,
+  BalanceAccountCreate,
+  BalanceAccountUpdate,
+  BalanceAccountListItem,
+  BalanceEntry,
+  BalanceEntryCreate,
+  AccountsReceivable,
+  AccountsReceivableCreate,
+  AccountsReceivablePayment,
+  AccountsReceivableListItem,
+  AccountsPayable,
+  AccountsPayableCreate,
+  AccountsPayablePayment,
+  AccountsPayableListItem,
+  AccountType,
+  AccPaymentMethod
 } from '../types/api';
 
 const BASE_URL = '/schools';
@@ -254,6 +274,233 @@ export function getPaymentMethodLabel(method: string): string {
   return labels[method] || method;
 }
 
+// ============================================
+// Balance General (Balance Sheet)
+// ============================================
+
+export async function getBalanceGeneralSummary(schoolId: string): Promise<BalanceGeneralSummary> {
+  const response = await apiClient.get<BalanceGeneralSummary>(
+    `${BASE_URL}/${schoolId}/accounting/balance-general/summary`
+  );
+  return response.data;
+}
+
+export async function getBalanceGeneralDetailed(schoolId: string): Promise<BalanceGeneralDetailed> {
+  const response = await apiClient.get<BalanceGeneralDetailed>(
+    `${BASE_URL}/${schoolId}/accounting/balance-general/detailed`
+  );
+  return response.data;
+}
+
+export async function getReceivablesPayablesSummary(schoolId: string): Promise<ReceivablesPayablesSummary> {
+  const response = await apiClient.get<ReceivablesPayablesSummary>(
+    `${BASE_URL}/${schoolId}/accounting/receivables-payables/summary`
+  );
+  return response.data;
+}
+
+// Balance Accounts (Cuentas de Balance)
+export async function getBalanceAccounts(
+  schoolId: string,
+  accountType?: AccountType,
+  isActive?: boolean
+): Promise<BalanceAccountListItem[]> {
+  const response = await apiClient.get<BalanceAccountListItem[]>(
+    `${BASE_URL}/${schoolId}/accounting/balance-accounts`,
+    { params: { account_type: accountType, is_active: isActive } }
+  );
+  return response.data;
+}
+
+export async function getBalanceAccount(schoolId: string, accountId: string): Promise<BalanceAccount> {
+  const response = await apiClient.get<BalanceAccount>(
+    `${BASE_URL}/${schoolId}/accounting/balance-accounts/${accountId}`
+  );
+  return response.data;
+}
+
+export async function createBalanceAccount(
+  schoolId: string,
+  data: BalanceAccountCreate
+): Promise<BalanceAccount> {
+  const response = await apiClient.post<BalanceAccount>(
+    `${BASE_URL}/${schoolId}/accounting/balance-accounts`,
+    data
+  );
+  return response.data;
+}
+
+export async function updateBalanceAccount(
+  schoolId: string,
+  accountId: string,
+  data: BalanceAccountUpdate
+): Promise<BalanceAccount> {
+  const response = await apiClient.patch<BalanceAccount>(
+    `${BASE_URL}/${schoolId}/accounting/balance-accounts/${accountId}`,
+    data
+  );
+  return response.data;
+}
+
+export async function deleteBalanceAccount(schoolId: string, accountId: string): Promise<void> {
+  await apiClient.delete(`${BASE_URL}/${schoolId}/accounting/balance-accounts/${accountId}`);
+}
+
+// Balance Entries (Movimientos)
+export async function getBalanceEntries(
+  schoolId: string,
+  accountId: string,
+  startDate?: string,
+  endDate?: string
+): Promise<BalanceEntry[]> {
+  const response = await apiClient.get<BalanceEntry[]>(
+    `${BASE_URL}/${schoolId}/accounting/balance-accounts/${accountId}/entries`,
+    { params: { start_date: startDate, end_date: endDate } }
+  );
+  return response.data;
+}
+
+export async function createBalanceEntry(
+  schoolId: string,
+  accountId: string,
+  data: BalanceEntryCreate
+): Promise<BalanceEntry> {
+  const response = await apiClient.post<BalanceEntry>(
+    `${BASE_URL}/${schoolId}/accounting/balance-accounts/${accountId}/entries`,
+    data
+  );
+  return response.data;
+}
+
+// Accounts Receivable (Cuentas por Cobrar)
+export async function getAccountsReceivable(
+  schoolId: string,
+  options?: { isPaid?: boolean; isOverdue?: boolean; clientId?: string }
+): Promise<AccountsReceivableListItem[]> {
+  const response = await apiClient.get<AccountsReceivableListItem[]>(
+    `${BASE_URL}/${schoolId}/accounting/receivables`,
+    { params: { is_paid: options?.isPaid, is_overdue: options?.isOverdue, client_id: options?.clientId } }
+  );
+  return response.data;
+}
+
+export async function getAccountReceivable(schoolId: string, receivableId: string): Promise<AccountsReceivable> {
+  const response = await apiClient.get<AccountsReceivable>(
+    `${BASE_URL}/${schoolId}/accounting/receivables/${receivableId}`
+  );
+  return response.data;
+}
+
+export async function createAccountReceivable(
+  schoolId: string,
+  data: AccountsReceivableCreate
+): Promise<AccountsReceivable> {
+  const response = await apiClient.post<AccountsReceivable>(
+    `${BASE_URL}/${schoolId}/accounting/receivables`,
+    data
+  );
+  return response.data;
+}
+
+export async function payAccountReceivable(
+  schoolId: string,
+  receivableId: string,
+  payment: AccountsReceivablePayment
+): Promise<AccountsReceivable> {
+  const response = await apiClient.post<AccountsReceivable>(
+    `${BASE_URL}/${schoolId}/accounting/receivables/${receivableId}/pay`,
+    payment
+  );
+  return response.data;
+}
+
+export async function deleteAccountReceivable(schoolId: string, receivableId: string): Promise<void> {
+  await apiClient.delete(`${BASE_URL}/${schoolId}/accounting/receivables/${receivableId}`);
+}
+
+// Accounts Payable (Cuentas por Pagar)
+export async function getAccountsPayable(
+  schoolId: string,
+  options?: { isPaid?: boolean; isOverdue?: boolean; vendor?: string }
+): Promise<AccountsPayableListItem[]> {
+  const response = await apiClient.get<AccountsPayableListItem[]>(
+    `${BASE_URL}/${schoolId}/accounting/payables`,
+    { params: { is_paid: options?.isPaid, is_overdue: options?.isOverdue, vendor: options?.vendor } }
+  );
+  return response.data;
+}
+
+export async function getAccountPayable(schoolId: string, payableId: string): Promise<AccountsPayable> {
+  const response = await apiClient.get<AccountsPayable>(
+    `${BASE_URL}/${schoolId}/accounting/payables/${payableId}`
+  );
+  return response.data;
+}
+
+export async function createAccountPayable(
+  schoolId: string,
+  data: AccountsPayableCreate
+): Promise<AccountsPayable> {
+  const response = await apiClient.post<AccountsPayable>(
+    `${BASE_URL}/${schoolId}/accounting/payables`,
+    data
+  );
+  return response.data;
+}
+
+export async function payAccountPayable(
+  schoolId: string,
+  payableId: string,
+  payment: AccountsPayablePayment
+): Promise<AccountsPayable> {
+  const response = await apiClient.post<AccountsPayable>(
+    `${BASE_URL}/${schoolId}/accounting/payables/${payableId}/pay`,
+    payment
+  );
+  return response.data;
+}
+
+export async function deleteAccountPayable(schoolId: string, payableId: string): Promise<void> {
+  await apiClient.delete(`${BASE_URL}/${schoolId}/accounting/payables/${payableId}`);
+}
+
+// Helper functions for account types
+export function getAccountTypeLabel(accountType: AccountType): string {
+  const labels: Record<AccountType, string> = {
+    asset_current: 'Activo Corriente',
+    asset_fixed: 'Activo Fijo',
+    asset_other: 'Otros Activos',
+    liability_current: 'Pasivo Corriente',
+    liability_long: 'Pasivo a Largo Plazo',
+    liability_other: 'Otros Pasivos',
+    equity_capital: 'Capital',
+    equity_retained: 'Utilidades Retenidas',
+    equity_other: 'Otro Patrimonio'
+  };
+  return labels[accountType] || accountType;
+}
+
+export function getAccountTypeColor(accountType: AccountType): string {
+  const colors: Record<AccountType, string> = {
+    asset_current: 'bg-green-100 text-green-800',
+    asset_fixed: 'bg-emerald-100 text-emerald-800',
+    asset_other: 'bg-teal-100 text-teal-800',
+    liability_current: 'bg-red-100 text-red-800',
+    liability_long: 'bg-rose-100 text-rose-800',
+    liability_other: 'bg-pink-100 text-pink-800',
+    equity_capital: 'bg-blue-100 text-blue-800',
+    equity_retained: 'bg-indigo-100 text-indigo-800',
+    equity_other: 'bg-purple-100 text-purple-800'
+  };
+  return colors[accountType] || 'bg-gray-100 text-gray-800';
+}
+
+export function getAccountTypeCategory(accountType: AccountType): 'assets' | 'liabilities' | 'equity' {
+  if (accountType.startsWith('asset')) return 'assets';
+  if (accountType.startsWith('liability')) return 'liabilities';
+  return 'equity';
+}
+
 // Export as object for easier imports
 export const accountingService = {
   getAccountingDashboard,
@@ -275,5 +522,33 @@ export const accountingService = {
   closeCashRegister,
   getExpenseCategoryLabel,
   getExpenseCategoryColor,
-  getPaymentMethodLabel
+  getPaymentMethodLabel,
+  // Balance General
+  getBalanceGeneralSummary,
+  getBalanceGeneralDetailed,
+  getReceivablesPayablesSummary,
+  // Balance Accounts
+  getBalanceAccounts,
+  getBalanceAccount,
+  createBalanceAccount,
+  updateBalanceAccount,
+  deleteBalanceAccount,
+  getBalanceEntries,
+  createBalanceEntry,
+  // Accounts Receivable
+  getAccountsReceivable,
+  getAccountReceivable,
+  createAccountReceivable,
+  payAccountReceivable,
+  deleteAccountReceivable,
+  // Accounts Payable
+  getAccountsPayable,
+  getAccountPayable,
+  createAccountPayable,
+  payAccountPayable,
+  deleteAccountPayable,
+  // Helpers
+  getAccountTypeLabel,
+  getAccountTypeColor,
+  getAccountTypeCategory
 };

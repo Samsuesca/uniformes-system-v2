@@ -511,6 +511,268 @@ export interface ExpensesByCategory {
 }
 
 // ============================================
+// Balance General Types (Balance Sheet)
+// ============================================
+
+export type AccountType =
+  | 'asset_current' | 'asset_fixed' | 'asset_other'
+  | 'liability_current' | 'liability_long' | 'liability_other'
+  | 'equity_capital' | 'equity_retained' | 'equity_other';
+
+// Balance Account (Cuenta de Balance)
+export interface BalanceAccount {
+  id: string;
+  school_id: string;
+  account_type: AccountType;
+  name: string;
+  description: string | null;
+  code: string | null;
+  balance: number;
+  original_value: number | null;
+  accumulated_depreciation: number | null;
+  useful_life_years: number | null;
+  interest_rate: number | null;
+  due_date: string | null;
+  creditor: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BalanceAccountCreate {
+  account_type: AccountType;
+  name: string;
+  description?: string;
+  code?: string;
+  balance: number;
+  original_value?: number;
+  accumulated_depreciation?: number;
+  useful_life_years?: number;
+  interest_rate?: number;
+  due_date?: string;
+  creditor?: string;
+}
+
+export interface BalanceAccountUpdate {
+  name?: string;
+  description?: string;
+  code?: string;
+  balance?: number;
+  original_value?: number;
+  accumulated_depreciation?: number;
+  useful_life_years?: number;
+  interest_rate?: number;
+  due_date?: string;
+  creditor?: string;
+  is_active?: boolean;
+}
+
+export interface BalanceAccountListItem {
+  id: string;
+  account_type: AccountType;
+  name: string;
+  code: string | null;
+  balance: number;
+  is_active: boolean;
+}
+
+// Balance Entry (Movimiento de Cuenta)
+export interface BalanceEntry {
+  id: string;
+  account_id: string;
+  school_id: string;
+  entry_date: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  reference: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface BalanceEntryCreate {
+  entry_date: string;
+  amount: number;
+  description: string;
+  reference?: string;
+}
+
+// Accounts Receivable (Cuentas por Cobrar)
+export interface AccountsReceivable {
+  id: string;
+  school_id: string;
+  client_id: string | null;
+  sale_id: string | null;
+  amount: number;
+  amount_paid: number;
+  description: string;
+  due_date: string | null;
+  invoice_date: string;
+  is_paid: boolean;
+  is_overdue: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  balance: number;
+  client_name?: string;
+}
+
+export interface AccountsReceivableCreate {
+  client_id?: string;
+  sale_id?: string;
+  amount: number;
+  description: string;
+  due_date?: string;
+  invoice_date: string;
+  notes?: string;
+}
+
+export interface AccountsReceivablePayment {
+  amount: number;
+  payment_method: AccPaymentMethod;
+  notes?: string;
+}
+
+export interface AccountsReceivableListItem {
+  id: string;
+  client_id: string | null;
+  client_name: string | null;
+  amount: number;
+  amount_paid: number;
+  balance: number;
+  description: string;
+  due_date: string | null;
+  invoice_date: string;
+  is_paid: boolean;
+  is_overdue: boolean;
+}
+
+// Accounts Payable (Cuentas por Pagar)
+export interface AccountsPayable {
+  id: string;
+  school_id: string;
+  vendor: string;
+  amount: number;
+  amount_paid: number;
+  description: string;
+  category: string | null;
+  invoice_number: string | null;
+  invoice_date: string;
+  due_date: string | null;
+  is_paid: boolean;
+  is_overdue: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  balance: number;
+}
+
+export interface AccountsPayableCreate {
+  vendor: string;
+  amount: number;
+  description: string;
+  category?: string;
+  invoice_number?: string;
+  invoice_date: string;
+  due_date?: string;
+  notes?: string;
+}
+
+export interface AccountsPayablePayment {
+  amount: number;
+  payment_method: AccPaymentMethod;
+  notes?: string;
+}
+
+export interface AccountsPayableListItem {
+  id: string;
+  vendor: string;
+  amount: number;
+  amount_paid: number;
+  balance: number;
+  description: string;
+  category: string | null;
+  invoice_number: string | null;
+  invoice_date: string;
+  due_date: string | null;
+  is_paid: boolean;
+  is_overdue: boolean;
+}
+
+// Balance General Summary (Balance Sheet Summary)
+export interface BalanceGeneralSummary {
+  as_of_date: string;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  assets_current: number;
+  assets_fixed: number;
+  assets_other: number;
+  liabilities_current: number;
+  liabilities_long: number;
+  liabilities_other: number;
+  equity_capital: number;
+  equity_retained: number;
+  equity_other: number;
+  accounts_receivable_total: number;
+  accounts_payable_total: number;
+}
+
+export interface BalanceGeneralDetailed {
+  as_of_date: string;
+  assets: {
+    current: BalanceAccountListItem[];
+    fixed: BalanceAccountListItem[];
+    other: BalanceAccountListItem[];
+    total_current: number;
+    total_fixed: number;
+    total_other: number;
+    total: number;
+  };
+  liabilities: {
+    current: BalanceAccountListItem[];
+    long_term: BalanceAccountListItem[];
+    other: BalanceAccountListItem[];
+    total_current: number;
+    total_long: number;
+    total_other: number;
+    total: number;
+  };
+  equity: {
+    capital: BalanceAccountListItem[];
+    retained: BalanceAccountListItem[];
+    other: BalanceAccountListItem[];
+    total_capital: number;
+    total_retained: number;
+    total_other: number;
+    total: number;
+  };
+}
+
+export interface ReceivablesPayablesSummary {
+  receivables: {
+    total: number;
+    total_pending: number;
+    total_overdue: number;
+    count_pending: number;
+    count_overdue: number;
+    items: AccountsReceivableListItem[];
+  };
+  payables: {
+    total: number;
+    total_pending: number;
+    total_overdue: number;
+    count_pending: number;
+    count_overdue: number;
+    items: AccountsPayableListItem[];
+  };
+  net_position: number;
+}
+
+// ============================================
 // Global Product Types
 // ============================================
 
