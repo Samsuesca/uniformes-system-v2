@@ -12,6 +12,15 @@ export const apiClient = axios.create({
   timeout: 30000, // 30 seconds
 });
 
+// Track online status
+function updateOnlineStatus(isOnline: boolean) {
+  const store = useConfigStore.getState();
+  if (store.isOnline !== isOnline) {
+    store.setIsOnline(isOnline);
+    store.updateLastChecked();
+  }
+}
+
 // Dynamic baseURL interceptor - uses current config from store
 apiClient.interceptors.request.use(
   (config) => {
@@ -42,14 +51,19 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor - handle errors
+// Response interceptor - handle errors and track connection status
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
+    // Successful response = we're online
+    updateOnlineStatus(true);
     return response;
   },
   (error: AxiosError) => {
     // Handle 401 Unauthorized - token expired or invalid
     if (error.response?.status === 401) {
+      // We got a response, so we're online (just unauthorized)
+      updateOnlineStatus(true);
+
       // Clear auth data
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
@@ -62,12 +76,18 @@ apiClient.interceptors.response.use(
 
     // Handle 403 Forbidden - no permissions
     if (error.response?.status === 403) {
+      // We got a response, so we're online
+      updateOnlineStatus(true);
       console.error('Forbidden: You do not have permission to access this resource');
     }
 
-    // Handle network errors
+    // Handle network errors (no response means offline)
     if (!error.response) {
+      updateOnlineStatus(false);
       console.error('Network error: Could not connect to API');
+    } else {
+      // Any other error response means we're connected
+      updateOnlineStatus(true);
     }
 
     return Promise.reject(error);
@@ -85,5 +105,21 @@ export const getErrorMessage = (error: unknown): string => {
   }
   return 'An unexpected error occurred';
 };
+
+// Check connection status by calling health endpoint
+export async function checkConnection(): Promise<boolean> {
+  try {
+    const apiUrl = useConfigStore.getState().apiUrl;
+    await axios.get(`${apiUrl}/health`, { timeout: 5000 });
+    updateOnlineStatus(true);
+    return true;
+  } catch {
+    updateOnlineStatus(false);
+    return false;
+  }
+}
+
+// Initialize connection check on load
+checkConnection();
 
 export default apiClient;

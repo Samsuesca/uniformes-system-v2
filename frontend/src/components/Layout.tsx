@@ -6,7 +6,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole, getRoleDisplayName, getRoleBadgeColor } from '../hooks/useUserRole';
-import { EnvironmentIndicator, DevelopmentBanner } from './EnvironmentIndicator';
+import { DevelopmentBanner } from './EnvironmentIndicator';
 import {
   LayoutDashboard,
   Package,
@@ -259,11 +259,14 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Connection Status */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
-              isOnline
-                ? 'bg-green-50 text-green-700'
-                : 'bg-red-50 text-red-700'
-            }`}>
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
+                isOnline
+                  ? 'bg-green-50 text-green-700'
+                  : 'bg-red-50 text-red-700 animate-pulse'
+              }`}
+              title={isOnline ? 'Conectado al servidor' : 'Sin conexión al servidor'}
+            >
               {isOnline ? (
                 <>
                   <Wifi className="w-3.5 h-3.5" />
@@ -276,9 +279,6 @@ export default function Layout({ children }: LayoutProps) {
                 </>
               )}
             </div>
-
-            {/* Environment Indicator */}
-            <EnvironmentIndicator />
 
             {/* School Selector - Now labeled as "Vista de colegio" */}
             <div className="relative">
