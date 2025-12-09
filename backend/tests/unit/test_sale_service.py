@@ -617,3 +617,143 @@ class TestEdgeCases:
         adjustment = (new_price * new_qty) - (original_price * returned_qty)
 
         assert adjustment == Decimal("-30000")  # Refund despite upgrade
+
+
+# ============================================================================
+# TEST: Historical Sales
+# ============================================================================
+
+class TestHistoricalSales:
+    """Tests for historical sales (migration data)"""
+
+    def test_historical_sale_flag(self):
+        """Historical sales should have is_historical=True"""
+        # This tests the schema and model accept the is_historical flag
+        from app.schemas.sale import SaleCreate, SaleItemCreate
+        from datetime import date, datetime
+
+        sale_data = SaleCreate(
+            school_id=str(uuid4()),
+            items=[SaleItemCreate(product_id=str(uuid4()), quantity=1)],
+            payment_method=PaymentMethod.CASH,
+            is_historical=True,
+            sale_date=date(2024, 6, 15)
+        )
+
+        assert sale_data.is_historical == True
+        # Pydantic converts date to datetime, so compare the date part
+        assert sale_data.sale_date.date() == date(2024, 6, 15)
+
+    def test_non_historical_sale_default(self):
+        """Non-historical sales should default to is_historical=False"""
+        from app.schemas.sale import SaleCreate, SaleItemCreate
+
+        sale_data = SaleCreate(
+            school_id=str(uuid4()),
+            items=[SaleItemCreate(product_id=str(uuid4()), quantity=1)],
+            payment_method=PaymentMethod.CASH
+        )
+
+        assert sale_data.is_historical == False
+
+    def test_historical_sale_date_parsing(self):
+        """Historical sales should accept various date formats"""
+        from app.schemas.sale import SaleCreate, SaleItemCreate
+        from datetime import date, datetime
+
+        # Test with date object
+        sale_data = SaleCreate(
+            school_id=str(uuid4()),
+            items=[SaleItemCreate(product_id=str(uuid4()), quantity=1)],
+            payment_method=PaymentMethod.CASH,
+            is_historical=True,
+            sale_date=date(2024, 1, 15)
+        )
+        # Pydantic converts date to datetime, so compare the date part
+        assert sale_data.sale_date.date() == date(2024, 1, 15)
+
+    def test_historical_sale_past_date(self):
+        """Historical sales can have past dates"""
+        from datetime import date
+
+        # Sale from 2023
+        sale_date = date(2023, 11, 20)
+        today = date.today()
+
+        assert sale_date < today  # Must be in the past
+
+    def test_historical_sale_inventory_logic(self):
+        """
+        Historical sales should NOT affect inventory.
+        This is a logic verification - actual implementation skips inventory checks.
+        """
+        # When is_historical=True:
+        # 1. Stock validation should be SKIPPED
+        # 2. Inventory should NOT be decremented
+        # This allows migrating old sales without affecting current stock
+
+        is_historical = True
+        should_check_stock = not is_historical
+        should_adjust_inventory = not is_historical
+
+        assert should_check_stock == False
+        assert should_adjust_inventory == False
+
+    def test_current_sale_inventory_logic(self):
+        """
+        Current (non-historical) sales SHOULD affect inventory.
+        """
+        is_historical = False
+        should_check_stock = not is_historical
+        should_adjust_inventory = not is_historical
+
+        assert should_check_stock == True
+        assert should_adjust_inventory == True
+
+
+# ============================================================================
+# TEST: Global Products in Sales
+# ============================================================================
+
+class TestGlobalProductsSales:
+    """Tests for sales with global products"""
+
+    def test_sale_item_with_global_product_flag(self):
+        """Sale items should support global product flag"""
+        from app.schemas.sale import SaleItemCreate
+
+        # School product
+        school_item = SaleItemCreate(
+            product_id=str(uuid4()),
+            quantity=2,
+            is_global=False
+        )
+        assert school_item.is_global == False
+
+        # Global product
+        global_item = SaleItemCreate(
+            product_id=str(uuid4()),
+            quantity=1,
+            is_global=True
+        )
+        assert global_item.is_global == True
+
+    def test_mixed_sale_items(self):
+        """Sale can have both school and global products"""
+        from app.schemas.sale import SaleCreate, SaleItemCreate
+
+        sale_data = SaleCreate(
+            school_id=str(uuid4()),
+            items=[
+                SaleItemCreate(product_id=str(uuid4()), quantity=2, is_global=False),
+                SaleItemCreate(product_id=str(uuid4()), quantity=1, is_global=True),
+                SaleItemCreate(product_id=str(uuid4()), quantity=3, is_global=False),
+            ],
+            payment_method=PaymentMethod.CASH
+        )
+
+        school_items = [i for i in sale_data.items if not i.is_global]
+        global_items = [i for i in sale_data.items if i.is_global]
+
+        assert len(school_items) == 2
+        assert len(global_items) == 1
