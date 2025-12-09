@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleModal from '../components/SaleModal';
-import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign, Building2 } from 'lucide-react';
+import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign, Building2, History } from 'lucide-react';
 import { saleService } from '../services/saleService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { SaleListItem } from '../types/api';
@@ -87,6 +87,16 @@ export default function Sales() {
     return (
       <span className={`ml-2 px-1.5 py-0.5 text-xs rounded ${config.color}`}>
         {config.label}
+      </span>
+    );
+  };
+
+  const getHistoricalBadge = (isHistorical: boolean | undefined) => {
+    if (!isHistorical) return null;
+    return (
+      <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700 flex items-center gap-1 inline-flex">
+        <History className="w-3 h-3" />
+        Histórica
       </span>
     );
   };
@@ -273,8 +283,11 @@ export default function Sales() {
               {filteredSales.map((sale) => (
                 <tr key={sale.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {sale.code}
-                    {getSourceBadge(sale.source)}
+                    <div className="flex items-center flex-wrap gap-1">
+                      {sale.code}
+                      {getSourceBadge(sale.source)}
+                      {getHistoricalBadge(sale.is_historical)}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">

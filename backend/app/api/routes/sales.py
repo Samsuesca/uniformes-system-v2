@@ -272,7 +272,7 @@ async def get_sale(
 
 @school_router.get(
     "/{sale_id}/items",
-    response_model=SaleResponse,
+    response_model=SaleWithItems,
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
 async def get_sale_with_items(
@@ -280,7 +280,12 @@ async def get_sale_with_items(
     sale_id: UUID,
     db: DatabaseSession
 ):
-    """Get sale with all items"""
+    """Get sale with all items (including product details)"""
+    from app.schemas.sale import SaleItemWithProduct
+    from app.models.product import GlobalProduct
+    import logging
+    logger = logging.getLogger(__name__)
+
     sale_service = SaleService(db)
     sale = await sale_service.get_sale_with_items(sale_id, school_id)
 
@@ -290,7 +295,77 @@ async def get_sale_with_items(
             detail="Venta no encontrada"
         )
 
-    return SaleResponse.model_validate(sale)
+    # Build items with product information
+    items_with_products = []
+    for item in sale.items:
+        # Debug logging
+        logger.info(f"Item: product_id={item.product_id}, global_product_id={item.global_product_id}, is_global={item.is_global_product}")
+        logger.info(f"  product relation: {item.product}")
+        logger.info(f"  global_product relation: {item.global_product}")
+
+        # For global products, manually fetch if relationship not loaded
+        global_product_data = None
+        if item.is_global_product and item.global_product_id:
+            if item.global_product:
+                global_product_data = item.global_product
+            else:
+                # Manually fetch global product
+                gp_result = await db.execute(
+                    select(GlobalProduct).where(GlobalProduct.id == item.global_product_id)
+                )
+                global_product_data = gp_result.scalar_one_or_none()
+                logger.info(f"  Manually fetched global_product: {global_product_data}")
+
+        item_dict = {
+            "id": item.id,
+            "sale_id": item.sale_id,
+            "product_id": item.product_id,
+            "global_product_id": item.global_product_id,
+            "is_global_product": item.is_global_product,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "subtotal": item.subtotal,
+            # School product info
+            "product_code": item.product.code if item.product else None,
+            "product_name": item.product.name if item.product else None,
+            "product_size": item.product.size if item.product else None,
+            "product_color": item.product.color if item.product else None,
+            # Global product info
+            "global_product_code": global_product_data.code if global_product_data else None,
+            "global_product_name": global_product_data.name if global_product_data else None,
+            "global_product_size": global_product_data.size if global_product_data else None,
+            "global_product_color": global_product_data.color if global_product_data else None,
+        }
+        items_with_products.append(SaleItemWithProduct(**item_dict))
+
+    # Get client name
+    client_name = None
+    if sale.client_id:
+        result = await db.execute(
+            select(Client).where(Client.id == sale.client_id)
+        )
+        client = result.scalar_one_or_none()
+        client_name = client.name if client else None
+
+    return SaleWithItems(
+        id=sale.id,
+        school_id=sale.school_id,
+        code=sale.code,
+        client_id=sale.client_id,
+        user_id=sale.user_id,
+        status=sale.status,
+        source=sale.source,
+        is_historical=sale.is_historical,
+        payment_method=sale.payment_method,
+        total=sale.total,
+        paid_amount=sale.paid_amount,
+        sale_date=sale.sale_date,
+        notes=sale.notes,
+        created_at=sale.created_at,
+        updated_at=sale.updated_at,
+        items=items_with_products,
+        client_name=client_name
+    )
 
 
 # ============================================

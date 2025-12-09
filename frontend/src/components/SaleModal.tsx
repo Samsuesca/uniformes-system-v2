@@ -2,7 +2,7 @@
  * Sale Modal - Create New Sale Form
  */
 import { useState, useEffect } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserPlus, UserX } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserPlus, UserX, Calendar, History } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
@@ -45,6 +45,12 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
     client_id: '',
     payment_method: 'cash' as 'cash' | 'credit' | 'transfer' | 'card',
     notes: '',
+    is_historical: false,
+    sale_date: '',  // ISO date string for historical sales
+    // Separate date fields for easier input
+    sale_day: '',
+    sale_month: '',
+    sale_year: '',
   });
 
   const [items, setItems] = useState<SaleItemCreateExtended[]>([]);
@@ -67,6 +73,11 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       client_id: '',
       payment_method: 'cash',
       notes: '',
+      is_historical: false,
+      sale_date: '',
+      sale_day: '',
+      sale_month: '',
+      sale_year: '',
     });
     setItems([]);
     setCurrentItem({
@@ -191,8 +202,8 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
     );
     const totalQuantity = (existingItem?.quantity || 0) + currentItem.quantity;
 
-    // Check stock availability
-    if (totalQuantity > availableStock) {
+    // Check stock availability (skip for historical sales - they don't affect inventory)
+    if (!formData.is_historical && totalQuantity > availableStock) {
       setError(`Stock insuficiente para ${productName}. Disponible: ${availableStock}, solicitado: ${totalQuantity}`);
       return;
     }
@@ -242,6 +253,21 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       return;
     }
 
+    // Validate historical date fields
+    if (formData.is_historical) {
+      if (!formData.sale_day || !formData.sale_month || !formData.sale_year) {
+        setError('Para ventas históricas debes ingresar día, mes y año');
+        return;
+      }
+      const day = parseInt(formData.sale_day);
+      const month = parseInt(formData.sale_month);
+      const year = parseInt(formData.sale_year);
+      if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2020) {
+        setError('La fecha ingresada no es válida');
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
 
@@ -249,13 +275,32 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       // If "No Client" selected, send null/undefined for client_id
       const clientId = formData.client_id === NO_CLIENT_ID ? undefined : formData.client_id;
 
+      // Build sale date from separate fields
+      let saleDateStr: string | undefined = undefined;
+      if (formData.is_historical && formData.sale_day && formData.sale_month && formData.sale_year) {
+        const day = formData.sale_day.padStart(2, '0');
+        const month = formData.sale_month;
+        const year = formData.sale_year;
+        saleDateStr = `${year}-${month}-${day}T12:00:00`;
+      }
+
+      // Build sale data - be explicit with historical fields
       const saleData: SaleCreate = {
         school_id: schoolId,
         client_id: clientId as string, // Will be null in backend
         items: items,
         payment_method: formData.payment_method,
         notes: formData.notes || undefined,
+        // Historical sale fields - must be explicit
+        is_historical: formData.is_historical === true,
+        sale_date: saleDateStr,
       };
+
+      console.log('Creating sale with data:', {
+        is_historical: saleData.is_historical,
+        sale_date: saleData.sale_date,
+        formData_date_fields: { day: formData.sale_day, month: formData.sale_month, year: formData.sale_year }
+      });
 
       await saleService.createSale(schoolId, saleData);
       onSuccess();
@@ -373,6 +418,104 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                   <option value="credit">Crédito</option>
                 </select>
               </div>
+            </div>
+
+            {/* Historical Sale Section */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="flex items-center h-5 mt-0.5">
+                  <input
+                    id="is_historical"
+                    type="checkbox"
+                    checked={formData.is_historical}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      is_historical: e.target.checked,
+                      sale_date: e.target.checked ? formData.sale_date : '',
+                      sale_day: e.target.checked ? formData.sale_day : '',
+                      sale_month: e.target.checked ? formData.sale_month : '',
+                      sale_year: e.target.checked ? formData.sale_year : '',
+                    })}
+                    className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label htmlFor="is_historical" className="text-sm font-semibold text-amber-800 flex items-center cursor-pointer">
+                    <History className="w-4 h-4 mr-2" />
+                    Venta Histórica (Migración de datos)
+                  </label>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Las ventas históricas NO afectan el inventario actual y permiten establecer una fecha pasada.
+                    Útil para migrar registros de ventas anteriores.
+                  </p>
+                </div>
+              </div>
+
+              {/* Date inputs for Historical Sales */}
+              {formData.is_historical && (
+                <div className="mt-4 pl-7">
+                  <label className="block text-sm font-medium text-amber-800 mb-2">
+                    <Calendar className="w-4 h-4 inline mr-1" />
+                    Fecha de la venta *
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {/* Day */}
+                    <div>
+                      <input
+                        type="number"
+                        placeholder="Día"
+                        min="1"
+                        max="31"
+                        value={formData.sale_day}
+                        onChange={(e) => setFormData({ ...formData, sale_day: e.target.value })}
+                        className="w-20 px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-white text-center"
+                      />
+                      <p className="text-xs text-amber-600 mt-1 text-center">Día</p>
+                    </div>
+                    <span className="text-amber-600 text-xl font-bold">/</span>
+                    {/* Month */}
+                    <div>
+                      <select
+                        value={formData.sale_month}
+                        onChange={(e) => setFormData({ ...formData, sale_month: e.target.value })}
+                        className="w-32 px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-white"
+                      >
+                        <option value="">Mes</option>
+                        <option value="01">Enero</option>
+                        <option value="02">Febrero</option>
+                        <option value="03">Marzo</option>
+                        <option value="04">Abril</option>
+                        <option value="05">Mayo</option>
+                        <option value="06">Junio</option>
+                        <option value="07">Julio</option>
+                        <option value="08">Agosto</option>
+                        <option value="09">Septiembre</option>
+                        <option value="10">Octubre</option>
+                        <option value="11">Noviembre</option>
+                        <option value="12">Diciembre</option>
+                      </select>
+                      <p className="text-xs text-amber-600 mt-1 text-center">Mes</p>
+                    </div>
+                    <span className="text-amber-600 text-xl font-bold">/</span>
+                    {/* Year */}
+                    <div>
+                      <input
+                        type="number"
+                        placeholder="Año"
+                        min="2020"
+                        max={new Date().getFullYear()}
+                        value={formData.sale_year}
+                        onChange={(e) => setFormData({ ...formData, sale_year: e.target.value })}
+                        className="w-24 px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-white text-center"
+                      />
+                      <p className="text-xs text-amber-600 mt-1 text-center">Año</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-amber-600 mt-2">
+                    Ingresa la fecha real en que se realizó esta venta
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Quick Client Creation Form */}
@@ -577,8 +720,17 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                   <input
                     type="number"
                     min="1"
+                    step="1"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={currentItem.quantity}
-                    onChange={(e) => setCurrentItem({ ...currentItem, quantity: parseInt(e.target.value) || 1 })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Allow empty string while typing, default to 1 when empty
+                      const num = val === '' ? 1 : parseInt(val, 10);
+                      setCurrentItem({ ...currentItem, quantity: isNaN(num) ? 1 : Math.max(1, num) });
+                    }}
+                    onFocus={(e) => e.target.select()}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   />
                 </div>

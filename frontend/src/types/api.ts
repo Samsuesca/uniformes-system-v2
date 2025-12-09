@@ -169,6 +169,7 @@ export interface Sale {
   client_id: string | null;
   user_id: string;
   status: 'pending' | 'completed' | 'cancelled';
+  is_historical: boolean;  // Historical sale (migration data)
   payment_method: 'cash' | 'credit' | 'transfer' | 'card' | null;
   total: number;
   paid_amount: number;
@@ -181,7 +182,9 @@ export interface Sale {
 export interface SaleItem {
   id: string;
   sale_id: string;
-  product_id: string;
+  product_id: string | null;  // null when is_global_product is true
+  global_product_id?: string | null;
+  is_global_product?: boolean;
   quantity: number;
   unit_price: number;
   subtotal: number;
@@ -190,10 +193,18 @@ export interface SaleItem {
 }
 
 export interface SaleItemWithProduct extends SaleItem {
-  product_code: string;
+  product_code: string | null;
   product_name: string | null;
-  product_size: string;
+  product_size: string | null;
   product_color: string | null;
+  // Global product info (if applicable)
+  global_product_code: string | null;
+  global_product_name: string | null;
+  global_product_size: string | null;
+  global_product_color: string | null;
+  // Flag to identify global products
+  is_global_product?: boolean;
+  global_product_id?: string | null;
 }
 
 export interface SaleWithItems extends Sale {
@@ -206,6 +217,7 @@ export interface SaleListItem {
   code: string;
   status: 'pending' | 'completed' | 'cancelled';
   source: 'desktop_app' | 'web_portal' | 'api' | null;
+  is_historical: boolean;  // Historical sale (migration data)
   payment_method: 'cash' | 'credit' | 'transfer' | 'card' | null;
   total: number;
   paid_amount: number;

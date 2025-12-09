@@ -90,6 +90,9 @@ class Sale(Base):
         nullable=False
     )
 
+    # Historical sales (migration) - do NOT affect inventory
+    is_historical: Mapped[bool] = mapped_column(default=False, nullable=False)
+
     notes: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

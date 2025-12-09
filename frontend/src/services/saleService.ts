@@ -22,6 +22,9 @@ export interface SaleCreate {
   payment_method: 'cash' | 'credit' | 'transfer' | 'card';
   notes?: string;
   source?: 'desktop_app' | 'web_portal' | 'api';
+  // Historical sales (migration) - don't affect inventory
+  is_historical?: boolean;
+  sale_date?: string;  // ISO date string for historical sales
 }
 
 export interface SaleFilters {

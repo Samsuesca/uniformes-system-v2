@@ -5,12 +5,12 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleChangeModal from '../components/SaleChangeModal';
-import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock, History } from 'lucide-react';
 import { saleService } from '../services/saleService';
 import { saleChangeService } from '../services/saleChangeService';
 import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
-import type { Sale, SaleItem, Client, Product, SaleChangeListItem } from '../types/api';
+import type { Sale, SaleItemWithProduct, Client, Product, SaleChangeListItem } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -64,7 +64,7 @@ export default function SaleDetail() {
   const navigate = useNavigate();
   const { currentSchool } = useSchoolStore();
   const [sale, setSale] = useState<Sale | null>(null);
-  const [items, setItems] = useState<SaleItem[]>([]);
+  const [items, setItems] = useState<SaleItemWithProduct[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [products, setProducts] = useState<Map<string, Product>>(new Map());
   const [changes, setChanges] = useState<SaleChangeListItem[]>([]);
@@ -184,15 +184,39 @@ export default function SaleDetail() {
     }
   };
 
-  const getProductName = (productId: string) => {
-    const product = products.get(productId);
-    if (!product) return 'Producto no encontrado';
-    return `${product.name || product.code} - ${product.size}`;
+  const getProductNameFromItem = (item: SaleItemWithProduct) => {
+    // Check if it's a global product
+    if (item.is_global_product && item.global_product_name) {
+      return `${item.global_product_name} - ${item.global_product_size || ''}`;
+    }
+    // School product - use item data if available
+    if (item.product_name) {
+      return `${item.product_name} - ${item.product_size || ''}`;
+    }
+    // Fallback to products map (legacy) - only if product_id exists
+    if (item.product_id) {
+      const product = products.get(item.product_id);
+      if (product) return `${product.name || product.code} - ${product.size}`;
+    }
+    return 'Producto no encontrado';
   };
 
-  const getProductCode = (productId: string) => {
-    const product = products.get(productId);
-    return product?.code || productId;
+  const getProductCodeFromItem = (item: SaleItemWithProduct) => {
+    // Check if it's a global product
+    if (item.is_global_product && item.global_product_code) {
+      return item.global_product_code;
+    }
+    // School product - use item data if available
+    if (item.product_code) {
+      return item.product_code;
+    }
+    // Fallback to products map (legacy) - only if product_id exists
+    if (item.product_id) {
+      const product = products.get(item.product_id);
+      if (product) return product.code;
+      return item.product_id;
+    }
+    return item.global_product_id || 'N/A';
   };
 
   const getChangeTypeLabel = (type: string) => {
@@ -411,8 +435,8 @@ export default function SaleDetail() {
     <tbody>
       ${items.map(item => `
         <tr>
-          <td>${getProductCode(item.product_id)}</td>
-          <td>${getProductName(item.product_id)}</td>
+          <td>${getProductCodeFromItem(item)}${item.is_global_product ? ' <span style="background:#f3e8ff;color:#7c3aed;padding:2px 6px;border-radius:4px;font-size:10px;">Global</span>' : ''}</td>
+          <td>${getProductNameFromItem(item)}</td>
           <td class="text-right">${item.quantity}</td>
           <td class="text-right">$${Number(item.unit_price).toLocaleString()}</td>
           <td class="text-right">$${Number(item.subtotal).toLocaleString()}</td>
@@ -559,11 +583,34 @@ export default function SaleDetail() {
           {/* Status */}
           <div>
             <div className="text-sm text-gray-500 mb-1">Estado</div>
-            <span className={`px-3 py-1 inline-flex text-sm font-semibold rounded-full ${getStatusColor(sale.status)}`}>
-              {getStatusText(sale.status)}
-            </span>
+            <div className="flex flex-wrap gap-2">
+              <span className={`px-3 py-1 inline-flex text-sm font-semibold rounded-full ${getStatusColor(sale.status)}`}>
+                {getStatusText(sale.status)}
+              </span>
+              {sale.is_historical && (
+                <span className="px-3 py-1 inline-flex items-center gap-1 text-sm font-semibold rounded-full bg-amber-100 text-amber-800">
+                  <History className="w-4 h-4" />
+                  Histórica
+                </span>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Historical Sale Notice */}
+        {sale.is_historical && (
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-amber-800">
+              <History className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">Venta Histórica (Migración)</p>
+                <p className="text-sm text-amber-700">
+                  Esta venta fue registrada como dato histórico y no afectó el inventario actual.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Notes */}
         {sale.notes && (
@@ -608,10 +655,13 @@ export default function SaleDetail() {
               {items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {getProductCode(item.product_id)}
+                    {getProductCodeFromItem(item)}
+                    {item.is_global_product && (
+                      <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-purple-100 text-purple-700">Global</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {getProductName(item.product_id)}
+                    {getProductNameFromItem(item)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                     {item.quantity}

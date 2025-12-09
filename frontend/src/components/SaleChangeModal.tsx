@@ -66,9 +66,20 @@ export default function SaleChangeModal({
     }
   };
 
-  const getProductName = (productId: string) => {
+  const getProductName = (productId: string | null) => {
+    if (!productId) return 'Producto global';
     const product = products.find(p => p.id === productId);
     return product ? `${product.name} - ${product.size}` : 'Producto no encontrado';
+  };
+
+  // Helper function to get item display name (handles global products)
+  const getItemDisplayName = (item: SaleItem) => {
+    // For global products, try to use global product info if available
+    if (item.is_global_product) {
+      return 'Producto Global';
+    }
+    // For school products
+    return getProductName(item.product_id);
   };
 
   const selectedItem = saleItems.find(item => item.id === formData.original_item_id);
@@ -213,7 +224,7 @@ export default function SaleChangeModal({
                 <option value="">Selecciona un producto</option>
                 {saleItems.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {getProductName(item.product_id)} - Cantidad: {item.quantity} - ${Number(item.unit_price).toLocaleString()}
+                    {getItemDisplayName(item)} - Cantidad: {item.quantity} - ${Number(item.unit_price).toLocaleString()}
                   </option>
                 ))}
               </select>

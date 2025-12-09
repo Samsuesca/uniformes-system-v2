@@ -70,6 +70,9 @@ class SaleCreate(SaleBase, SchoolIsolatedSchema):
     """Schema for creating sale"""
     items: list[SaleItemCreate] = Field(..., min_length=1)
     source: SaleSource = SaleSource.DESKTOP_APP  # Default to desktop app
+    # Historical sales (migration) - don't affect inventory
+    is_historical: bool = False
+    sale_date: datetime | None = None  # Optional: set custom date for historical sales
     # code, status, totals will be auto-generated
 
 
@@ -86,6 +89,7 @@ class SaleInDB(SaleBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema):
     user_id: UUID
     status: SaleStatus
     source: SaleSource
+    is_historical: bool = False
     total: Decimal
     paid_amount: Decimal
     sale_date: datetime
@@ -110,6 +114,7 @@ class SaleListResponse(BaseSchema):
     code: str
     status: SaleStatus
     source: SaleSource | None = None
+    is_historical: bool = False
     payment_method: PaymentMethod | None = None
     total: Decimal
     paid_amount: Decimal

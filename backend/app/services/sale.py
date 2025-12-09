@@ -44,6 +44,14 @@ class SaleService(SchoolIsolatedService[Sale]):
         inv_service = InventoryService(self.db)
         global_inv_service = GlobalInventoryService(self.db)
 
+        # Check if this is a historical sale (migration)
+        is_historical = sale_data.is_historical
+
+        # Debug logging for historical sales
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Creating sale - is_historical: {is_historical}, sale_date from request: {sale_data.sale_date}")
+
         # Generate sale code
         code = await self._generate_sale_code(sale_data.school_id)
 
@@ -65,12 +73,13 @@ class SaleService(SchoolIsolatedService[Sale]):
                 if not global_product:
                     raise ValueError(f"Producto global {item_data.product_id} no encontrado")
 
-                # Check global inventory
-                global_inv = await global_inv_service.get_by_product(global_product.id)
-                if not global_inv or global_inv.quantity < item_data.quantity:
-                    raise ValueError(
-                        f"Stock insuficiente para el producto global {global_product.code}"
-                    )
+                # Check global inventory ONLY for non-historical sales
+                if not is_historical:
+                    global_inv = await global_inv_service.get_by_product(global_product.id)
+                    if not global_inv or global_inv.quantity < item_data.quantity:
+                        raise ValueError(
+                            f"Stock insuficiente para el producto global {global_product.code}"
+                        )
 
                 # Calculate item totals
                 unit_price = global_product.price
@@ -100,17 +109,18 @@ class SaleService(SchoolIsolatedService[Sale]):
                 if not product:
                     raise ValueError(f"Producto {item_data.product_id} no encontrado")
 
-                # Check inventory
-                has_stock = await inv_service.check_availability(
-                    product.id,
-                    sale_data.school_id,
-                    item_data.quantity
-                )
-
-                if not has_stock:
-                    raise ValueError(
-                        f"Stock insuficiente para el producto {product.code}"
+                # Check inventory ONLY for non-historical sales
+                if not is_historical:
+                    has_stock = await inv_service.check_availability(
+                        product.id,
+                        sale_data.school_id,
+                        item_data.quantity
                     )
+
+                    if not has_stock:
+                        raise ValueError(
+                            f"Stock insuficiente para el producto {product.code}"
+                        )
 
                 # Calculate item totals
                 unit_price = product.price
@@ -130,6 +140,20 @@ class SaleService(SchoolIsolatedService[Sale]):
         # Total = subtotal (no tax for now)
         total = subtotal
 
+        # Determine sale date (use custom date for historical sales)
+        # Colombia timezone is UTC-5
+        from datetime import timezone, timedelta
+        colombia_tz = timezone(timedelta(hours=-5))
+
+        if is_historical and sale_data.sale_date:
+            # Use the date provided for historical sales (keep as-is, it's already a date)
+            sale_date = sale_data.sale_date
+            logger.info(f"Using custom sale_date for historical sale: {sale_date}")
+        else:
+            # For current sales, use Colombia time
+            sale_date = datetime.now(colombia_tz).replace(tzinfo=None)
+            logger.info(f"Using Colombia datetime: {sale_date} (is_historical={is_historical}, sale_data.sale_date={sale_data.sale_date})")
+
         # Create sale (only use fields that exist in the model)
         sale = Sale(
             school_id=sale_data.school_id,
@@ -140,6 +164,8 @@ class SaleService(SchoolIsolatedService[Sale]):
             payment_method=sale_data.payment_method,
             total=total,
             paid_amount=total,  # Assuming full payment
+            is_historical=is_historical,
+            sale_date=sale_date,
             notes=sale_data.notes
         )
 
@@ -147,28 +173,30 @@ class SaleService(SchoolIsolatedService[Sale]):
         await self.db.flush()
         await self.db.refresh(sale)
 
-        # Create sale items and reserve inventory
+        # Create sale items and reserve inventory (SKIP inventory for historical sales)
         for item_dict in items_data:
             item_dict["sale_id"] = sale.id
             sale_item = SaleItem(**item_dict)
             self.db.add(sale_item)
 
-            if item_dict["is_global_product"]:
-                # Reserve global stock
-                await global_inv_service.adjust_quantity(
-                    item_dict["global_product_id"],
-                    GlobalInventoryAdjust(
-                        adjustment=-item_dict["quantity"],
-                        reason=f"Venta {code}"
+            # Only adjust inventory for NON-historical sales
+            if not is_historical:
+                if item_dict["is_global_product"]:
+                    # Reserve global stock
+                    await global_inv_service.adjust_quantity(
+                        item_dict["global_product_id"],
+                        GlobalInventoryAdjust(
+                            adjustment=-item_dict["quantity"],
+                            reason=f"Venta {code}"
+                        )
                     )
-                )
-            else:
-                # Reserve school stock
-                await inv_service.reserve_stock(
-                    item_dict["product_id"],
-                    sale_data.school_id,
-                    item_dict["quantity"]
-                )
+                else:
+                    # Reserve school stock
+                    await inv_service.reserve_stock(
+                        item_dict["product_id"],
+                        sale_data.school_id,
+                        item_dict["quantity"]
+                    )
 
         await self.db.flush()
 
@@ -183,7 +211,7 @@ class SaleService(SchoolIsolatedService[Sale]):
         school_id: UUID
     ) -> Sale | None:
         """
-        Get sale with items loaded
+        Get sale with items loaded (including product relationships)
 
         Args:
             sale_id: Sale UUID
@@ -192,9 +220,15 @@ class SaleService(SchoolIsolatedService[Sale]):
         Returns:
             Sale with items or None
         """
+        from app.models.sale import SaleItem
+        from app.models.product import Product, GlobalProduct
+
         result = await self.db.execute(
             select(Sale)
-            .options(selectinload(Sale.items))
+            .options(
+                selectinload(Sale.items).selectinload(SaleItem.product),
+                selectinload(Sale.items).selectinload(SaleItem.global_product)
+            )
             .where(
                 Sale.id == sale_id,
                 Sale.school_id == school_id
