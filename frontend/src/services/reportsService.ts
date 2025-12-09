@@ -88,12 +88,21 @@ export interface TopClient {
   total_spent: number;
 }
 
+// Date filter options for reports
+export interface DateFilters {
+  startDate?: string;  // YYYY-MM-DD
+  endDate?: string;    // YYYY-MM-DD
+}
+
 export const reportsService = {
   /**
-   * Get dashboard summary
+   * Get dashboard summary (with optional date filters)
    */
-  async getDashboardSummary(schoolId: string): Promise<DashboardSummary> {
-    const response = await apiClient.get<DashboardSummary>(`/schools/${schoolId}/reports/dashboard`);
+  async getDashboardSummary(schoolId: string, filters?: DateFilters): Promise<DashboardSummary> {
+    const params: Record<string, string> = {};
+    if (filters?.startDate) params.start_date = filters.startDate;
+    if (filters?.endDate) params.end_date = filters.endDate;
+    const response = await apiClient.get<DashboardSummary>(`/schools/${schoolId}/reports/dashboard`, { params });
     return response.data;
   },
 
@@ -109,21 +118,22 @@ export const reportsService = {
   /**
    * Get sales summary for a period
    */
-  async getSalesSummary(schoolId: string, startDate?: string, endDate?: string): Promise<SalesSummary> {
+  async getSalesSummary(schoolId: string, filters?: DateFilters): Promise<SalesSummary> {
     const params: Record<string, string> = {};
-    if (startDate) params.start_date = startDate;
-    if (endDate) params.end_date = endDate;
+    if (filters?.startDate) params.start_date = filters.startDate;
+    if (filters?.endDate) params.end_date = filters.endDate;
     const response = await apiClient.get<SalesSummary>(`/schools/${schoolId}/reports/sales/summary`, { params });
     return response.data;
   },
 
   /**
-   * Get top selling products
+   * Get top selling products (with optional date filters)
    */
-  async getTopProducts(schoolId: string, limit = 10): Promise<TopProduct[]> {
-    const response = await apiClient.get<TopProduct[]>(`/schools/${schoolId}/reports/sales/top-products`, {
-      params: { limit }
-    });
+  async getTopProducts(schoolId: string, limit = 10, filters?: DateFilters): Promise<TopProduct[]> {
+    const params: Record<string, string | number> = { limit };
+    if (filters?.startDate) params.start_date = filters.startDate;
+    if (filters?.endDate) params.end_date = filters.endDate;
+    const response = await apiClient.get<TopProduct[]>(`/schools/${schoolId}/reports/sales/top-products`, { params });
     return response.data;
   },
 
@@ -154,12 +164,13 @@ export const reportsService = {
   },
 
   /**
-   * Get top clients
+   * Get top clients (with optional date filters)
    */
-  async getTopClients(schoolId: string, limit = 10): Promise<TopClient[]> {
-    const response = await apiClient.get<TopClient[]>(`/schools/${schoolId}/reports/clients/top`, {
-      params: { limit }
-    });
+  async getTopClients(schoolId: string, limit = 10, filters?: DateFilters): Promise<TopClient[]> {
+    const params: Record<string, string | number> = { limit };
+    if (filters?.startDate) params.start_date = filters.startDate;
+    if (filters?.endDate) params.end_date = filters.endDate;
+    const response = await apiClient.get<TopClient[]>(`/schools/${schoolId}/reports/clients/top`, { params });
     return response.data;
   },
 };

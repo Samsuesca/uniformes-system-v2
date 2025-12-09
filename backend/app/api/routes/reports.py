@@ -118,8 +118,10 @@ async def get_pending_orders(
 async def get_top_clients(
     school_id: UUID,
     db: DatabaseSession,
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    start_date: date | None = Query(None, description="Start date for sales filter"),
+    end_date: date | None = Query(None, description="End date for sales filter")
 ):
-    """Get top clients by purchase amount"""
+    """Get top clients by purchase amount (with optional date filter)"""
     reports_service = ReportsService(db)
-    return await reports_service.get_top_clients(school_id, limit)
+    return await reports_service.get_top_clients(school_id, limit, start_date, end_date)

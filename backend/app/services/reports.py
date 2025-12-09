@@ -291,11 +291,28 @@ class ReportsService:
     async def get_top_clients(
         self,
         school_id: UUID,
-        limit: int = 10
+        limit: int = 10,
+        start_date: date | None = None,
+        end_date: date | None = None
     ) -> list[dict]:
         """
-        Get top clients by purchase amount
+        Get top clients by purchase amount (with optional date filters)
         """
+        # Build conditions
+        conditions = [
+            Client.school_id == school_id,
+            Client.is_active == True,
+            Sale.status == SaleStatus.COMPLETED
+        ]
+
+        # Add date filters if provided
+        if start_date:
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+            conditions.append(Sale.sale_date >= start_datetime)
+        if end_date:
+            end_datetime = datetime.combine(end_date, datetime.max.time())
+            conditions.append(Sale.sale_date <= end_datetime)
+
         query = select(
             Client.id,
             Client.code,
@@ -306,11 +323,7 @@ class ReportsService:
         ).join(
             Sale, Sale.client_id == Client.id
         ).where(
-            and_(
-                Client.school_id == school_id,
-                Client.is_active == True,
-                Sale.status == SaleStatus.COMPLETED
-            )
+            and_(*conditions)
         ).group_by(
             Client.id, Client.code, Client.name, Client.phone
         ).order_by(

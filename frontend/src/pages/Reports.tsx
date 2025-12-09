@@ -5,18 +5,72 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import {
   BarChart3, TrendingUp, Package, Users, AlertTriangle, DollarSign,
-  Loader2, AlertCircle, ShoppingBag, RefreshCw
+  Loader2, AlertCircle, ShoppingBag, RefreshCw, Calendar, Filter
 } from 'lucide-react';
-import { reportsService, type DashboardSummary, type TopProduct, type LowStockProduct, type TopClient } from '../services/reportsService';
+import { reportsService, type DashboardSummary, type TopProduct, type LowStockProduct, type TopClient, type SalesSummary, type DateFilters } from '../services/reportsService';
 import { useSchoolStore } from '../stores/schoolStore';
+
+// Preset date ranges
+type DatePreset = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all';
+
+// Helper to format date as YYYY-MM-DD
+const formatDateForAPI = (date: Date): string => {
+  return date.toISOString().split('T')[0];
+};
+
+// Helper to get preset date ranges
+const getPresetDates = (preset: DatePreset): DateFilters => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  switch (preset) {
+    case 'today':
+      return {
+        startDate: formatDateForAPI(today),
+        endDate: formatDateForAPI(today)
+      };
+    case 'week': {
+      const weekAgo = new Date(today);
+      weekAgo.setDate(today.getDate() - 7);
+      return {
+        startDate: formatDateForAPI(weekAgo),
+        endDate: formatDateForAPI(today)
+      };
+    }
+    case 'month': {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      return {
+        startDate: formatDateForAPI(monthStart),
+        endDate: formatDateForAPI(today)
+      };
+    }
+    case 'year': {
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      return {
+        startDate: formatDateForAPI(yearStart),
+        endDate: formatDateForAPI(today)
+      };
+    }
+    case 'all':
+    default:
+      return {}; // No filters = all time
+  }
+};
 
 export default function Reports() {
   const { currentSchool } = useSchoolStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Date filter state
+  const [datePreset, setDatePreset] = useState<DatePreset>('month');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [activeFilters, setActiveFilters] = useState<DateFilters>({});
+
   // Dashboard data
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
+  const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [lowStock, setLowStock] = useState<LowStockProduct[]>([]);
   const [topClients, setTopClients] = useState<TopClient[]>([]);
@@ -24,22 +78,49 @@ export default function Reports() {
   const schoolId = currentSchool?.id || '';
 
   useEffect(() => {
-    loadAllReports();
+    // Set initial filters
+    const initialFilters = getPresetDates('month');
+    setActiveFilters(initialFilters);
   }, []);
+
+  useEffect(() => {
+    if (Object.keys(activeFilters).length > 0 || datePreset === 'all') {
+      loadAllReports();
+    }
+  }, [activeFilters, schoolId]);
+
+  const handlePresetChange = (preset: DatePreset) => {
+    setDatePreset(preset);
+    if (preset !== 'custom') {
+      const filters = getPresetDates(preset);
+      setActiveFilters(filters);
+    }
+  };
+
+  const handleApplyCustomDates = () => {
+    if (customStartDate && customEndDate) {
+      setActiveFilters({
+        startDate: customStartDate,
+        endDate: customEndDate
+      });
+    }
+  };
 
   const loadAllReports = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [dashboardData, productsData, stockData, clientsData] = await Promise.all([
-        reportsService.getDashboardSummary(schoolId),
-        reportsService.getTopProducts(schoolId, 5),
+      const [dashboardData, summaryData, productsData, stockData, clientsData] = await Promise.all([
+        reportsService.getDashboardSummary(schoolId, activeFilters),
+        reportsService.getSalesSummary(schoolId, activeFilters),
+        reportsService.getTopProducts(schoolId, 5, activeFilters),
         reportsService.getLowStock(schoolId, 10),
-        reportsService.getTopClients(schoolId, 5),
+        reportsService.getTopClients(schoolId, 5, activeFilters),
       ]);
 
       setDashboard(dashboardData);
+      setSalesSummary(summaryData);
       setTopProducts(productsData);
       setLowStock(stockData);
       setTopClients(clientsData);
@@ -53,6 +134,21 @@ export default function Reports() {
 
   const formatCurrency = (amount: number) => {
     return `$${Number(amount).toLocaleString()}`;
+  };
+
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const getDateRangeLabel = (): string => {
+    if (datePreset === 'all') return 'Todo el tiempo';
+    if (!activeFilters.startDate || !activeFilters.endDate) return '';
+    if (activeFilters.startDate === activeFilters.endDate) {
+      return formatDateDisplay(activeFilters.startDate);
+    }
+    return `${formatDateDisplay(activeFilters.startDate)} - ${formatDateDisplay(activeFilters.endDate)}`;
   };
 
   if (loading) {
@@ -91,7 +187,7 @@ export default function Reports() {
   return (
     <Layout>
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center">
             <BarChart3 className="w-8 h-8 mr-3 text-blue-600" />
@@ -101,12 +197,121 @@ export default function Reports() {
         </div>
         <button
           onClick={loadAllReports}
-          className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center hover:bg-gray-50 transition"
+          className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center hover:bg-gray-50 transition self-start"
         >
           <RefreshCw className="w-5 h-5 mr-2" />
           Actualizar
         </button>
       </div>
+
+      {/* Date Filters */}
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Período:</span>
+          </div>
+
+          {/* Preset Buttons */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: 'today', label: 'Hoy' },
+              { value: 'week', label: 'Semana' },
+              { value: 'month', label: 'Este Mes' },
+              { value: 'year', label: 'Este Año' },
+              { value: 'all', label: 'Todo' },
+              { value: 'custom', label: 'Personalizado' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => handlePresetChange(option.value as DatePreset)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition ${
+                  datePreset === option.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom Date Range */}
+          {datePreset === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2 ml-0 lg:ml-4 pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-gray-200 lg:pl-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+                <span className="text-gray-500">a</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+              <button
+                onClick={handleApplyCustomDates}
+                disabled={!customStartDate || !customEndDate}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Aplicar
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Active Date Range Display */}
+        {getDateRangeLabel() && (
+          <div className="mt-3 text-sm text-gray-600 flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            <span>Mostrando datos de: <strong>{getDateRangeLabel()}</strong></span>
+          </div>
+        )}
+      </div>
+
+      {/* Sales Summary for Period */}
+      {salesSummary && (
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm p-6 mb-6 text-white">
+          <h2 className="text-lg font-semibold mb-4 flex items-center">
+            <TrendingUp className="w-5 h-5 mr-2" />
+            Resumen del Período
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-blue-200 text-sm">Total Ventas</p>
+              <p className="text-3xl font-bold">{salesSummary.total_sales}</p>
+            </div>
+            <div>
+              <p className="text-blue-200 text-sm">Ingresos Totales</p>
+              <p className="text-3xl font-bold">{formatCurrency(salesSummary.total_revenue)}</p>
+            </div>
+            <div>
+              <p className="text-blue-200 text-sm">Ticket Promedio</p>
+              <p className="text-3xl font-bold">{formatCurrency(salesSummary.average_ticket)}</p>
+            </div>
+          </div>
+          {/* Payment Method Breakdown */}
+          {salesSummary.sales_by_payment && Object.keys(salesSummary.sales_by_payment).length > 0 && (
+            <div className="mt-4 pt-4 border-t border-blue-500">
+              <p className="text-blue-200 text-sm mb-2">Por método de pago:</p>
+              <div className="flex flex-wrap gap-4">
+                {Object.entries(salesSummary.sales_by_payment).map(([method, data]) => (
+                  <div key={method} className="bg-blue-500/30 rounded px-3 py-1">
+                    <span className="capitalize">{method === 'cash' ? 'Efectivo' : method === 'card' ? 'Tarjeta' : method === 'transfer' ? 'Transferencia' : method === 'credit' ? 'Crédito' : method}:</span>
+                    <span className="ml-2 font-semibold">{data.count} ({formatCurrency(data.total)})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -192,7 +397,7 @@ export default function Reports() {
               <ShoppingBag className="w-5 h-5 mr-2 text-blue-600" />
               Productos Más Vendidos
             </h2>
-            <p className="text-sm text-gray-500 mt-1">Últimos 30 días</p>
+            <p className="text-sm text-gray-500 mt-1">{getDateRangeLabel() || 'Período seleccionado'}</p>
           </div>
           {topProducts.length > 0 ? (
             <div className="overflow-x-auto">
@@ -241,7 +446,7 @@ export default function Reports() {
             </div>
           ) : (
             <div className="p-6 text-center text-gray-500">
-              No hay datos de ventas disponibles
+              No hay datos de ventas para el período seleccionado
             </div>
           )}
         </div>
@@ -253,7 +458,7 @@ export default function Reports() {
               <Users className="w-5 h-5 mr-2 text-green-600" />
               Mejores Clientes
             </h2>
-            <p className="text-sm text-gray-500 mt-1">Por monto de compras</p>
+            <p className="text-sm text-gray-500 mt-1">{getDateRangeLabel() || 'Período seleccionado'}</p>
           </div>
           {topClients.length > 0 ? (
             <div className="overflow-x-auto">
@@ -302,7 +507,7 @@ export default function Reports() {
             </div>
           ) : (
             <div className="p-6 text-center text-gray-500">
-              No hay datos de clientes disponibles
+              No hay datos de clientes para el período seleccionado
             </div>
           )}
         </div>
