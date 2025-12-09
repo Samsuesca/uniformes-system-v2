@@ -1301,8 +1301,8 @@ export default function Settings() {
                       <div className="flex items-center gap-3">
                         <Building2 className="w-5 h-5 text-gray-400" />
                         <div>
-                          <span className="font-medium text-gray-800">{role.school_name}</span>
-                          <span className="text-xs text-gray-500 ml-2">({role.school_code})</span>
+                          <span className="font-medium text-gray-800">{role.school.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">({role.school.code})</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

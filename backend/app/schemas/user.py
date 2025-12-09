@@ -97,6 +97,19 @@ class UserSchoolRoleResponse(UserSchoolRoleInDB):
     pass
 
 
+class SchoolInfoForRole(BaseSchema):
+    """Minimal school info for user's school roles"""
+    id: UUID
+    code: str
+    name: str
+    is_active: bool
+
+
+class UserSchoolRoleWithSchool(UserSchoolRoleInDB):
+    """UserSchoolRole with nested school information"""
+    school: SchoolInfoForRole
+
+
 # ============================================
 # Authentication Schemas
 # ============================================

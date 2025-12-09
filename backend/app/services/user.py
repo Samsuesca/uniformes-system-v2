@@ -422,21 +422,27 @@ class UserService(BaseService[User]):
         await self.db.flush()
         return result.rowcount > 0
 
-    async def get_user_schools(self, user_id: UUID) -> list[UserSchoolRole]:
+    async def get_user_schools(self, user_id: UUID, include_school: bool = False) -> list[UserSchoolRole]:
         """
         Get all schools where user has access
 
         Args:
             user_id: User UUID
+            include_school: If True, eagerly load school relationship
 
         Returns:
             List of UserSchoolRole
         """
-        result = await self.db.execute(
-            select(UserSchoolRole)
-            .where(UserSchoolRole.user_id == user_id)
-            .order_by(UserSchoolRole.created_at)
-        )
+        from sqlalchemy.orm import joinedload
+
+        query = select(UserSchoolRole).where(UserSchoolRole.user_id == user_id)
+
+        if include_school:
+            query = query.options(joinedload(UserSchoolRole.school))
+
+        query = query.order_by(UserSchoolRole.created_at)
+
+        result = await self.db.execute(query)
         return list(result.scalars().all())
 
     async def get_school_users(self, school_id: UUID) -> list[UserSchoolRole]:

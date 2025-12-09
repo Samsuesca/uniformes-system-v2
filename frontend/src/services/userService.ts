@@ -15,10 +15,17 @@ export interface User {
 }
 
 export interface UserSchoolRole {
+  id: string;
+  user_id: string;
   school_id: string;
-  school_name: string;
-  school_code: string;
   role: 'admin' | 'seller' | 'viewer';
+  created_at: string;
+  school: {
+    id: string;
+    code: string;
+    name: string;
+    is_active: boolean;
+  };
 }
 
 export interface UserWithRoles extends User {

@@ -8,7 +8,8 @@ from app.api.dependencies import DatabaseSession, CurrentUser, CurrentSuperuser
 from app.models.user import UserRole
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse,
-    UserSchoolRoleCreate, UserSchoolRoleUpdate, UserSchoolRoleResponse
+    UserSchoolRoleCreate, UserSchoolRoleUpdate, UserSchoolRoleResponse,
+    UserSchoolRoleWithSchool
 )
 from app.services.user import UserService
 
@@ -248,7 +249,7 @@ async def remove_user_school_role(
 
 @router.get(
     "/{user_id}/schools",
-    response_model=list[UserSchoolRoleResponse]
+    response_model=list[UserSchoolRoleWithSchool]
 )
 async def get_user_schools(
     user_id: UUID,
@@ -256,7 +257,7 @@ async def get_user_schools(
     current_user: CurrentUser
 ):
     """
-    Get all schools where user has access
+    Get all schools where user has access with school details
 
     Users can see their own schools, superusers can see any user's schools
     """
@@ -267,9 +268,9 @@ async def get_user_schools(
         )
 
     user_service = UserService(db)
-    school_roles = await user_service.get_user_schools(user_id)
+    school_roles = await user_service.get_user_schools(user_id, include_school=True)
 
-    return [UserSchoolRoleResponse.model_validate(sr) for sr in school_roles]
+    return [UserSchoolRoleWithSchool.model_validate(sr) for sr in school_roles]
 
 
 @router.get(
