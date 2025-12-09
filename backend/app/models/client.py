@@ -63,7 +63,11 @@ class Client(Base):
 
     # Client type and web authentication fields
     client_type: Mapped[ClientType] = mapped_column(
-        SQLEnum(ClientType, name="client_type_enum"),
+        SQLEnum(
+            ClientType,
+            name="client_type_enum",
+            values_callable=lambda obj: [e.value for e in obj]
+        ),
         default=ClientType.REGULAR,
         nullable=False
     )
