@@ -34,8 +34,7 @@ import type {
   AccountsPayableCreate,
   AccountsPayablePayment,
   AccountsPayableListItem,
-  AccountType,
-  AccPaymentMethod
+  AccountType
 } from '../types/api';
 
 const BASE_URL = '/schools';

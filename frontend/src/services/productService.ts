@@ -1,22 +1,68 @@
 /**
  * Product Service - API calls for products
+ *
+ * Two types of endpoints:
+ * - Multi-school: /products - Lists from ALL schools user has access to
+ * - School-specific: /schools/{school_id}/products - Original endpoints
  */
 import apiClient from '../utils/api-client';
 import type { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../types/api';
 
+export interface ProductFilters {
+  school_id?: string;
+  garment_type_id?: string;
+  search?: string;
+  active_only?: boolean;
+  with_stock?: boolean;
+  skip?: number;
+  limit?: number;
+}
+
 export const productService = {
   /**
-   * Get all products for a school
+   * Get all products from ALL schools user has access to (multi-school)
    */
-  async getProducts(schoolId: string, withInventory: boolean = true, limit: number = 500): Promise<Product[]> {
-    const response = await apiClient.get<Product[]>(`/schools/${schoolId}/products`, {
-      params: { with_inventory: withInventory, limit }
-    });
+  async getAllProducts(filters?: ProductFilters): Promise<Product[]> {
+    const params = new URLSearchParams();
+    if (filters?.school_id) params.append('school_id', filters.school_id);
+    if (filters?.garment_type_id) params.append('garment_type_id', filters.garment_type_id);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.active_only !== undefined) params.append('active_only', String(filters.active_only));
+    if (filters?.with_stock !== undefined) params.append('with_stock', String(filters.with_stock));
+    if (filters?.skip) params.append('skip', String(filters.skip));
+    if (filters?.limit) params.append('limit', String(filters.limit));
+
+    const queryString = params.toString();
+    const url = queryString ? `/products?${queryString}` : '/products';
+    const response = await apiClient.get<Product[]>(url);
     return response.data;
   },
 
   /**
-   * Get a single product by ID
+   * Get all products for a school (backwards compatible)
+   * Uses multi-school endpoint with school filter
+   */
+  async getProducts(schoolId?: string, withInventory: boolean = true, limit: number = 500): Promise<Product[]> {
+    if (schoolId) {
+      return this.getAllProducts({
+        school_id: schoolId,
+        with_stock: withInventory,
+        limit
+      });
+    }
+    return this.getAllProducts({ with_stock: withInventory, limit });
+  },
+
+  /**
+   * Get a single product by ID (from any accessible school)
+   */
+  async getProductById(productId: string): Promise<Product> {
+    const response = await apiClient.get<Product>(`/products/${productId}`);
+    return response.data;
+  },
+
+  /**
+   * Get a single product by ID (school-specific)
    */
   async getProduct(schoolId: string, productId: string): Promise<Product> {
     const response = await apiClient.get<Product>(`/schools/${schoolId}/products/${productId}`);
@@ -24,7 +70,7 @@ export const productService = {
   },
 
   /**
-   * Create a new product
+   * Create a new product (school-specific)
    */
   async createProduct(schoolId: string, data: Partial<Product>): Promise<Product> {
     const response = await apiClient.post<Product>(`/schools/${schoolId}/products`, data);
@@ -32,7 +78,7 @@ export const productService = {
   },
 
   /**
-   * Update a product
+   * Update a product (school-specific)
    */
   async updateProduct(schoolId: string, productId: string, data: Partial<Product>): Promise<Product> {
     const response = await apiClient.put<Product>(`/schools/${schoolId}/products/${productId}`, data);
@@ -47,15 +93,31 @@ export const productService = {
   },
 
   /**
-   * Get all garment types for a school
+   * Get all garment types from ALL schools (multi-school)
    */
-  async getGarmentTypes(schoolId: string): Promise<GarmentType[]> {
-    const response = await apiClient.get<GarmentType[]>(`/schools/${schoolId}/garment-types`);
+  async getAllGarmentTypes(filters?: { school_id?: string; active_only?: boolean }): Promise<GarmentType[]> {
+    const params = new URLSearchParams();
+    if (filters?.school_id) params.append('school_id', filters.school_id);
+    if (filters?.active_only !== undefined) params.append('active_only', String(filters.active_only));
+
+    const queryString = params.toString();
+    const url = queryString ? `/garment-types?${queryString}` : '/garment-types';
+    const response = await apiClient.get<GarmentType[]>(url);
     return response.data;
   },
 
   /**
-   * Create a new garment type
+   * Get all garment types for a school (backwards compatible)
+   */
+  async getGarmentTypes(schoolId?: string): Promise<GarmentType[]> {
+    if (schoolId) {
+      return this.getAllGarmentTypes({ school_id: schoolId });
+    }
+    return this.getAllGarmentTypes();
+  },
+
+  /**
+   * Create a new garment type (school-specific)
    */
   async createGarmentType(schoolId: string, data: Partial<GarmentType>): Promise<GarmentType> {
     const response = await apiClient.post<GarmentType>(`/schools/${schoolId}/garment-types`, data);

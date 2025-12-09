@@ -107,15 +107,20 @@ class ProductWithInventory(ProductResponse):
 
 
 class ProductListResponse(BaseSchema):
-    """Simplified product response for listings"""
+    """Simplified product response for multi-school listings"""
     id: UUID
     code: str
     name: str | None
     size: str
     color: str | None
+    gender: str | None
     price: Decimal
-    inventory_quantity: int = 0
     is_active: bool
+    garment_type_id: UUID
+    garment_type_name: str | None = None
+    school_id: UUID
+    school_name: str | None = None
+    stock: int | None = None  # Only populated when with_stock=True
 
 
 # ============================================

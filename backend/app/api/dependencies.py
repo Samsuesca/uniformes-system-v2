@@ -282,6 +282,37 @@ CurrentSuperuser = Annotated[User, Depends(get_current_superuser)]
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 
 
+async def get_user_school_ids(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)]
+) -> list[UUID]:
+    """
+    Get all school IDs the user has access to.
+
+    For superusers, returns all schools in the system.
+    For regular users, returns schools where they have a role.
+
+    Returns:
+        List of school UUIDs the user can access
+    """
+    from app.services.user import UserService
+    from app.models.school import School
+    from sqlalchemy import select
+
+    if current_user.is_superuser:
+        # Superusers can access all schools
+        result = await db.execute(select(School.id))
+        return list(result.scalars().all())
+
+    user_service = UserService(db)
+    user_roles = await user_service.get_user_schools(current_user.id)
+    return [r.school_id for r in user_roles]
+
+
+# Type alias for user's school IDs
+UserSchoolIds = Annotated[list[UUID], Depends(get_user_school_ids)]
+
+
 async def require_superuser(
     current_user: Annotated[User, Depends(get_current_user)]
 ) -> User:

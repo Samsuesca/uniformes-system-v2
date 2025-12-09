@@ -1,5 +1,9 @@
 /**
  * Sale Service - API calls for sales
+ *
+ * Two types of endpoints:
+ * - Multi-school: /sales - Lists from ALL schools user has access to
+ * - School-specific: /schools/{school_id}/sales - Original endpoints
  */
 import apiClient from '../utils/api-client';
 import type { Sale, SaleWithItems, SaleListItem } from '../types/api';
@@ -13,23 +17,62 @@ export interface SaleItemCreate {
 
 export interface SaleCreate {
   school_id: string;
-  client_id: string;
+  client_id?: string | null;
   items: SaleItemCreate[];
   payment_method: 'cash' | 'credit' | 'transfer' | 'card';
   notes?: string;
+  source?: 'desktop_app' | 'web_portal' | 'api';
+}
+
+export interface SaleFilters {
+  school_id?: string;
+  status?: string;
+  source?: 'desktop_app' | 'web_portal' | 'api';
+  search?: string;
+  skip?: number;
+  limit?: number;
 }
 
 export const saleService = {
   /**
-   * Get all sales for a school (returns list items with summary info)
+   * Get all sales from ALL schools user has access to (multi-school)
    */
-  async getSales(schoolId: string): Promise<SaleListItem[]> {
-    const response = await apiClient.get<SaleListItem[]>(`/schools/${schoolId}/sales`);
+  async getAllSales(filters?: SaleFilters): Promise<SaleListItem[]> {
+    const params = new URLSearchParams();
+    if (filters?.school_id) params.append('school_id', filters.school_id);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.source) params.append('source', filters.source);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.skip) params.append('skip', String(filters.skip));
+    if (filters?.limit) params.append('limit', String(filters.limit));
+
+    const queryString = params.toString();
+    const url = queryString ? `/sales?${queryString}` : '/sales';
+    const response = await apiClient.get<SaleListItem[]>(url);
     return response.data;
   },
 
   /**
-   * Get a single sale by ID
+   * Get all sales for a specific school (backwards compatible)
+   * Uses multi-school endpoint with school filter
+   */
+  async getSales(schoolId?: string): Promise<SaleListItem[]> {
+    if (schoolId) {
+      return this.getAllSales({ school_id: schoolId });
+    }
+    return this.getAllSales();
+  },
+
+  /**
+   * Get a single sale by ID (from any accessible school)
+   */
+  async getSaleById(saleId: string): Promise<Sale> {
+    const response = await apiClient.get<Sale>(`/sales/${saleId}`);
+    return response.data;
+  },
+
+  /**
+   * Get a single sale by ID (school-specific)
    */
   async getSale(schoolId: string, saleId: string): Promise<Sale> {
     const response = await apiClient.get<Sale>(`/schools/${schoolId}/sales/${saleId}`);
@@ -37,7 +80,7 @@ export const saleService = {
   },
 
   /**
-   * Get a sale with its items
+   * Get a sale with its items (school-specific)
    */
   async getSaleWithItems(schoolId: string, saleId: string): Promise<SaleWithItems> {
     const response = await apiClient.get<SaleWithItems>(`/schools/${schoolId}/sales/${saleId}/items`);
@@ -45,7 +88,7 @@ export const saleService = {
   },
 
   /**
-   * Create a new sale
+   * Create a new sale (school-specific)
    */
   async createSale(schoolId: string, data: SaleCreate): Promise<Sale> {
     const response = await apiClient.post<Sale>(`/schools/${schoolId}/sales`, data);

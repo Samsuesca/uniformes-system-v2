@@ -12,9 +12,7 @@ import {
   accountingService,
   getExpenseCategoryLabel,
   getExpenseCategoryColor,
-  getPaymentMethodLabel,
-  getAccountTypeLabel,
-  getAccountTypeColor
+  getPaymentMethodLabel
 } from '../services/accountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
@@ -38,12 +36,6 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 ];
 
 const PAYMENT_METHODS: AccPaymentMethod[] = ['cash', 'transfer', 'card', 'credit', 'other'];
-
-const ACCOUNT_TYPES: AccountType[] = [
-  'asset_current', 'asset_fixed', 'asset_other',
-  'liability_current', 'liability_long', 'liability_other',
-  'equity_capital', 'equity_retained', 'equity_other'
-];
 
 export default function Accounting() {
   const { currentSchool } = useSchoolStore();

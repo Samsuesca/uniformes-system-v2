@@ -1,12 +1,20 @@
 """
 Orders (Encargos) Endpoints
+
+Two types of endpoints:
+1. Multi-school: /orders - Lists data from ALL schools user has access to
+2. School-specific: /schools/{school_id}/orders - Original endpoints for specific school
 """
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Query, Depends
+from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload, joinedload
 
-from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access
+from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole
-from app.models.order import OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus
+from app.models.client import Client
+from app.models.school import School
 from app.schemas.order import (
     OrderCreate, OrderUpdate, OrderPayment, OrderResponse, OrderListResponse,
     OrderWithItems, OrderItemResponse
@@ -14,10 +22,134 @@ from app.schemas.order import (
 from app.services.order import OrderService
 
 
-router = APIRouter(prefix="/schools/{school_id}/orders", tags=["Orders"])
+# =============================================================================
+# Multi-School Orders Router (lists from ALL user's schools)
+# =============================================================================
+router = APIRouter(tags=["Orders"])
 
 
-@router.post(
+@router.get(
+    "/orders",
+    response_model=list[OrderListResponse],
+    summary="List orders from all schools"
+)
+async def list_all_orders(
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    school_id: UUID | None = Query(None, description="Filter by specific school"),
+    status_filter: OrderStatus | None = Query(None, alias="status", description="Filter by status"),
+    search: str | None = Query(None, description="Search by code or client name")
+):
+    """
+    List orders (encargos) from ALL schools the user has access to.
+
+    Supports filtering by:
+    - school_id: Specific school (optional)
+    - status: Order status (pending, in_production, ready, delivered, cancelled)
+    - search: Search in order code or client name
+    """
+    if not user_school_ids:
+        return []
+
+    # Build query
+    query = (
+        select(Order)
+        .options(
+            selectinload(Order.items),
+            joinedload(Order.client),
+            joinedload(Order.school)
+        )
+        .where(Order.school_id.in_(user_school_ids))
+        .order_by(Order.created_at.desc())
+    )
+
+    # Apply filters
+    if school_id:
+        if school_id not in user_school_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No access to this school"
+            )
+        query = query.where(Order.school_id == school_id)
+
+    if status_filter:
+        query = query.where(Order.status == status_filter)
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Order.code.ilike(search_term),
+                Order.client.has(Client.name.ilike(search_term))
+            )
+        )
+
+    # Pagination
+    query = query.offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    orders = result.unique().scalars().all()
+
+    return [
+        OrderListResponse(
+            id=order.id,
+            code=order.code,
+            status=order.status,
+            client_name=order.client.name if order.client else None,
+            student_name=order.client.student_name if order.client else None,
+            delivery_date=order.delivery_date,
+            total=order.total,
+            balance=order.balance,
+            created_at=order.created_at,
+            items_count=len(order.items) if order.items else 0,
+            school_id=order.school_id,
+            school_name=order.school.name if order.school else None
+        )
+        for order in orders
+    ]
+
+
+@router.get(
+    "/orders/{order_id}",
+    response_model=OrderResponse,
+    summary="Get order by ID (from any accessible school)"
+)
+async def get_order_global(
+    order_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds
+):
+    """Get a specific order by ID from any school the user has access to."""
+    result = await db.execute(
+        select(Order)
+        .options(selectinload(Order.items))
+        .where(
+            Order.id == order_id,
+            Order.school_id.in_(user_school_ids)
+        )
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Encargo no encontrado"
+        )
+
+    return OrderResponse.model_validate(order)
+
+
+# =============================================================================
+# School-Specific Orders Router (original endpoints)
+# =============================================================================
+school_router = APIRouter(prefix="/schools/{school_id}/orders", tags=["Orders"])
+
+
+@school_router.post(
     "",
     response_model=OrderResponse,
     status_code=status.HTTP_201_CREATED,
@@ -57,19 +189,19 @@ async def create_order(
         )
 
 
-@router.get(
+@school_router.get(
     "",
     response_model=list[OrderListResponse],
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
-async def list_orders(
+async def list_orders_for_school(
     school_id: UUID,
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     status_filter: OrderStatus | None = Query(None, description="Filter by status")
 ):
-    """List orders for school"""
+    """List orders for a specific school"""
     order_service = OrderService(db)
 
     filters = {}
@@ -101,17 +233,17 @@ async def list_orders(
     ]
 
 
-@router.get(
+@school_router.get(
     "/{order_id}",
     response_model=OrderWithItems,
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
-async def get_order(
+async def get_order_for_school(
     school_id: UUID,
     order_id: UUID,
     db: DatabaseSession
 ):
-    """Get order with items and client info"""
+    """Get order with items and client info for a specific school"""
     order_service = OrderService(db)
     order = await order_service.get_order_with_items(order_id, school_id)
 
@@ -167,7 +299,7 @@ async def get_order(
     )
 
 
-@router.post(
+@school_router.post(
     "/{order_id}/payments",
     response_model=OrderResponse,
     dependencies=[Depends(require_school_access(UserRole.SELLER))]
@@ -201,7 +333,7 @@ async def add_order_payment(
         )
 
 
-@router.patch(
+@school_router.patch(
     "/{order_id}/status",
     response_model=OrderResponse,
     dependencies=[Depends(require_school_access(UserRole.SELLER))]

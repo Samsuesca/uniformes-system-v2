@@ -158,14 +158,14 @@ class OrderWithItems(OrderResponse):
 
 
 class OrderListResponse(BaseSchema):
-    """Simplified order response for listings"""
+    """Simplified order response for listings (multi-school support)"""
     id: UUID
     code: str
     status: OrderStatus
-    source: SaleSource
-    client_name: str
-    student_name: str | None
-    delivery_date: date | None
+    source: SaleSource | None = None
+    client_name: str | None = None
+    student_name: str | None = None
+    delivery_date: date | None = None
     total: Decimal
     balance: Decimal
     created_at: datetime
@@ -173,6 +173,9 @@ class OrderListResponse(BaseSchema):
     # Track who created the order
     user_id: UUID | None = None
     user_name: str | None = None
+    # Multi-school support
+    school_id: UUID | None = None
+    school_name: str | None = None
 
 
 # ============================================

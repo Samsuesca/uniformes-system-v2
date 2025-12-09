@@ -105,22 +105,25 @@ class SaleWithItems(SaleResponse):
 
 
 class SaleListResponse(BaseSchema):
-    """Simplified sale response for listings"""
+    """Simplified sale response for listings (multi-school support)"""
     id: UUID
     code: str
     status: SaleStatus
-    source: SaleSource
-    payment_method: PaymentMethod | None
+    source: SaleSource | None = None
+    payment_method: PaymentMethod | None = None
     total: Decimal
     paid_amount: Decimal
-    client_id: UUID | None
-    client_name: str | None
+    client_id: UUID | None = None
+    client_name: str | None = None
     sale_date: datetime
     created_at: datetime
     items_count: int = 0
     # Track who made the sale
     user_id: UUID | None = None
     user_name: str | None = None
+    # Multi-school support
+    school_id: UUID | None = None
+    school_name: str | None = None
 
 
 # ============================================

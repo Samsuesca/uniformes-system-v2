@@ -1,26 +1,221 @@
 """
 Product and GarmentType Endpoints
+
+Two types of endpoints:
+1. Multi-school: /products - Lists data from ALL schools user has access to
+2. School-specific: /schools/{school_id}/products - Original endpoints for specific school
 """
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Query, Depends
+from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload, joinedload
 
-from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access
+from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole
+from app.models.product import Product, GarmentType, Inventory
+from app.models.school import School
 from app.schemas.product import (
     GarmentTypeCreate, GarmentTypeUpdate, GarmentTypeResponse,
-    ProductCreate, ProductUpdate, ProductResponse, ProductWithInventory
+    ProductCreate, ProductUpdate, ProductResponse, ProductWithInventory,
+    ProductListResponse
 )
 from app.services.product import GarmentTypeService, ProductService
 
 
-router = APIRouter(prefix="/schools/{school_id}", tags=["Products"])
+# =============================================================================
+# Multi-School Products Router (lists from ALL user's schools)
+# =============================================================================
+router = APIRouter(tags=["Products"])
+
+
+@router.get(
+    "/products",
+    response_model=list[ProductListResponse],
+    summary="List products from all schools"
+)
+async def list_all_products(
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    school_id: UUID | None = Query(None, description="Filter by specific school"),
+    garment_type_id: UUID | None = Query(None, description="Filter by garment type"),
+    search: str | None = Query(None, description="Search by code or name"),
+    active_only: bool = Query(True, description="Only active products"),
+    with_stock: bool = Query(False, description="Include stock quantity")
+):
+    """
+    List products from ALL schools the user has access to.
+
+    Supports filtering by:
+    - school_id: Specific school (optional)
+    - garment_type_id: Specific garment type (optional)
+    - search: Search in product code or name
+    - active_only: Filter only active products
+    - with_stock: Include current stock quantity
+    """
+    if not user_school_ids:
+        return []
+
+    # Build query
+    query = (
+        select(Product)
+        .options(
+            joinedload(Product.garment_type),
+            joinedload(Product.school)
+        )
+        .where(Product.school_id.in_(user_school_ids))
+        .order_by(Product.name)
+    )
+
+    # Apply filters
+    if school_id:
+        if school_id not in user_school_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No access to this school"
+            )
+        query = query.where(Product.school_id == school_id)
+
+    if garment_type_id:
+        query = query.where(Product.garment_type_id == garment_type_id)
+
+    if active_only:
+        query = query.where(Product.is_active == True)
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Product.code.ilike(search_term),
+                Product.name.ilike(search_term)
+            )
+        )
+
+    # Pagination
+    query = query.offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    products = result.unique().scalars().all()
+
+    # If with_stock, get inventory data
+    stock_map = {}
+    if with_stock and products:
+        product_ids = [p.id for p in products]
+        inv_result = await db.execute(
+            select(Inventory).where(Inventory.product_id.in_(product_ids))
+        )
+        for inv in inv_result.scalars().all():
+            stock_map[inv.product_id] = inv.quantity
+
+    return [
+        ProductListResponse(
+            id=product.id,
+            code=product.code,
+            name=product.name,
+            size=product.size,
+            color=product.color,
+            gender=product.gender,
+            price=product.price,
+            is_active=product.is_active,
+            garment_type_id=product.garment_type_id,
+            garment_type_name=product.garment_type.name if product.garment_type else None,
+            school_id=product.school_id,
+            school_name=product.school.name if product.school else None,
+            stock=stock_map.get(product.id, 0) if with_stock else None
+        )
+        for product in products
+    ]
+
+
+@router.get(
+    "/products/{product_id}",
+    response_model=ProductResponse,
+    summary="Get product by ID (from any accessible school)"
+)
+async def get_product_global(
+    product_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds
+):
+    """Get a specific product by ID from any school the user has access to."""
+    result = await db.execute(
+        select(Product)
+        .options(joinedload(Product.garment_type))
+        .where(
+            Product.id == product_id,
+            Product.school_id.in_(user_school_ids)
+        )
+    )
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto no encontrado"
+        )
+
+    return ProductResponse.model_validate(product)
+
+
+@router.get(
+    "/garment-types",
+    response_model=list[GarmentTypeResponse],
+    summary="List garment types from all schools"
+)
+async def list_all_garment_types(
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    school_id: UUID | None = Query(None, description="Filter by specific school"),
+    active_only: bool = Query(True, description="Only active garment types")
+):
+    """
+    List garment types from ALL schools the user has access to.
+    """
+    if not user_school_ids:
+        return []
+
+    query = (
+        select(GarmentType)
+        .where(GarmentType.school_id.in_(user_school_ids))
+        .order_by(GarmentType.name)
+    )
+
+    if school_id:
+        if school_id not in user_school_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No access to this school"
+            )
+        query = query.where(GarmentType.school_id == school_id)
+
+    if active_only:
+        query = query.where(GarmentType.is_active == True)
+
+    query = query.offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    garment_types = result.scalars().all()
+
+    return [GarmentTypeResponse.model_validate(g) for g in garment_types]
+
+
+# =============================================================================
+# School-Specific Products Router (original endpoints)
+# =============================================================================
+school_router = APIRouter(prefix="/schools/{school_id}", tags=["Products"])
 
 
 # ==========================================
 # Garment Types
 # ==========================================
 
-@router.post(
+@school_router.post(
     "/garment-types",
     response_model=GarmentTypeResponse,
     status_code=status.HTTP_201_CREATED,
@@ -50,19 +245,19 @@ async def create_garment_type(
         )
 
 
-@router.get(
+@school_router.get(
     "/garment-types",
     response_model=list[GarmentTypeResponse],
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
-async def list_garment_types(
+async def list_garment_types_for_school(
     school_id: UUID,
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     active_only: bool = Query(True)
 ):
-    """List garment types for school"""
+    """List garment types for a specific school"""
     garment_service = GarmentTypeService(db)
 
     if active_only:
@@ -81,7 +276,7 @@ async def list_garment_types(
 # Products
 # ==========================================
 
-@router.post(
+@school_router.post(
     "/products",
     response_model=ProductResponse,
     status_code=status.HTTP_201_CREATED,
@@ -111,12 +306,12 @@ async def create_product(
         )
 
 
-@router.get(
+@school_router.get(
     "/products",
     response_model=list[ProductWithInventory],  # Changed to support inventory fields
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
-async def list_products(
+async def list_products_for_school(
     school_id: UUID,
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
@@ -145,17 +340,17 @@ async def list_products(
         return [ProductResponse.model_validate(p) for p in products]
 
 
-@router.get(
+@school_router.get(
     "/products/{product_id}",
     response_model=ProductResponse,
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
 )
-async def get_product(
+async def get_product_for_school(
     school_id: UUID,
     product_id: UUID,
     db: DatabaseSession
 ):
-    """Get product by ID"""
+    """Get product by ID for a specific school"""
     product_service = ProductService(db)
     product = await product_service.get(product_id, school_id)
 
@@ -168,7 +363,7 @@ async def get_product(
     return ProductResponse.model_validate(product)
 
 
-@router.put(
+@school_router.put(
     "/products/{product_id}",
     response_model=ProductResponse,
     dependencies=[Depends(require_school_access(UserRole.ADMIN))]
@@ -195,7 +390,7 @@ async def update_product(
     return ProductResponse.model_validate(product)
 
 
-@router.get(
+@school_router.get(
     "/products/search/by-term",
     response_model=list[ProductResponse],
     dependencies=[Depends(require_school_access(UserRole.VIEWER))]
