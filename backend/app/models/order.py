@@ -70,12 +70,12 @@ class Order(Base):
     )
 
     status: Mapped[OrderStatus] = mapped_column(
-        SQLEnum(OrderStatus, name="order_status_enum", values_callable=lambda x: [e.value for e in x]),
+        SQLEnum(OrderStatus, name="order_status_enum"),
         default=OrderStatus.PENDING,
         nullable=False
     )
 
-    # Source/origin of the order (who/where created it)
+    # Source/origin of the order (who/where created it) - uses values (lowercase in DB)
     source: Mapped[SaleSource] = mapped_column(
         SQLEnum(SaleSource, name="sale_source_enum", create_type=False, values_callable=lambda x: [e.value for e in x]),
         default=SaleSource.DESKTOP_APP,
