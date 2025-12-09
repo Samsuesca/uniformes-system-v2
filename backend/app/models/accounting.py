@@ -356,7 +356,7 @@ class BalanceAccount(Base):
     """
     __tablename__ = "balance_accounts"
     __table_args__ = (
-        CheckConstraint('balance >= 0 OR account_type LIKE \'liability%\' OR account_type LIKE \'equity%\'',
+        CheckConstraint("balance >= 0 OR account_type::text LIKE 'LIABILITY%' OR account_type::text LIKE 'EQUITY%'",
                         name='chk_balance_account_sign'),
     )
 

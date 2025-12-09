@@ -60,7 +60,7 @@ def upgrade() -> None:
     sa.Column('created_by', sa.UUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
-    sa.CheckConstraint("balance >= 0 OR account_type LIKE 'liability%' OR account_type LIKE 'equity%'", name='chk_balance_account_sign'),
+    sa.CheckConstraint("balance >= 0 OR account_type::text LIKE 'LIABILITY%' OR account_type::text LIKE 'EQUITY%'", name='chk_balance_account_sign'),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['school_id'], ['schools.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
