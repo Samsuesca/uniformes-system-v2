@@ -92,6 +92,7 @@ export interface SchoolSummary {
   total_products: number;
   total_clients: number;
   total_sales: number;
+  total_orders?: number;
   is_active: boolean;
 }
 

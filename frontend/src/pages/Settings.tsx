@@ -1,20 +1,21 @@
 /**
  * Settings Page - Application and school settings
+ * Full admin panel for superusers
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import {
   Settings as SettingsIcon, School, User, Bell, Lock, Server,
   CheckCircle, XCircle, X, Plus, Edit2, Trash2, Users,
-  Building2, Loader2, AlertCircle, Eye, EyeOff, Save
+  Building2, Loader2, AlertCircle, Eye, EyeOff, Save, Shield
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { ENVIRONMENTS, ENVIRONMENT_LABELS, ENVIRONMENT_DESCRIPTIONS, type EnvironmentKey } from '../config/environments';
-import { userService, type User as UserType, type UserCreate } from '../services/userService';
+import { userService, type User as UserType, type UserCreate, type UserUpdate, type UserSchoolRole } from '../services/userService';
 import { schoolService, type School as SchoolType, type SchoolCreate, type SchoolUpdate } from '../services/schoolService';
 
-type ModalType = 'editProfile' | 'changePassword' | 'manageSchools' | 'manageUsers' | 'createSchool' | 'editSchool' | 'createUser' | null;
+type ModalType = 'editProfile' | 'changePassword' | 'manageSchools' | 'manageUsers' | 'createSchool' | 'editSchool' | 'createUser' | 'editUser' | 'manageUserRoles' | null;
 
 export default function Settings() {
   const { user, updateUser } = useAuthStore();
@@ -63,6 +64,7 @@ export default function Settings() {
   // Users management state
   const [users, setUsers] = useState<UserType[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [userForm, setUserForm] = useState<UserCreate>({
     username: '',
     email: '',
@@ -70,8 +72,21 @@ export default function Settings() {
     full_name: '',
     is_superuser: false
   });
+  const [editUserForm, setEditUserForm] = useState<UserUpdate>({
+    email: '',
+    full_name: '',
+    is_active: true
+  });
   const [userSaving, setUserSaving] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
+
+  // User roles management state
+  const [userRoles, setUserRoles] = useState<UserSchoolRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [selectedRoleSchool, setSelectedRoleSchool] = useState('');
+  const [selectedRoleType, setSelectedRoleType] = useState<'admin' | 'seller' | 'viewer'>('seller');
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
 
   // Update profile form when user changes
   useEffect(() => {
@@ -85,22 +100,29 @@ export default function Settings() {
 
   // Load schools when modal opens
   useEffect(() => {
-    if (activeModal === 'manageSchools' || activeModal === 'createSchool' || activeModal === 'editSchool') {
+    if (activeModal === 'manageSchools' || activeModal === 'createSchool' || activeModal === 'editSchool' || activeModal === 'manageUserRoles') {
       loadSchools();
     }
   }, [activeModal]);
 
   // Load users when modal opens
   useEffect(() => {
-    if (activeModal === 'manageUsers' || activeModal === 'createUser') {
+    if (activeModal === 'manageUsers' || activeModal === 'createUser' || activeModal === 'editUser') {
       loadUsers();
     }
   }, [activeModal]);
 
+  // Load user roles when managing roles
+  useEffect(() => {
+    if (activeModal === 'manageUserRoles' && selectedUser) {
+      loadUserRoles(selectedUser.id);
+    }
+  }, [activeModal, selectedUser]);
+
   const loadSchools = async () => {
     setSchoolsLoading(true);
     try {
-      const data = await schoolService.getSchools(false); // Include inactive
+      const data = await schoolService.getSchools(false);
       setSchools(data);
     } catch (err: any) {
       console.error('Error loading schools:', err);
@@ -118,6 +140,18 @@ export default function Settings() {
       console.error('Error loading users:', err);
     } finally {
       setUsersLoading(false);
+    }
+  };
+
+  const loadUserRoles = async (userId: string) => {
+    setRolesLoading(true);
+    try {
+      const roles = await userService.getUserSchools(userId);
+      setUserRoles(roles);
+    } catch (err: any) {
+      console.error('Error loading user roles:', err);
+    } finally {
+      setRolesLoading(false);
     }
   };
 
@@ -258,6 +292,33 @@ export default function Settings() {
     }
   };
 
+  const handleOpenEditUser = (u: UserType) => {
+    setSelectedUser(u);
+    setEditUserForm({
+      email: u.email,
+      full_name: u.full_name || '',
+      is_active: u.is_active
+    });
+    setActiveModal('editUser');
+  };
+
+  const handleUpdateUser = async () => {
+    if (!selectedUser) return;
+    setUserSaving(true);
+    setUserError(null);
+
+    try {
+      await userService.updateUser(selectedUser.id, editUserForm);
+      await loadUsers();
+      setActiveModal('manageUsers');
+      setSelectedUser(null);
+    } catch (err: any) {
+      setUserError(err.response?.data?.detail || 'Error al actualizar usuario');
+    } finally {
+      setUserSaving(false);
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
 
@@ -270,19 +331,77 @@ export default function Settings() {
     }
   };
 
+  // User roles handlers
+  const handleOpenManageRoles = (u: UserType) => {
+    setSelectedUser(u);
+    setRoleError(null);
+    setActiveModal('manageUserRoles');
+  };
+
+  const handleAddRole = async () => {
+    if (!selectedUser || !selectedRoleSchool) return;
+    setRoleSaving(true);
+    setRoleError(null);
+
+    try {
+      await userService.addUserSchoolRole(selectedUser.id, selectedRoleSchool, selectedRoleType);
+      await loadUserRoles(selectedUser.id);
+      setSelectedRoleSchool('');
+    } catch (err: any) {
+      setRoleError(err.response?.data?.detail || 'Error al asignar rol');
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
+  const handleRemoveRole = async (schoolId: string) => {
+    if (!selectedUser) return;
+    if (!confirm('¿Estás seguro de quitar el acceso a este colegio?')) return;
+
+    try {
+      await userService.removeUserSchoolRole(selectedUser.id, schoolId);
+      await loadUserRoles(selectedUser.id);
+    } catch (err: any) {
+      console.error('Error removing role:', err);
+      alert(err.response?.data?.detail || 'Error al quitar rol');
+    }
+  };
+
+  const handleUpdateRole = async (schoolId: string, newRole: 'admin' | 'seller' | 'viewer') => {
+    if (!selectedUser) return;
+    setRoleSaving(true);
+
+    try {
+      await userService.updateUserSchoolRole(selectedUser.id, schoolId, newRole);
+      await loadUserRoles(selectedUser.id);
+    } catch (err: any) {
+      console.error('Error updating role:', err);
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
   const closeModal = () => {
     setActiveModal(null);
     setProfileError(null);
     setPasswordError(null);
     setSchoolError(null);
     setUserError(null);
+    setRoleError(null);
     setProfileSuccess(false);
     setPasswordSuccess(false);
     setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
     setSchoolForm({ code: '', name: '', email: '', phone: '', address: '' });
     setUserForm({ username: '', email: '', password: '', full_name: '', is_superuser: false });
     setSelectedSchool(null);
+    setSelectedUser(null);
+    setUserRoles([]);
   };
+
+  // Get schools that user doesn't have access to yet
+  const availableSchoolsForRole = schools.filter(
+    s => s.is_active && !userRoles.find(r => r.school_id === s.id)
+  );
 
   return (
     <Layout>
@@ -315,15 +434,12 @@ export default function Settings() {
 
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            Selecciona el servidor al que deseas conectarte. Esto te permite trabajar en modo local,
-            conectarte a un servidor en tu red local, o usar el servidor en la nube.
+            Selecciona el servidor al que deseas conectarte.
           </p>
 
           {/* Environment Selector */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Entorno
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Entorno</label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {(Object.keys(ENVIRONMENTS) as EnvironmentKey[]).map((env) => (
                 <button
@@ -339,15 +455,9 @@ export default function Settings() {
                       : 'border-gray-200 hover:border-purple-300'
                   }`}
                 >
-                  <div className="font-semibold text-gray-800 mb-1">
-                    {ENVIRONMENT_LABELS[env]}
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {ENVIRONMENT_DESCRIPTIONS[env]}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-2 font-mono break-all">
-                    {ENVIRONMENTS[env]}
-                  </div>
+                  <div className="font-semibold text-gray-800 mb-1">{ENVIRONMENT_LABELS[env]}</div>
+                  <div className="text-xs text-gray-600">{ENVIRONMENT_DESCRIPTIONS[env]}</div>
+                  <div className="text-xs text-gray-500 mt-2 font-mono break-all">{ENVIRONMENTS[env]}</div>
                 </button>
               ))}
             </div>
@@ -355,9 +465,7 @@ export default function Settings() {
 
           {/* Custom URL */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              URL Personalizada
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">URL Personalizada</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -373,9 +481,6 @@ export default function Settings() {
                 Aplicar
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Ingresa la dirección IP y puerto de tu servidor personalizado
-            </p>
           </div>
 
           {/* Current URL Display */}
@@ -434,9 +539,7 @@ export default function Settings() {
             <h2 className="text-lg font-semibold text-gray-800">Seguridad</h2>
           </div>
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Cambia tu contraseña para mantener tu cuenta segura.
-            </p>
+            <p className="text-sm text-gray-600">Cambia tu contraseña para mantener tu cuenta segura.</p>
             <button
               onClick={() => setActiveModal('changePassword')}
               className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition flex items-center"
@@ -455,9 +558,7 @@ export default function Settings() {
               <h2 className="text-lg font-semibold text-gray-800">Colegios</h2>
             </div>
             <div className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Gestiona los colegios registrados en el sistema.
-              </p>
+              <p className="text-sm text-gray-600">Gestiona los colegios registrados en el sistema.</p>
               <button
                 onClick={() => setActiveModal('manageSchools')}
                 className="mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center"
@@ -477,9 +578,7 @@ export default function Settings() {
               <h2 className="text-lg font-semibold text-gray-800">Usuarios</h2>
             </div>
             <div className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Gestiona los usuarios del sistema y sus permisos.
-              </p>
+              <p className="text-sm text-gray-600">Gestiona los usuarios del sistema y sus permisos por colegio.</p>
               <button
                 onClick={() => setActiveModal('manageUsers')}
                 className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center"
@@ -556,9 +655,7 @@ export default function Settings() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre de usuario
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de usuario</label>
                 <input
                   type="text"
                   value={user?.username || ''}
@@ -568,9 +665,7 @@ export default function Settings() {
                 <p className="text-xs text-gray-500 mt-1">El nombre de usuario no se puede cambiar</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre completo
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
                 <input
                   type="text"
                   value={profileForm.full_name}
@@ -580,9 +675,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={profileForm.email}
@@ -593,10 +686,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
-              >
+              <button onClick={closeModal} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">
                 Cancelar
               </button>
               <button
@@ -604,11 +694,7 @@ export default function Settings() {
                 disabled={profileLoading}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
               >
-                {profileLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
+                {profileLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 Guardar
               </button>
             </div>
@@ -640,9 +726,7 @@ export default function Settings() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña actual
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña actual</label>
                 <div className="relative">
                   <input
                     type={showPasswords.current ? 'text' : 'password'}
@@ -660,9 +744,7 @@ export default function Settings() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nueva contraseña
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
                 <div className="relative">
                   <input
                     type={showPasswords.new ? 'text' : 'password'}
@@ -680,9 +762,7 @@ export default function Settings() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirmar nueva contraseña
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar nueva contraseña</label>
                 <div className="relative">
                   <input
                     type={showPasswords.confirm ? 'text' : 'password'}
@@ -701,10 +781,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
-              >
+              <button onClick={closeModal} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">
                 Cancelar
               </button>
               <button
@@ -712,11 +789,7 @@ export default function Settings() {
                 disabled={passwordLoading}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
               >
-                {passwordLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Lock className="w-4 h-4 mr-2" />
-                )}
+                {passwordLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Lock className="w-4 h-4 mr-2" />}
                 Cambiar Contraseña
               </button>
             </div>
@@ -753,25 +826,18 @@ export default function Settings() {
                   <span className="ml-2 text-gray-600">Cargando colegios...</span>
                 </div>
               ) : schools.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No hay colegios registrados
-                </div>
+                <div className="text-center py-8 text-gray-500">No hay colegios registrados</div>
               ) : (
                 <div className="space-y-3">
                   {schools.map((school) => (
-                    <div
-                      key={school.id}
-                      className={`p-4 border rounded-lg ${school.is_active ? 'bg-white' : 'bg-gray-50'}`}
-                    >
+                    <div key={school.id} className={`p-4 border rounded-lg ${school.is_active ? 'bg-white' : 'bg-gray-50'}`}>
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-gray-800">{school.name}</span>
                             <span className="text-xs text-gray-500 font-mono">{school.code}</span>
                             {!school.is_active && (
-                              <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">
-                                Inactivo
-                              </span>
+                              <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">Inactivo</span>
                             )}
                           </div>
                           <div className="text-sm text-gray-500 mt-1">
@@ -790,9 +856,7 @@ export default function Settings() {
                           <button
                             onClick={() => handleToggleSchoolActive(school)}
                             className={`p-2 rounded-lg transition ${
-                              school.is_active
-                                ? 'text-red-600 hover:bg-red-50'
-                                : 'text-green-600 hover:bg-green-50'
+                              school.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'
                             }`}
                             title={school.is_active ? 'Desactivar' : 'Activar'}
                           >
@@ -829,9 +893,7 @@ export default function Settings() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Código *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Código *</label>
                 <input
                   type="text"
                   value={schoolForm.code}
@@ -844,9 +906,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
                 <input
                   type="text"
                   value={schoolForm.name}
@@ -856,9 +916,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={schoolForm.email}
@@ -868,9 +926,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Teléfono
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
                 <input
                   type="text"
                   value={schoolForm.phone}
@@ -880,9 +936,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Dirección
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
                 <input
                   type="text"
                   value={schoolForm.address}
@@ -893,10 +947,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
-              <button
-                onClick={() => setActiveModal('manageSchools')}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
-              >
+              <button onClick={() => setActiveModal('manageSchools')} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">
                 Cancelar
               </button>
               <button
@@ -904,11 +955,7 @@ export default function Settings() {
                 disabled={schoolSaving || !schoolForm.code || !schoolForm.name}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
               >
-                {schoolSaving ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
+                {schoolSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 Guardar
               </button>
             </div>
@@ -919,7 +966,7 @@ export default function Settings() {
       {/* Manage Users Modal */}
       {activeModal === 'manageUsers' && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold">Administrar Usuarios</h3>
               <div className="flex items-center gap-2">
@@ -942,9 +989,7 @@ export default function Settings() {
                   <span className="ml-2 text-gray-600">Cargando usuarios...</span>
                 </div>
               ) : users.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No hay usuarios registrados
-                </div>
+                <div className="text-center py-8 text-gray-500">No hay usuarios registrados</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -964,44 +1009,50 @@ export default function Settings() {
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="font-medium text-gray-900">{u.username}</span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                            {u.full_name || '-'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                            {u.email}
-                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-600">{u.full_name || '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-600">{u.email}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {u.is_superuser ? (
-                              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">
-                                Superusuario
-                              </span>
+                              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">Superusuario</span>
                             ) : (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
-                                Usuario
-                              </span>
+                              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">Usuario</span>
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {u.is_active ? (
-                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
-                                Activo
-                              </span>
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Activo</span>
                             ) : (
-                              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">
-                                Inactivo
-                              </span>
+                              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">Inactivo</span>
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            {u.id !== user?.id && (
+                            <div className="flex items-center gap-1">
                               <button
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                title="Eliminar"
+                                onClick={() => handleOpenEditUser(u)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="Editar"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Edit2 className="w-4 h-4" />
                               </button>
-                            )}
+                              {!u.is_superuser && (
+                                <button
+                                  onClick={() => handleOpenManageRoles(u)}
+                                  className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
+                                  title="Gestionar accesos a colegios"
+                                >
+                                  <Shield className="w-4 h-4" />
+                                </button>
+                              )}
+                              {u.id !== user?.id && (
+                                <button
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1032,9 +1083,7 @@ export default function Settings() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Usuario *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Usuario *</label>
                 <input
                   type="text"
                   value={userForm.username}
@@ -1044,9 +1093,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre completo
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
                 <input
                   type="text"
                   value={userForm.full_name}
@@ -1056,9 +1103,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                 <input
                   type="email"
                   value={userForm.email}
@@ -1068,9 +1113,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
                 <input
                   type="password"
                   value={userForm.password}
@@ -1088,15 +1131,12 @@ export default function Settings() {
                   className="w-4 h-4 text-indigo-600 rounded"
                 />
                 <label htmlFor="is_superuser" className="ml-2 text-sm text-gray-700">
-                  Es superusuario (acceso total)
+                  Es superusuario (acceso total a todos los colegios)
                 </label>
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
-              <button
-                onClick={() => setActiveModal('manageUsers')}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
-              >
+              <button onClick={() => setActiveModal('manageUsers')} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">
                 Cancelar
               </button>
               <button
@@ -1104,12 +1144,196 @@ export default function Settings() {
                 disabled={userSaving || !userForm.username || !userForm.email || !userForm.password}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
               >
-                {userSaving ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
+                {userSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 Crear Usuario
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {activeModal === 'editUser' && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">Editar Usuario: {selectedUser.username}</h3>
+              <button onClick={() => setActiveModal('manageUsers')} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {userError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  {userError}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+                <input
+                  type="text"
+                  value={selectedUser.username}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
+                <input
+                  type="text"
+                  value={editUserForm.full_name || ''}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, full_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="Nombre completo"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editUserForm.email || ''}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="email@ejemplo.com"
+                />
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="is_active"
+                  checked={editUserForm.is_active}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, is_active: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 rounded"
+                />
+                <label htmlFor="is_active" className="ml-2 text-sm text-gray-700">
+                  Usuario activo
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button onClick={() => setActiveModal('manageUsers')} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">
+                Cancelar
+              </button>
+              <button
+                onClick={handleUpdateUser}
+                disabled={userSaving}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
+              >
+                {userSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage User Roles Modal */}
+      {activeModal === 'manageUserRoles' && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h3 className="text-lg font-semibold">Accesos a Colegios</h3>
+                <p className="text-sm text-gray-500">Usuario: {selectedUser.username} ({selectedUser.full_name || selectedUser.email})</p>
+              </div>
+              <button onClick={() => setActiveModal('manageUsers')} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {roleError && (
+                <div className="p-3 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  {roleError}
+                </div>
+              )}
+
+              {/* Add new role */}
+              <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Agregar acceso a colegio</h4>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={selectedRoleSchool}
+                    onChange={(e) => setSelectedRoleSchool(e.target.value)}
+                    className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">Seleccionar colegio...</option>
+                    {availableSchoolsForRole.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedRoleType}
+                    onChange={(e) => setSelectedRoleType(e.target.value as 'admin' | 'seller' | 'viewer')}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="viewer">Visor (solo lectura)</option>
+                    <option value="seller">Vendedor</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <button
+                    onClick={handleAddRole}
+                    disabled={!selectedRoleSchool || roleSaving}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
+                  >
+                    {roleSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                    Agregar
+                  </button>
+                </div>
+              </div>
+
+              {/* Current roles */}
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Accesos actuales</h4>
+              {rolesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-green-600" />
+                  <span className="ml-2 text-gray-600">Cargando accesos...</span>
+                </div>
+              ) : userRoles.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                  Este usuario no tiene acceso a ningún colegio
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {userRoles.map((role) => (
+                    <div key={role.school_id} className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                      <div className="flex items-center gap-3">
+                        <Building2 className="w-5 h-5 text-gray-400" />
+                        <div>
+                          <span className="font-medium text-gray-800">{role.school_name}</span>
+                          <span className="text-xs text-gray-500 ml-2">({role.school_code})</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={role.role}
+                          onChange={(e) => handleUpdateRole(role.school_id, e.target.value as 'admin' | 'seller' | 'viewer')}
+                          className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500"
+                        >
+                          <option value="viewer">Visor</option>
+                          <option value="seller">Vendedor</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                        <button
+                          onClick={() => handleRemoveRole(role.school_id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Quitar acceso"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button
+                onClick={() => setActiveModal('manageUsers')}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition"
+              >
+                Cerrar
               </button>
             </div>
           </div>

@@ -1,7 +1,7 @@
 /**
  * Layout Component - Main app layout with sidebar and navigation
  */
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -23,9 +23,12 @@ import {
   ChevronDown,
   Shield,
   Calculator,
-  ShieldCheck
+  ShieldCheck,
+  Clock,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
-import { useState } from 'react';
+import { useConfigStore } from '../stores/configStore';
 
 interface LayoutProps {
   children: ReactNode;
@@ -59,14 +62,42 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const { currentSchool, availableSchools, loadSchools, selectSchool } = useSchoolStore();
+  const { isOnline } = useConfigStore();
   const { role, isSuperuser } = useUserRole();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [schoolDropdownOpen, setSchoolDropdownOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Update time every minute
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(timer);
+  }, []);
 
   // Load schools on mount
   useEffect(() => {
     loadSchools();
   }, [loadSchools]);
+
+  // Format time as HH:MM
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  // Format date
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('es-CO', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    });
+  };
 
   const handleLogout = () => {
     logout();
@@ -182,7 +213,8 @@ export default function Layout({ children }: LayoutProps) {
         <DevelopmentBanner />
 
         {/* Top Bar */}
-        <div className="sticky top-0 z-40 h-16 bg-white/80 backdrop-blur-md border-b border-surface-200 flex items-center px-6 justify-between">
+        <div className="sticky top-0 z-40 h-16 bg-white/80 backdrop-blur-md border-b border-surface-200 flex items-center px-4 md:px-6 justify-between">
+          {/* Left Side: Menu + Page Title */}
           <div className="flex items-center">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -190,8 +222,8 @@ export default function Layout({ children }: LayoutProps) {
             >
               <Menu className="w-6 h-6" />
             </button>
-            <div className="ml-4">
-              <h2 className="text-xl font-bold font-display text-primary tracking-tight">
+            <div className="ml-3 md:ml-4">
+              <h2 className="text-lg md:text-xl font-bold font-display text-primary tracking-tight">
                 {navigation.find((item) => item.path === location.pathname)?.name ||
                  adminNavigation.find((item) => item.path === location.pathname)?.name ||
                  'Dashboard'}
@@ -199,50 +231,118 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
 
-          {/* Right Side: Environment Indicator + School Selector */}
-          <div className="flex items-center gap-4">
+          {/* Right Side: Time, User Info, Connection Status, School Selector */}
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Date & Time - Hidden on very small screens */}
+            <div className="hidden sm:flex items-center gap-2 text-slate-600 bg-surface-50 px-3 py-1.5 rounded-lg">
+              <Clock className="w-4 h-4 text-slate-400" />
+              <div className="text-sm">
+                <span className="font-medium">{formatTime(currentTime)}</span>
+                <span className="hidden md:inline text-slate-400 mx-1">•</span>
+                <span className="hidden md:inline text-slate-500">{formatDate(currentTime)}</span>
+              </div>
+            </div>
+
+            {/* User Info - Compact */}
+            <div className="hidden md:flex items-center gap-2 bg-surface-50 px-3 py-1.5 rounded-lg">
+              <div className="w-6 h-6 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold">
+                {user?.username.charAt(0).toUpperCase()}
+              </div>
+              <div className="text-sm">
+                <span className="font-medium text-slate-700">{user?.full_name || user?.username}</span>
+                {isSuperuser && (
+                  <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">
+                    Super
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Connection Status */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
+              isOnline
+                ? 'bg-green-50 text-green-700'
+                : 'bg-red-50 text-red-700'
+            }`}>
+              {isOnline ? (
+                <>
+                  <Wifi className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Conectado</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Sin conexión</span>
+                </>
+              )}
+            </div>
+
             {/* Environment Indicator */}
             <EnvironmentIndicator />
 
-            {/* School Selector */}
+            {/* School Selector - Now labeled as "Vista de colegio" */}
             <div className="relative">
-            <button
-              onClick={() => setSchoolDropdownOpen(!schoolDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-2 bg-surface-100 hover:bg-surface-200 rounded-lg transition-colors"
-            >
-              <Building2 className="w-4 h-4 text-brand-600" />
-              <span className="text-sm font-medium text-gray-700 max-w-[200px] truncate">
-                {currentSchool?.name || 'Seleccionar colegio'}
-              </span>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${schoolDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
+              <button
+                onClick={() => setSchoolDropdownOpen(!schoolDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-2 bg-surface-100 hover:bg-surface-200 rounded-lg transition-colors"
+                title="Colegio para crear nuevos registros"
+              >
+                <Building2 className="w-4 h-4 text-brand-600" />
+                <span className="text-sm font-medium text-gray-700 max-w-[120px] md:max-w-[180px] truncate">
+                  {currentSchool?.name || 'Sin colegio'}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${schoolDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            {/* Dropdown */}
-            {schoolDropdownOpen && availableSchools.length > 0 && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setSchoolDropdownOpen(false)}
-                />
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                  {availableSchools.map((school) => (
-                    <button
-                      key={school.id}
-                      onClick={() => {
-                        selectSchool(school);
-                        setSchoolDropdownOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-100 transition-colors ${
-                        currentSchool?.id === school.id ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700'
-                      }`}
-                    >
-                      <div className="font-medium">{school.name}</div>
-                      <div className="text-xs text-gray-500">{school.code}</div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+              {/* Dropdown */}
+              {schoolDropdownOpen && availableSchools.length > 0 && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setSchoolDropdownOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    {/* Header explaining the dropdown */}
+                    <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Colegio predeterminado
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Para crear ventas, encargos y productos nuevos
+                      </p>
+                    </div>
+                    {availableSchools.map((school) => (
+                      <button
+                        key={school.id}
+                        onClick={() => {
+                          selectSchool(school);
+                          setSchoolDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-100 transition-colors ${
+                          currentSchool?.id === school.id ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">{school.name}</div>
+                            <div className="text-xs text-gray-500">{school.code}</div>
+                          </div>
+                          {currentSchool?.id === school.id && (
+                            <span className="text-brand-600 text-xs">✓ Activo</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                    {availableSchools.length > 1 && (
+                      <div className="px-4 py-2 border-t border-gray-100 bg-blue-50">
+                        <p className="text-xs text-blue-600">
+                          💡 Tip: En cada página puedes filtrar para ver datos de todos los colegios
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
