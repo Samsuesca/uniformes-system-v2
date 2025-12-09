@@ -39,6 +39,7 @@ app.include_router(schools.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(users.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(products.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(clients.router, prefix=f"{settings.API_V1_STR}")
+app.include_router(clients.web_router, prefix=f"{settings.API_V1_STR}")  # Web portal client endpoints
 app.include_router(sales.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(orders.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(inventory.router, prefix=f"{settings.API_V1_STR}")

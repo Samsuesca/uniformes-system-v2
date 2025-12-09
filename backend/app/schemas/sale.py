@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime
 from pydantic import Field, field_validator, model_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
-from app.models.sale import SaleStatus, PaymentMethod, ChangeStatus, ChangeType
+from app.models.sale import SaleStatus, PaymentMethod, ChangeStatus, ChangeType, SaleSource
 
 
 # ============================================
@@ -69,6 +69,7 @@ class SaleBase(BaseSchema):
 class SaleCreate(SaleBase, SchoolIsolatedSchema):
     """Schema for creating sale"""
     items: list[SaleItemCreate] = Field(..., min_length=1)
+    source: SaleSource = SaleSource.DESKTOP_APP  # Default to desktop app
     # code, status, totals will be auto-generated
 
 
@@ -84,6 +85,7 @@ class SaleInDB(SaleBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema):
     code: str
     user_id: UUID
     status: SaleStatus
+    source: SaleSource
     total: Decimal
     paid_amount: Decimal
     sale_date: datetime
@@ -107,6 +109,7 @@ class SaleListResponse(BaseSchema):
     id: UUID
     code: str
     status: SaleStatus
+    source: SaleSource
     payment_method: PaymentMethod | None
     total: Decimal
     paid_amount: Decimal
@@ -115,6 +118,9 @@ class SaleListResponse(BaseSchema):
     sale_date: datetime
     created_at: datetime
     items_count: int = 0
+    # Track who made the sale
+    user_id: UUID | None = None
+    user_name: str | None = None
 
 
 # ============================================

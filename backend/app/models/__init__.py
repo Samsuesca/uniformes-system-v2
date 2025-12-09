@@ -13,8 +13,8 @@ from app.models.product import (
     GarmentType, Product, Inventory,
     GlobalGarmentType, GlobalProduct, GlobalInventory
 )
-from app.models.client import Client
-from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus
+from app.models.client import Client, ClientStudent, ClientType
+from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.accounting import (
     Transaction, TransactionType,
@@ -47,6 +47,8 @@ __all__ = [
     "GlobalInventory",
     # Client models
     "Client",
+    "ClientStudent",
+    "ClientType",
     # Sale models
     "Sale",
     "SaleItem",
@@ -55,6 +57,7 @@ __all__ = [
     "SaleChange",
     "ChangeType",
     "ChangeStatus",
+    "SaleSource",
     # Order models
     "Order",
     "OrderItem",

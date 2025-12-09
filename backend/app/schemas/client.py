@@ -1,10 +1,56 @@
 """
 Client Schemas
-"""
-from uuid import UUID
-from pydantic import Field, field_validator, EmailStr
-from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
 
+Clients are GLOBAL - not tied to a single school.
+- REGULAR clients: Created by staff, no authentication
+- WEB clients: Self-registered via web portal, requires authentication
+"""
+from datetime import datetime
+from uuid import UUID
+from pydantic import Field, EmailStr
+from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema
+from app.models.client import ClientType
+
+
+# =============================================================================
+# Client Student Schemas
+# =============================================================================
+
+class ClientStudentBase(BaseSchema):
+    """Base client student schema"""
+    student_name: str = Field(..., min_length=2, max_length=255)
+    student_grade: str | None = Field(None, max_length=50)
+    student_section: str | None = Field(None, max_length=50)
+    notes: str | None = None
+
+
+class ClientStudentCreate(ClientStudentBase):
+    """Schema for creating a student under a client"""
+    school_id: UUID
+
+
+class ClientStudentUpdate(BaseSchema):
+    """Schema for updating a client student"""
+    student_name: str | None = Field(None, min_length=2, max_length=255)
+    student_grade: str | None = Field(None, max_length=50)
+    student_section: str | None = Field(None, max_length=50)
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class ClientStudentResponse(ClientStudentBase, IDModelSchema, TimestampSchema):
+    """Client student for API responses"""
+    client_id: UUID
+    school_id: UUID
+    is_active: bool
+
+    # Include school name for display
+    school_name: str | None = None
+
+
+# =============================================================================
+# Client Schemas
+# =============================================================================
 
 class ClientBase(BaseSchema):
     """Base client schema"""
@@ -14,15 +60,43 @@ class ClientBase(BaseSchema):
     address: str | None = None
     notes: str | None = None
 
-    # Student information (optional - for parents/students)
+    # Legacy student information (for backwards compatibility)
     student_name: str | None = Field(None, max_length=255)
     student_grade: str | None = Field(None, max_length=50)
 
 
-class ClientCreate(ClientBase, SchoolIsolatedSchema):
-    """Schema for creating client"""
+class ClientCreate(ClientBase):
+    """Schema for creating a regular client (by staff)"""
     # code will be auto-generated (CLI-0001)
-    pass
+    # school_id is optional - only used for backwards compatibility
+    school_id: UUID | None = None
+
+    # Optionally create students at the same time
+    students: list[ClientStudentCreate] | None = None
+
+
+class ClientWebRegister(BaseSchema):
+    """Schema for web client self-registration"""
+    name: str = Field(..., min_length=3, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=100)
+    phone: str | None = Field(None, max_length=20)
+
+    # At least one student is required for web registration
+    students: list[ClientStudentCreate] = Field(..., min_length=1)
+
+
+class ClientWebLogin(BaseSchema):
+    """Schema for web client login"""
+    email: EmailStr
+    password: str
+
+
+class ClientWebTokenResponse(BaseSchema):
+    """Response for web client login"""
+    access_token: str
+    token_type: str = "bearer"
+    client: "ClientResponse"
 
 
 class ClientUpdate(BaseSchema):
@@ -37,15 +111,24 @@ class ClientUpdate(BaseSchema):
     is_active: bool | None = None
 
 
-class ClientInDB(ClientBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema):
+class ClientInDB(ClientBase, IDModelSchema, TimestampSchema):
     """Client as stored in database"""
     code: str
     is_active: bool
+    client_type: ClientType
+
+    # Optional school_id for backwards compatibility
+    school_id: UUID | None = None
+
+    # Web auth fields (only for web clients)
+    is_verified: bool = False
+    last_login: datetime | None = None
 
 
 class ClientResponse(ClientInDB):
     """Client for API responses"""
-    pass
+    # Include students list
+    students: list[ClientStudentResponse] = []
 
 
 class ClientListResponse(BaseSchema):
@@ -58,6 +141,10 @@ class ClientListResponse(BaseSchema):
     student_name: str | None
     student_grade: str | None
     is_active: bool
+    client_type: ClientType
+
+    # Number of students (across all schools)
+    student_count: int = 0
 
 
 class ClientSummary(BaseSchema):
@@ -68,7 +155,36 @@ class ClientSummary(BaseSchema):
     phone: str | None
     email: str | None
     student_name: str | None
+    client_type: ClientType
     total_purchases: int = 0
     total_spent: float = 0
     pending_orders: int = 0
     last_purchase_date: str | None = None
+
+    # Schools where client has students
+    schools: list[str] = []
+
+
+# =============================================================================
+# Password Reset Schemas (for web clients)
+# =============================================================================
+
+class ClientPasswordResetRequest(BaseSchema):
+    """Request password reset"""
+    email: EmailStr
+
+
+class ClientPasswordReset(BaseSchema):
+    """Reset password with token"""
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class ClientPasswordChange(BaseSchema):
+    """Change password (authenticated)"""
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+# Update forward references
+ClientWebTokenResponse.model_rebuild()

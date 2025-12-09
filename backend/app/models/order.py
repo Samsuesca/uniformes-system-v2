@@ -9,6 +9,7 @@ import uuid
 import enum
 
 from app.db.base import Base
+from app.models.sale import SaleSource  # Reuse the same source enum
 
 
 class OrderStatus(str, enum.Enum):
@@ -71,6 +72,13 @@ class Order(Base):
     status: Mapped[OrderStatus] = mapped_column(
         SQLEnum(OrderStatus, name="order_status_enum"),
         default=OrderStatus.PENDING,
+        nullable=False
+    )
+
+    # Source/origin of the order (who/where created it)
+    source: Mapped[SaleSource] = mapped_column(
+        SQLEnum(SaleSource, name="sale_source_enum", create_type=False),
+        default=SaleSource.DESKTOP_APP,
         nullable=False
     )
 

@@ -1,38 +1,65 @@
 """
 Client Endpoints
+
+Clients are GLOBAL - not tied to a specific school.
+This module provides endpoints for:
+- Staff client management (regular clients)
+- Web portal client registration and authentication (web clients)
+- Client student management
 """
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 
-from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access
-from app.models.user import UserRole
+from app.api.dependencies import DatabaseSession, CurrentUser, get_current_user
+from app.models.user import UserRole, User
+from app.models.client import ClientType
 from app.schemas.client import (
-    ClientCreate, ClientUpdate, ClientResponse, ClientListResponse, ClientSummary
+    ClientCreate,
+    ClientUpdate,
+    ClientResponse,
+    ClientListResponse,
+    ClientSummary,
+    ClientStudentCreate,
+    ClientStudentUpdate,
+    ClientStudentResponse,
+    ClientWebRegister,
+    ClientWebLogin,
+    ClientWebTokenResponse,
+    ClientPasswordResetRequest,
+    ClientPasswordReset,
+    ClientPasswordChange,
 )
 from app.services.client import ClientService
 
 
-router = APIRouter(prefix="/schools/{school_id}/clients", tags=["Clients"])
+# =============================================================================
+# Staff Client Management Router (requires authentication)
+# =============================================================================
+router = APIRouter(prefix="/clients", tags=["Clients"])
 
 
 @router.post(
     "",
     response_model=ClientResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+    status_code=status.HTTP_201_CREATED
 )
 async def create_client(
-    school_id: UUID,
     client_data: ClientCreate,
-    db: DatabaseSession
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
-    """Create a new client (requires SELLER role)"""
-    client_data.school_id = school_id
+    """
+    Create a new regular client (by staff).
 
+    Requires authenticated user (any role can create clients).
+    """
     client_service = ClientService(db)
 
     try:
-        client = await client_service.create_client(client_data)
+        client = await client_service.create_client(
+            client_data,
+            created_by_user_id=current_user.id
+        )
         await db.commit()
         return ClientResponse.model_validate(client)
 
@@ -45,37 +72,105 @@ async def create_client(
 
 @router.get(
     "",
-    response_model=list[ClientListResponse],
-    dependencies=[Depends(require_school_access(UserRole.VIEWER))]
+    response_model=list[ClientListResponse]
 )
 async def list_clients(
-    school_id: UUID,
     db: DatabaseSession,
+    current_user: CurrentUser,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100)
+    limit: int = Query(100, ge=1, le=500),
+    search: str | None = Query(None, min_length=1),
+    client_type: ClientType | None = None,
+    is_active: bool = True
 ):
-    """List clients for school"""
+    """
+    List all clients (global).
+
+    Supports filtering by search term, client type, and active status.
+    """
     client_service = ClientService(db)
-    clients = await client_service.get_active_clients(
-        school_id, skip=skip, limit=limit
+    clients = await client_service.get_all_clients(
+        skip=skip,
+        limit=limit,
+        search=search,
+        client_type=client_type,
+        is_active=is_active
     )
 
-    return [ClientListResponse.model_validate(c) for c in clients]
+    return [
+        ClientListResponse(
+            id=c.id,
+            code=c.code,
+            name=c.name,
+            phone=c.phone,
+            email=c.email,
+            student_name=c.student_name,
+            student_grade=c.student_grade,
+            is_active=c.is_active,
+            client_type=c.client_type,
+            student_count=len(c.students) if c.students else 0
+        )
+        for c in clients
+    ]
+
+
+@router.get(
+    "/search",
+    response_model=list[ClientListResponse]
+)
+async def search_clients(
+    q: str = Query(..., min_length=1),
+    db: DatabaseSession = None,
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(20, ge=1, le=50)
+):
+    """Search clients by code, name, email, phone, or student name."""
+    client_service = ClientService(db)
+    clients = await client_service.search_clients(q, limit=limit)
+
+    return [
+        ClientListResponse(
+            id=c.id,
+            code=c.code,
+            name=c.name,
+            phone=c.phone,
+            email=c.email,
+            student_name=c.student_name,
+            student_grade=c.student_grade,
+            is_active=c.is_active,
+            client_type=c.client_type,
+            student_count=len(c.students) if c.students else 0
+        )
+        for c in clients
+    ]
+
+
+@router.get(
+    "/top",
+    response_model=list[ClientSummary]
+)
+async def get_top_clients(
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    limit: int = Query(10, ge=1, le=50)
+):
+    """Get top clients by total spent (global)."""
+    client_service = ClientService(db)
+    return await client_service.get_top_clients(limit=limit)
 
 
 @router.get(
     "/{client_id}",
-    response_model=ClientResponse,
-    dependencies=[Depends(require_school_access(UserRole.VIEWER))]
+    response_model=ClientResponse
 )
 async def get_client(
-    school_id: UUID,
     client_id: UUID,
-    db: DatabaseSession
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
-    """Get a specific client by ID"""
+    """Get a specific client by ID with students."""
     client_service = ClientService(db)
-    client = await client_service.get(client_id, school_id)
+    client = await client_service.get_with_students(client_id)
 
     if not client:
         raise HTTPException(
@@ -83,42 +178,80 @@ async def get_client(
             detail="Cliente no encontrado"
         )
 
-    return ClientResponse.model_validate(client)
+    # Build response with students including school names
+    students = []
+    for student in client.students:
+        students.append(ClientStudentResponse(
+            id=student.id,
+            client_id=student.client_id,
+            school_id=student.school_id,
+            student_name=student.student_name,
+            student_grade=student.student_grade,
+            student_section=student.student_section,
+            notes=student.notes,
+            is_active=student.is_active,
+            created_at=student.created_at,
+            updated_at=student.updated_at,
+            school_name=student.school.name if student.school else None
+        ))
+
+    return ClientResponse(
+        id=client.id,
+        code=client.code,
+        name=client.name,
+        phone=client.phone,
+        email=client.email,
+        address=client.address,
+        notes=client.notes,
+        student_name=client.student_name,
+        student_grade=client.student_grade,
+        is_active=client.is_active,
+        client_type=client.client_type,
+        school_id=client.school_id,
+        is_verified=client.is_verified,
+        last_login=client.last_login,
+        created_at=client.created_at,
+        updated_at=client.updated_at,
+        students=students
+    )
 
 
 @router.get(
-    "/search",
-    response_model=list[ClientListResponse],
-    dependencies=[Depends(require_school_access(UserRole.VIEWER))]
+    "/{client_id}/summary",
+    response_model=ClientSummary
 )
-async def search_clients(
-    school_id: UUID,
-    q: str = Query(..., min_length=1),
-    db: DatabaseSession = None,
-    limit: int = Query(20, ge=1, le=50)
+async def get_client_summary(
+    client_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
-    """Search clients"""
+    """Get client with purchase statistics across all schools."""
     client_service = ClientService(db)
-    clients = await client_service.search_clients(school_id, q, limit=limit)
+    summary = await client_service.get_client_summary(client_id)
 
-    return [ClientListResponse.model_validate(c) for c in clients]
+    if not summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    return summary
 
 
 @router.patch(
     "/{client_id}",
-    response_model=ClientResponse,
-    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+    response_model=ClientResponse
 )
 async def update_client(
-    school_id: UUID,
     client_id: UUID,
     client_data: ClientUpdate,
-    db: DatabaseSession
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
-    """Update a client (requires SELLER role)"""
+    """Update a client."""
     client_service = ClientService(db)
 
-    client = await client_service.get(client_id, school_id)
+    client = await client_service.get(client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -126,12 +259,11 @@ async def update_client(
         )
 
     try:
-        updated_client = await client_service.update(
-            client_id,
-            school_id,
-            client_data.model_dump(exclude_unset=True)
-        )
+        updated_client = await client_service.update_client(client_id, client_data)
         await db.commit()
+
+        # Reload with students
+        updated_client = await client_service.get_with_students(client_id)
         return ClientResponse.model_validate(updated_client)
 
     except ValueError as e:
@@ -143,24 +275,283 @@ async def update_client(
 
 @router.delete(
     "/{client_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_client(
-    school_id: UUID,
     client_id: UUID,
-    db: DatabaseSession
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
-    """Delete a client (soft delete, requires ADMIN role)"""
+    """
+    Delete a client (soft delete).
+
+    Only admins can delete clients.
+    """
+    # Check if user is admin
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo administradores pueden eliminar clientes"
+        )
+
     client_service = ClientService(db)
 
-    client = await client_service.get(client_id, school_id)
+    client = await client_service.get(client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Cliente no encontrado"
         )
 
-    # Soft delete by setting is_active to False
-    await client_service.update(client_id, school_id, {"is_active": False})
+    # Soft delete
+    await client_service.soft_delete(client_id)
     await db.commit()
+
+
+# =============================================================================
+# Client Student Management
+# =============================================================================
+
+@router.post(
+    "/{client_id}/students",
+    response_model=ClientStudentResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def add_student(
+    client_id: UUID,
+    student_data: ClientStudentCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """Add a student to a client."""
+    client_service = ClientService(db)
+
+    client = await client_service.get(client_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    try:
+        student = await client_service.add_student(client_id, student_data)
+        await db.commit()
+        await db.refresh(student, ['school'])
+
+        return ClientStudentResponse(
+            id=student.id,
+            client_id=student.client_id,
+            school_id=student.school_id,
+            student_name=student.student_name,
+            student_grade=student.student_grade,
+            student_section=student.student_section,
+            notes=student.notes,
+            is_active=student.is_active,
+            created_at=student.created_at,
+            updated_at=student.updated_at,
+            school_name=student.school.name if student.school else None
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.patch(
+    "/{client_id}/students/{student_id}",
+    response_model=ClientStudentResponse
+)
+async def update_student(
+    client_id: UUID,
+    student_id: UUID,
+    student_data: ClientStudentUpdate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """Update a client student."""
+    client_service = ClientService(db)
+
+    student = await client_service.update_student(student_id, student_data)
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Estudiante no encontrado"
+        )
+
+    await db.commit()
+    await db.refresh(student, ['school'])
+
+    return ClientStudentResponse(
+        id=student.id,
+        client_id=student.client_id,
+        school_id=student.school_id,
+        student_name=student.student_name,
+        student_grade=student.student_grade,
+        student_section=student.student_section,
+        notes=student.notes,
+        is_active=student.is_active,
+        created_at=student.created_at,
+        updated_at=student.updated_at,
+        school_name=student.school.name if student.school else None
+    )
+
+
+@router.delete(
+    "/{client_id}/students/{student_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def remove_student(
+    client_id: UUID,
+    student_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """Remove a student from a client."""
+    client_service = ClientService(db)
+
+    removed = await client_service.remove_student(student_id)
+    if not removed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Estudiante no encontrado"
+        )
+
+    await db.commit()
+
+
+# =============================================================================
+# Web Portal Client Registration and Authentication (Public endpoints)
+# =============================================================================
+web_router = APIRouter(prefix="/portal/clients", tags=["Client Portal"])
+
+
+@web_router.post(
+    "/register",
+    response_model=ClientResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def register_web_client(
+    registration_data: ClientWebRegister,
+    db: DatabaseSession
+):
+    """
+    Register a new web portal client (public endpoint).
+
+    Client must verify email before logging in.
+    """
+    client_service = ClientService(db)
+
+    try:
+        client = await client_service.register_web_client(registration_data)
+        await db.commit()
+
+        # TODO: Send verification email
+
+        return ClientResponse.model_validate(client)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@web_router.post(
+    "/verify-email/{token}"
+)
+async def verify_email(
+    token: str,
+    db: DatabaseSession
+):
+    """Verify client email with token."""
+    client_service = ClientService(db)
+    client = await client_service.verify_email(token)
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido o expirado"
+        )
+
+    await db.commit()
+    return {"message": "Email verificado exitosamente"}
+
+
+@web_router.post(
+    "/login",
+    response_model=ClientWebTokenResponse
+)
+async def login_web_client(
+    credentials: ClientWebLogin,
+    db: DatabaseSession
+):
+    """
+    Authenticate a web portal client.
+
+    Returns JWT token for subsequent requests.
+    """
+    client_service = ClientService(db)
+    client = await client_service.authenticate_web_client(
+        credentials.email,
+        credentials.password
+    )
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas o cuenta no verificada"
+        )
+
+    await db.commit()
+
+    # TODO: Generate JWT token for client
+    # For now, return placeholder
+    return ClientWebTokenResponse(
+        access_token="TODO_GENERATE_CLIENT_JWT",
+        token_type="bearer",
+        client=ClientResponse.model_validate(client)
+    )
+
+
+@web_router.post(
+    "/password-reset/request"
+)
+async def request_password_reset(
+    request_data: ClientPasswordResetRequest,
+    db: DatabaseSession
+):
+    """Request password reset (sends email with token)."""
+    client_service = ClientService(db)
+    token = await client_service.request_password_reset(request_data.email)
+
+    # Always return success to prevent email enumeration
+    await db.commit()
+
+    if token:
+        # TODO: Send password reset email
+        pass
+
+    return {"message": "Si el correo existe, recibirás instrucciones para restablecer tu contraseña"}
+
+
+@web_router.post(
+    "/password-reset/confirm"
+)
+async def confirm_password_reset(
+    reset_data: ClientPasswordReset,
+    db: DatabaseSession
+):
+    """Reset password with token."""
+    client_service = ClientService(db)
+    success = await client_service.reset_password(reset_data.token, reset_data.new_password)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido o expirado"
+        )
+
+    await db.commit()
+    return {"message": "Contraseña actualizada exitosamente"}

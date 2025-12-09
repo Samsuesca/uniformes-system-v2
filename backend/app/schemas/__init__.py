@@ -76,6 +76,16 @@ from app.schemas.client import (
     ClientResponse,
     ClientListResponse,
     ClientSummary,
+    ClientStudentBase,
+    ClientStudentCreate,
+    ClientStudentUpdate,
+    ClientStudentResponse,
+    ClientWebRegister,
+    ClientWebLogin,
+    ClientWebTokenResponse,
+    ClientPasswordResetRequest,
+    ClientPasswordReset,
+    ClientPasswordChange,
 )
 
 # Sale schemas
@@ -213,6 +223,16 @@ __all__ = [
     "ClientResponse",
     "ClientListResponse",
     "ClientSummary",
+    "ClientStudentBase",
+    "ClientStudentCreate",
+    "ClientStudentUpdate",
+    "ClientStudentResponse",
+    "ClientWebRegister",
+    "ClientWebLogin",
+    "ClientWebTokenResponse",
+    "ClientPasswordResetRequest",
+    "ClientPasswordReset",
+    "ClientPasswordChange",
     # Sale
     "SaleItemBase",
     "SaleItemCreate",

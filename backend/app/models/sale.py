@@ -26,6 +26,13 @@ class SaleStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class SaleSource(str, enum.Enum):
+    """Source/origin of the sale"""
+    DESKTOP_APP = "desktop_app"  # Desktop POS application (Tauri)
+    WEB_PORTAL = "web_portal"    # Web portal (customer self-service)
+    API = "api"                  # Direct API integration
+
+
 class Sale(Base):
     """
     Sales transactions
@@ -75,6 +82,14 @@ class Sale(Base):
         default=SaleStatus.COMPLETED,
         nullable=False
     )
+
+    # Source/origin of the sale (who/where created it)
+    source: Mapped[SaleSource] = mapped_column(
+        SQLEnum(SaleSource, name="sale_source_enum"),
+        default=SaleSource.DESKTOP_APP,
+        nullable=False
+    )
+
     notes: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

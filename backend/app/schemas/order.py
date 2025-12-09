@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pydantic import Field, field_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
 from app.models.order import OrderStatus
+from app.models.sale import SaleSource
 
 
 # ============================================
@@ -111,6 +112,7 @@ class OrderCreate(OrderBase, SchoolIsolatedSchema):
     """Schema for creating order"""
     items: list[OrderItemCreate] = Field(..., min_length=1)
     advance_payment: Decimal | None = Field(None, ge=0)
+    source: SaleSource = SaleSource.DESKTOP_APP  # Default to desktop app
     # code, status, totals will be auto-generated
 
 
@@ -133,11 +135,13 @@ class OrderInDB(OrderBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema)
     """Order as stored in database"""
     code: str
     status: OrderStatus
+    source: SaleSource
     subtotal: Decimal
     tax: Decimal
     total: Decimal
     paid_amount: Decimal
     balance: Decimal  # Computed column
+    user_id: UUID  # Who created the order
 
 
 class OrderResponse(OrderInDB):
@@ -158,6 +162,7 @@ class OrderListResponse(BaseSchema):
     id: UUID
     code: str
     status: OrderStatus
+    source: SaleSource
     client_name: str
     student_name: str | None
     delivery_date: date | None
@@ -165,6 +170,9 @@ class OrderListResponse(BaseSchema):
     balance: Decimal
     created_at: datetime
     items_count: int = 0
+    # Track who created the order
+    user_id: UUID | None = None
+    user_name: str | None = None
 
 
 # ============================================
