@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.sale import Sale, SaleItem, SaleStatus, SaleChange, ChangeStatus, ChangeType
-from app.models.product import Product
+from app.models.product import Product, GlobalProduct
 from app.schemas.sale import SaleCreate, SaleUpdate, SaleChangeCreate, SaleChangeUpdate
 from app.services.base import SchoolIsolatedService
+from app.services.global_product import GlobalInventoryService
 
 
 class SaleService(SchoolIsolatedService[Sale]):
@@ -26,7 +27,7 @@ class SaleService(SchoolIsolatedService[Sale]):
         user_id: UUID | None = None
     ) -> Sale:
         """
-        Create a new sale with items
+        Create a new sale with items (supports both school and global products)
 
         Args:
             sale_data: Sale creation data including items
@@ -38,8 +39,10 @@ class SaleService(SchoolIsolatedService[Sale]):
             ValueError: If products not found or insufficient inventory
         """
         from app.services.inventory import InventoryService
+        from app.schemas.product import GlobalInventoryAdjust
 
         inv_service = InventoryService(self.db)
+        global_inv_service = GlobalInventoryService(self.db)
 
         # Generate sale code
         code = await self._generate_sale_code(sale_data.school_id)
@@ -49,43 +52,80 @@ class SaleService(SchoolIsolatedService[Sale]):
         subtotal = Decimal("0")
 
         for item_data in sale_data.items:
-            # Get product
-            product = await self.db.execute(
-                select(Product).where(
-                    Product.id == item_data.product_id,
-                    Product.school_id == sale_data.school_id,
-                    Product.is_active == True
+            if item_data.is_global:
+                # Handle global product
+                result = await self.db.execute(
+                    select(GlobalProduct).where(
+                        GlobalProduct.id == item_data.product_id,
+                        GlobalProduct.is_active == True
+                    )
                 )
-            )
-            product = product.scalar_one_or_none()
+                global_product = result.scalar_one_or_none()
 
-            if not product:
-                raise ValueError(f"Producto {item_data.product_id} no encontrado")
+                if not global_product:
+                    raise ValueError(f"Producto global {item_data.product_id} no encontrado")
 
-            # Check inventory
-            has_stock = await inv_service.check_availability(
-                product.id,
-                sale_data.school_id,
-                item_data.quantity
-            )
+                # Check global inventory
+                global_inv = await global_inv_service.get_by_product(global_product.id)
+                if not global_inv or global_inv.quantity < item_data.quantity:
+                    raise ValueError(
+                        f"Stock insuficiente para el producto global {global_product.code}"
+                    )
 
-            if not has_stock:
-                raise ValueError(
-                    f"Stock insuficiente para el producto {product.code}"
+                # Calculate item totals
+                unit_price = global_product.price
+                item_subtotal = unit_price * item_data.quantity
+
+                items_data.append({
+                    "global_product_id": global_product.id,
+                    "product_id": None,
+                    "is_global_product": True,
+                    "quantity": item_data.quantity,
+                    "unit_price": unit_price,
+                    "subtotal": item_subtotal
+                })
+
+                subtotal += item_subtotal
+            else:
+                # Handle school product (original logic)
+                result = await self.db.execute(
+                    select(Product).where(
+                        Product.id == item_data.product_id,
+                        Product.school_id == sale_data.school_id,
+                        Product.is_active == True
+                    )
+                )
+                product = result.scalar_one_or_none()
+
+                if not product:
+                    raise ValueError(f"Producto {item_data.product_id} no encontrado")
+
+                # Check inventory
+                has_stock = await inv_service.check_availability(
+                    product.id,
+                    sale_data.school_id,
+                    item_data.quantity
                 )
 
-            # Calculate item totals
-            unit_price = product.price
-            item_subtotal = unit_price * item_data.quantity
+                if not has_stock:
+                    raise ValueError(
+                        f"Stock insuficiente para el producto {product.code}"
+                    )
 
-            items_data.append({
-                "product_id": product.id,
-                "quantity": item_data.quantity,
-                "unit_price": unit_price,
-                "subtotal": item_subtotal
-            })
+                # Calculate item totals
+                unit_price = product.price
+                item_subtotal = unit_price * item_data.quantity
 
-            subtotal += item_subtotal
+                items_data.append({
+                    "product_id": product.id,
+                    "global_product_id": None,
+                    "is_global_product": False,
+                    "quantity": item_data.quantity,
+                    "unit_price": unit_price,
+                    "subtotal": item_subtotal
+                })
+
+                subtotal += item_subtotal
 
         # Total = subtotal (no tax for now)
         total = subtotal
@@ -113,12 +153,22 @@ class SaleService(SchoolIsolatedService[Sale]):
             sale_item = SaleItem(**item_dict)
             self.db.add(sale_item)
 
-            # Reserve stock
-            await inv_service.reserve_stock(
-                item_dict["product_id"],
-                sale_data.school_id,
-                item_dict["quantity"]
-            )
+            if item_dict["is_global_product"]:
+                # Reserve global stock
+                await global_inv_service.adjust_quantity(
+                    item_dict["global_product_id"],
+                    GlobalInventoryAdjust(
+                        adjustment=-item_dict["quantity"],
+                        reason=f"Venta {code}"
+                    )
+                )
+            else:
+                # Reserve school stock
+                await inv_service.reserve_stock(
+                    item_dict["product_id"],
+                    sale_data.school_id,
+                    item_dict["quantity"]
+                )
 
         await self.db.flush()
 

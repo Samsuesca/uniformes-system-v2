@@ -8,6 +8,7 @@ export interface SaleItemCreate {
   product_id: string;
   quantity: number;
   unit_price: number;
+  is_global?: boolean;  // True if product is from global inventory
 }
 
 export interface SaleCreate {

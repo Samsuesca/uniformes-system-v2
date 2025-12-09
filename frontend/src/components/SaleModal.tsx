@@ -2,11 +2,11 @@
  * Sale Modal - Create New Sale Form
  */
 import { useState, useEffect } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
-import type { Client, Product } from '../types/api';
+import type { Client, Product, GlobalProduct } from '../types/api';
 
 interface SaleModalProps {
   isOpen: boolean;
@@ -15,11 +15,19 @@ interface SaleModalProps {
   schoolId: string;
 }
 
+// Extended type for sale items with global flag
+interface SaleItemCreateExtended extends SaleItemCreate {
+  is_global: boolean;
+  display_name?: string;
+}
+
 export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: SaleModalProps) {
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [productSource, setProductSource] = useState<'school' | 'global'>('school');
 
   const [formData, setFormData] = useState({
     client_id: '',
@@ -27,11 +35,12 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
     notes: '',
   });
 
-  const [items, setItems] = useState<SaleItemCreate[]>([]);
+  const [items, setItems] = useState<SaleItemCreateExtended[]>([]);
   const [currentItem, setCurrentItem] = useState({
     product_id: '',
     quantity: 1,
     unit_price: 0,
+    is_global: false,
   });
 
   useEffect(() => {
@@ -52,18 +61,22 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       product_id: '',
       quantity: 1,
       unit_price: 0,
+      is_global: false,
     });
+    setProductSource('school');
     setError(null);
   };
 
   const loadClientsAndProducts = async () => {
     try {
-      const [clientsData, productsData] = await Promise.all([
+      const [clientsData, productsData, globalProductsData] = await Promise.all([
         clientService.getClients(schoolId),
         productService.getProducts(schoolId),
+        productService.getGlobalProducts(true),
       ]);
       setClients(clientsData);
       setProducts(productsData);
+      setGlobalProducts(globalProductsData);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError('Error al cargar clientes y productos');
@@ -71,13 +84,26 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
   };
 
   const handleProductSelect = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (product) {
-      setCurrentItem({
-        product_id: productId,
-        quantity: 1,
-        unit_price: Number(product.price),
-      });
+    if (productSource === 'global') {
+      const product = globalProducts.find(p => p.id === productId);
+      if (product) {
+        setCurrentItem({
+          product_id: productId,
+          quantity: 1,
+          unit_price: Number(product.price),
+          is_global: true,
+        });
+      }
+    } else {
+      const product = products.find(p => p.id === productId);
+      if (product) {
+        setCurrentItem({
+          product_id: productId,
+          quantity: 1,
+          unit_price: Number(product.price),
+          is_global: false,
+        });
+      }
     }
   };
 
@@ -87,26 +113,48 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       return;
     }
 
-    // Get product and check stock
-    const product = products.find(p => p.id === currentItem.product_id);
-    if (!product) {
-      setError('Producto no encontrado');
-      return;
+    let productName: string;
+    let availableStock: number;
+    let displayName: string;
+
+    if (currentItem.is_global) {
+      // Handle global product
+      const product = globalProducts.find(p => p.id === currentItem.product_id);
+      if (!product) {
+        setError('Producto global no encontrado');
+        return;
+      }
+      productName = product.name || product.code;
+      availableStock = product.inventory_quantity ?? 0;
+      displayName = `🌐 ${productName} - ${product.size} (${product.code})`;
+    } else {
+      // Handle school product
+      const product = products.find(p => p.id === currentItem.product_id);
+      if (!product) {
+        setError('Producto no encontrado');
+        return;
+      }
+      productName = product.name || product.code;
+      availableStock = product.inventory_quantity ?? product.stock ?? 0;
+      displayName = `${productName} - ${product.size} (${product.code})`;
     }
 
     // Calculate total quantity (existing + new)
-    const existingItem = items.find(item => item.product_id === currentItem.product_id);
+    const existingItem = items.find(
+      item => item.product_id === currentItem.product_id && item.is_global === currentItem.is_global
+    );
     const totalQuantity = (existingItem?.quantity || 0) + currentItem.quantity;
 
     // Check stock availability
-    const availableStock = product.inventory_quantity ?? product.stock ?? 0;
     if (totalQuantity > availableStock) {
-      setError(`Stock insuficiente para ${product.name}. Disponible: ${availableStock}, solicitado: ${totalQuantity}`);
+      setError(`Stock insuficiente para ${productName}. Disponible: ${availableStock}, solicitado: ${totalQuantity}`);
       return;
     }
 
-    // Check if product already in items
-    const existingIndex = items.findIndex(item => item.product_id === currentItem.product_id);
+    // Check if product already in items (same product and same source)
+    const existingIndex = items.findIndex(
+      item => item.product_id === currentItem.product_id && item.is_global === currentItem.is_global
+    );
     if (existingIndex >= 0) {
       // Update quantity
       const updatedItems = [...items];
@@ -114,7 +162,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       setItems(updatedItems);
     } else {
       // Add new item
-      setItems([...items, { ...currentItem }]);
+      setItems([...items, { ...currentItem, display_name: displayName }]);
     }
 
     // Reset current item
@@ -122,6 +170,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       product_id: '',
       quantity: 1,
       unit_price: 0,
+      is_global: false,
     });
     setError(null);
   };
@@ -170,7 +219,11 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
     }
   };
 
-  const getProductName = (productId: string) => {
+  const getProductName = (productId: string, isGlobal: boolean = false) => {
+    if (isGlobal) {
+      const product = globalProducts.find(p => p.id === productId);
+      return product ? `🌐 ${product.name} - ${product.size} (${product.code})` : productId;
+    }
     const product = products.find(p => p.id === productId);
     return product ? `${product.name} - ${product.size} (${product.code})` : productId;
   };
@@ -255,49 +308,120 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
             <div className="border-t border-gray-200 pt-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Agregar Productos</h3>
 
+              {/* Product Source Tabs */}
+              <div className="flex space-x-1 mb-4 bg-gray-100 p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductSource('school');
+                    setCurrentItem({ ...currentItem, product_id: '', is_global: false });
+                  }}
+                  className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition ${
+                    productSource === 'school'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Building className="w-4 h-4 mr-2" />
+                  Productos del Colegio ({products.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductSource('global');
+                    setCurrentItem({ ...currentItem, product_id: '', is_global: true });
+                  }}
+                  className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition ${
+                    productSource === 'global'
+                      ? 'bg-white text-purple-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Globe className="w-4 h-4 mr-2" />
+                  Productos Globales ({globalProducts.length})
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 {/* Product Select */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Producto
+                    {productSource === 'global' ? 'Producto Global' : 'Producto'}
                   </label>
                   <select
                     value={currentItem.product_id}
                     onChange={(e) => handleProductSelect(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent outline-none ${
+                      productSource === 'global'
+                        ? 'border-purple-300 focus:ring-purple-500'
+                        : 'border-gray-300 focus:ring-blue-500'
+                    }`}
                   >
                     <option value="">Selecciona un producto</option>
-                    {products.map((product) => {
-                      const stock = product.inventory_quantity ?? product.stock ?? 0;
-                      const lowStock = stock < 5;
-                      const outOfStock = stock === 0;
-                      return (
-                        <option
-                          key={product.id}
-                          value={product.id}
-                          disabled={outOfStock}
-                        >
-                          {product.name} - {product.size} - ${Number(product.price).toLocaleString()}
-                          {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
-                        </option>
-                      );
-                    })}
+                    {productSource === 'global' ? (
+                      globalProducts.map((product) => {
+                        const stock = product.inventory_quantity ?? 0;
+                        const lowStock = stock < 5;
+                        const outOfStock = stock === 0;
+                        return (
+                          <option
+                            key={product.id}
+                            value={product.id}
+                            disabled={outOfStock}
+                          >
+                            🌐 {product.name} - {product.size} - ${Number(product.price).toLocaleString()}
+                            {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
+                          </option>
+                        );
+                      })
+                    ) : (
+                      products.map((product) => {
+                        const stock = product.inventory_quantity ?? product.stock ?? 0;
+                        const lowStock = stock < 5;
+                        const outOfStock = stock === 0;
+                        return (
+                          <option
+                            key={product.id}
+                            value={product.id}
+                            disabled={outOfStock}
+                          >
+                            {product.name} - {product.size} - ${Number(product.price).toLocaleString()}
+                            {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
+                          </option>
+                        );
+                      })
+                    )}
                   </select>
                   {/* Stock indicator for selected product */}
                   {currentItem.product_id && (
                     <p className="mt-1 text-sm">
                       {(() => {
-                        const product = products.find(p => p.id === currentItem.product_id);
-                        const stock = product?.inventory_quantity ?? product?.stock ?? 0;
-                        const alreadySelected = items.find(i => i.product_id === currentItem.product_id)?.quantity || 0;
-                        const available = stock - alreadySelected;
+                        if (productSource === 'global') {
+                          const product = globalProducts.find(p => p.id === currentItem.product_id);
+                          const stock = product?.inventory_quantity ?? 0;
+                          const alreadySelected = items.find(i => i.product_id === currentItem.product_id && i.is_global)?.quantity || 0;
+                          const available = stock - alreadySelected;
 
-                        if (available === 0) {
-                          return <span className="text-red-600 font-medium">⚠️ Sin stock disponible</span>;
-                        } else if (available < 5) {
-                          return <span className="text-orange-600 font-medium">⚠️ Stock bajo: {available} unidades disponibles</span>;
+                          if (available === 0) {
+                            return <span className="text-red-600 font-medium">⚠️ Sin stock disponible</span>;
+                          } else if (available < 5) {
+                            return <span className="text-orange-600 font-medium">⚠️ Stock bajo: {available} unidades disponibles</span>;
+                          } else {
+                            return <span className="text-purple-600">✓ {available} unidades disponibles (global)</span>;
+                          }
                         } else {
-                          return <span className="text-green-600">✓ {available} unidades disponibles</span>;
+                          const product = products.find(p => p.id === currentItem.product_id);
+                          const stock = product?.inventory_quantity ?? product?.stock ?? 0;
+                          const alreadySelected = items.find(i => i.product_id === currentItem.product_id && !i.is_global)?.quantity || 0;
+                          const available = stock - alreadySelected;
+
+                          if (available === 0) {
+                            return <span className="text-red-600 font-medium">⚠️ Sin stock disponible</span>;
+                          } else if (available < 5) {
+                            return <span className="text-orange-600 font-medium">⚠️ Stock bajo: {available} unidades disponibles</span>;
+                          } else {
+                            return <span className="text-green-600">✓ {available} unidades disponibles</span>;
+                          }
                         }
                       })()}
                     </p>
@@ -324,7 +448,11 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                     type="button"
                     onClick={handleAddItem}
                     disabled={!currentItem.product_id}
-                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    className={`w-full px-4 py-2 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
+                      productSource === 'global'
+                        ? 'bg-purple-600 hover:bg-purple-700'
+                        : 'bg-green-600 hover:bg-green-700'
+                    }`}
                   >
                     <Plus className="w-4 h-4 mr-1" />
                     Agregar
@@ -339,9 +467,17 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Productos en la Venta</h3>
                 <div className="space-y-2">
                   {items.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div
+                      key={index}
+                      className={`flex items-center justify-between p-3 rounded-lg ${
+                        item.is_global ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50'
+                      }`}
+                    >
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{getProductName(item.product_id)}</p>
+                        <p className="font-medium text-gray-900">
+                          {item.display_name || getProductName(item.product_id, item.is_global)}
+                          {item.is_global && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Global</span>}
+                        </p>
                         <p className="text-sm text-gray-600">
                           Cantidad: {item.quantity} × ${item.unit_price.toLocaleString()} = ${(item.quantity * item.unit_price).toLocaleString()}
                         </p>

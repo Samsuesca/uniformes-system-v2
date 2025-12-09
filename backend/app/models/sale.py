@@ -121,12 +121,21 @@ class SaleItem(Base):
         nullable=False,
         index=True
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
+    # For school products
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True
     )
+    # For global products (shared inventory)
+    global_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("global_products.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True
+    )
+    is_global_product: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     quantity: Mapped[int] = mapped_column(nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Price at time of sale
@@ -135,7 +144,8 @@ class SaleItem(Base):
 
     # Relationships
     sale: Mapped["Sale"] = relationship(back_populates="items")
-    product: Mapped["Product"] = relationship(back_populates="sale_items")
+    product: Mapped["Product | None"] = relationship(back_populates="sale_items")
+    global_product: Mapped["GlobalProduct | None"] = relationship()
     changes_as_original: Mapped[list["SaleChange"]] = relationship(
         back_populates="original_item",
         foreign_keys="SaleChange.original_item_id"

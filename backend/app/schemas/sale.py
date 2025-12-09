@@ -15,7 +15,9 @@ from app.models.sale import SaleStatus, PaymentMethod, ChangeStatus, ChangeType
 
 class SaleItemBase(BaseSchema):
     """Base sale item schema"""
-    product_id: UUID
+    product_id: UUID | None = None
+    global_product_id: UUID | None = None
+    is_global_product: bool = False
     quantity: int = Field(..., gt=0)
     unit_price: Decimal = Field(..., ge=0)
     subtotal: Decimal = Field(..., ge=0)
@@ -25,6 +27,7 @@ class SaleItemCreate(BaseSchema):
     """Schema for creating sale item (simplified input)"""
     product_id: UUID
     quantity: int = Field(..., gt=0)
+    is_global: bool = False  # True if product is from global inventory
     # unit_price and subtotal will be calculated from product
 
 
@@ -41,10 +44,15 @@ class SaleItemResponse(SaleItemInDB):
 
 class SaleItemWithProduct(SaleItemResponse):
     """SaleItem with product information"""
-    product_code: str
-    product_name: str | None
-    product_size: str
-    product_color: str | None
+    product_code: str | None = None
+    product_name: str | None = None
+    product_size: str | None = None
+    product_color: str | None = None
+    # Global product info (if applicable)
+    global_product_code: str | None = None
+    global_product_name: str | None = None
+    global_product_size: str | None = None
+    global_product_color: str | None = None
 
 
 # ============================================
