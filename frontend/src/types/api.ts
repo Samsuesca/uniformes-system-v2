@@ -511,6 +511,45 @@ export interface ExpensesByCategory {
 }
 
 // ============================================
+// Global Product Types
+// ============================================
+
+export interface GlobalGarmentType {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GlobalProduct {
+  id: string;
+  code: string;
+  garment_type_id: string;
+  name: string | null;
+  size: string;
+  color: string | null;
+  gender: string | null;
+  price: number;
+  cost: number | null;
+  description: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Inventory fields
+  inventory_quantity?: number;
+  inventory_min_stock?: number;
+}
+
+export interface GlobalProductWithInventory extends GlobalProduct {
+  inventory_quantity: number;
+  inventory_min_stock: number;
+}
+
+// ============================================
 // API Response Types
 // ============================================
 
