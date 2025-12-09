@@ -459,6 +459,7 @@ class AccountsReceivableListResponse(BaseSchema):
     amount: Decimal
     amount_paid: Decimal
     balance: Decimal
+    description: str
     invoice_date: date
     due_date: date | None
     is_paid: bool
@@ -527,7 +528,9 @@ class AccountsPayableListResponse(BaseSchema):
     amount: Decimal
     amount_paid: Decimal
     balance: Decimal
+    description: str
     category: str | None
+    invoice_number: str | None
     invoice_date: date
     due_date: date | None
     is_paid: bool

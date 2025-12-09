@@ -574,6 +574,7 @@ export interface BalanceAccountListItem {
   name: string;
   code: string | null;
   balance: number;
+  net_value: number;
   is_active: boolean;
 }
 
@@ -705,70 +706,63 @@ export interface AccountsPayableListItem {
 // Balance General Summary (Balance Sheet Summary)
 export interface BalanceGeneralSummary {
   as_of_date: string;
+  // Activos
+  total_current_assets: number;
+  total_fixed_assets: number;
+  total_other_assets: number;
   total_assets: number;
+  // Pasivos
+  total_current_liabilities: number;
+  total_long_liabilities: number;
+  total_other_liabilities: number;
   total_liabilities: number;
+  // Patrimonio
   total_equity: number;
-  assets_current: number;
-  assets_fixed: number;
-  assets_other: number;
-  liabilities_current: number;
-  liabilities_long: number;
-  liabilities_other: number;
-  equity_capital: number;
-  equity_retained: number;
-  equity_other: number;
-  accounts_receivable_total: number;
-  accounts_payable_total: number;
+  // Check
+  is_balanced: boolean;
+}
+
+// Accounts grouped by type for balance sheet display
+export interface BalanceAccountsByType {
+  account_type: AccountType;
+  account_type_label: string;
+  accounts: BalanceAccountListItem[];
+  total: number;
 }
 
 export interface BalanceGeneralDetailed {
   as_of_date: string;
-  assets: {
-    current: BalanceAccountListItem[];
-    fixed: BalanceAccountListItem[];
-    other: BalanceAccountListItem[];
-    total_current: number;
-    total_fixed: number;
-    total_other: number;
-    total: number;
-  };
-  liabilities: {
-    current: BalanceAccountListItem[];
-    long_term: BalanceAccountListItem[];
-    other: BalanceAccountListItem[];
-    total_current: number;
-    total_long: number;
-    total_other: number;
-    total: number;
-  };
-  equity: {
-    capital: BalanceAccountListItem[];
-    retained: BalanceAccountListItem[];
-    other: BalanceAccountListItem[];
-    total_capital: number;
-    total_retained: number;
-    total_other: number;
-    total: number;
-  };
+  // Assets breakdown
+  current_assets: BalanceAccountsByType;
+  fixed_assets: BalanceAccountsByType;
+  other_assets: BalanceAccountsByType;
+  // Liabilities breakdown
+  current_liabilities: BalanceAccountsByType;
+  long_liabilities: BalanceAccountsByType;
+  other_liabilities: BalanceAccountsByType;
+  // Equity breakdown
+  equity: BalanceAccountsByType[];
+  // Totals
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  is_balanced: boolean;
 }
 
 export interface ReceivablesPayablesSummary {
-  receivables: {
-    total: number;
-    total_pending: number;
-    total_overdue: number;
-    count_pending: number;
-    count_overdue: number;
-    items: AccountsReceivableListItem[];
-  };
-  payables: {
-    total: number;
-    total_pending: number;
-    total_overdue: number;
-    count_pending: number;
-    count_overdue: number;
-    items: AccountsPayableListItem[];
-  };
+  // Receivables (Cuentas por Cobrar)
+  total_receivables: number;
+  receivables_collected: number;
+  receivables_pending: number;
+  receivables_overdue: number;
+  receivables_count: number;
+  // Payables (Cuentas por Pagar)
+  total_payables: number;
+  payables_paid: number;
+  payables_pending: number;
+  payables_overdue: number;
+  payables_count: number;
+  // Net position
   net_position: number;
 }
 

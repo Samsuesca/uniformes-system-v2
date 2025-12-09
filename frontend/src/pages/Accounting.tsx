@@ -60,6 +60,8 @@ export default function Accounting() {
   const [balanceSummary, setBalanceSummary] = useState<BalanceGeneralSummary | null>(null);
   const [balanceDetailed, setBalanceDetailed] = useState<BalanceGeneralDetailed | null>(null);
   const [receivablesPayables, setReceivablesPayables] = useState<ReceivablesPayablesSummary | null>(null);
+  const [receivablesList, setReceivablesList] = useState<AccountsReceivableListItem[]>([]);
+  const [payablesList, setPayablesList] = useState<AccountsPayableListItem[]>([]);
 
   // UI states
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -140,8 +142,14 @@ export default function Accounting() {
         setBalanceSummary(summary);
         setBalanceDetailed(detailed);
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
-        const rpSummary = await accountingService.getReceivablesPayablesSummary(schoolId);
+        const [rpSummary, receivables, payables] = await Promise.all([
+          accountingService.getReceivablesPayablesSummary(schoolId),
+          accountingService.getAccountsReceivable(schoolId, { isPaid: false }),
+          accountingService.getAccountsPayable(schoolId, { isPaid: false })
+        ]);
         setReceivablesPayables(rpSummary);
+        setReceivablesList(receivables);
+        setPayablesList(payables);
       }
     } catch (err: any) {
       console.error('Error loading accounting data:', err);
@@ -558,15 +566,15 @@ export default function Accounting() {
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Corrientes</span>
-                <span>{formatCurrency(balanceSummary.assets_current)}</span>
+                <span>{formatCurrency(balanceSummary.total_current_assets)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Fijos</span>
-                <span>{formatCurrency(balanceSummary.assets_fixed)}</span>
+                <span>{formatCurrency(balanceSummary.total_fixed_assets)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Otros</span>
-                <span>{formatCurrency(balanceSummary.assets_other)}</span>
+                <span>{formatCurrency(balanceSummary.total_other_assets)}</span>
               </div>
             </div>
           </div>
@@ -580,15 +588,15 @@ export default function Accounting() {
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Corrientes</span>
-                <span>{formatCurrency(balanceSummary.liabilities_current)}</span>
+                <span>{formatCurrency(balanceSummary.total_current_liabilities)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Largo Plazo</span>
-                <span>{formatCurrency(balanceSummary.liabilities_long)}</span>
+                <span>{formatCurrency(balanceSummary.total_long_liabilities)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Otros</span>
-                <span>{formatCurrency(balanceSummary.liabilities_other)}</span>
+                <span>{formatCurrency(balanceSummary.total_other_liabilities)}</span>
               </div>
             </div>
           </div>
@@ -599,20 +607,6 @@ export default function Accounting() {
               <Landmark className="w-6 h-6 text-blue-600" />
             </div>
             <p className="text-3xl font-bold text-blue-600">{formatCurrency(balanceSummary.total_equity)}</p>
-            <div className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Capital</span>
-                <span>{formatCurrency(balanceSummary.equity_capital)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Utilidades Retenidas</span>
-                <span>{formatCurrency(balanceSummary.equity_retained)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Otros</span>
-                <span>{formatCurrency(balanceSummary.equity_other)}</span>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -638,7 +632,7 @@ export default function Accounting() {
             </div>
           </div>
           <div className="text-center mt-4">
-            {Math.abs(balanceSummary.total_assets - (balanceSummary.total_liabilities + balanceSummary.total_equity)) < 0.01 ? (
+            {balanceSummary.is_balanced ? (
               <span className="text-green-600 flex items-center justify-center gap-2">
                 <CheckCircle className="w-5 h-5" /> Balance cuadrado correctamente
               </span>
@@ -664,24 +658,24 @@ export default function Accounting() {
                 {expandedSections.assets ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 <h3 className="text-lg font-semibold text-green-700">Activos</h3>
               </div>
-              <span className="text-xl font-bold text-green-600">{formatCurrency(balanceDetailed.assets.total)}</span>
+              <span className="text-xl font-bold text-green-600">{formatCurrency(balanceDetailed.total_assets)}</span>
             </button>
             {expandedSections.assets && (
               <div className="p-6 space-y-6">
                 {/* Current Assets */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Activos Corrientes</h4>
-                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.assets.total_current)}</span>
+                    <h4 className="font-medium text-gray-700">{balanceDetailed.current_assets.account_type_label}</h4>
+                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.current_assets.total)}</span>
                   </div>
-                  {balanceDetailed.assets.current.length === 0 ? (
+                  {balanceDetailed.current_assets.accounts.length === 0 ? (
                     <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
                   ) : (
                     <div className="space-y-2">
-                      {balanceDetailed.assets.current.map(account => (
+                      {balanceDetailed.current_assets.accounts.map(account => (
                         <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
                         </div>
                       ))}
                     </div>
@@ -690,17 +684,17 @@ export default function Accounting() {
                 {/* Fixed Assets */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Activos Fijos</h4>
-                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.assets.total_fixed)}</span>
+                    <h4 className="font-medium text-gray-700">{balanceDetailed.fixed_assets.account_type_label}</h4>
+                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.fixed_assets.total)}</span>
                   </div>
-                  {balanceDetailed.assets.fixed.length === 0 ? (
+                  {balanceDetailed.fixed_assets.accounts.length === 0 ? (
                     <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
                   ) : (
                     <div className="space-y-2">
-                      {balanceDetailed.assets.fixed.map(account => (
+                      {balanceDetailed.fixed_assets.accounts.map(account => (
                         <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
                         </div>
                       ))}
                     </div>
@@ -709,17 +703,17 @@ export default function Accounting() {
                 {/* Other Assets */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Otros Activos</h4>
-                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.assets.total_other)}</span>
+                    <h4 className="font-medium text-gray-700">{balanceDetailed.other_assets.account_type_label}</h4>
+                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.other_assets.total)}</span>
                   </div>
-                  {balanceDetailed.assets.other.length === 0 ? (
+                  {balanceDetailed.other_assets.accounts.length === 0 ? (
                     <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
                   ) : (
                     <div className="space-y-2">
-                      {balanceDetailed.assets.other.map(account => (
+                      {balanceDetailed.other_assets.accounts.map(account => (
                         <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
                         </div>
                       ))}
                     </div>
@@ -739,24 +733,24 @@ export default function Accounting() {
                 {expandedSections.liabilities ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 <h3 className="text-lg font-semibold text-red-700">Pasivos</h3>
               </div>
-              <span className="text-xl font-bold text-red-600">{formatCurrency(balanceDetailed.liabilities.total)}</span>
+              <span className="text-xl font-bold text-red-600">{formatCurrency(balanceDetailed.total_liabilities)}</span>
             </button>
             {expandedSections.liabilities && (
               <div className="p-6 space-y-6">
                 {/* Current Liabilities */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Pasivos Corrientes</h4>
-                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.liabilities.total_current)}</span>
+                    <h4 className="font-medium text-gray-700">{balanceDetailed.current_liabilities.account_type_label}</h4>
+                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.current_liabilities.total)}</span>
                   </div>
-                  {balanceDetailed.liabilities.current.length === 0 ? (
+                  {balanceDetailed.current_liabilities.accounts.length === 0 ? (
                     <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
                   ) : (
                     <div className="space-y-2">
-                      {balanceDetailed.liabilities.current.map(account => (
+                      {balanceDetailed.current_liabilities.accounts.map(account => (
                         <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
                         </div>
                       ))}
                     </div>
@@ -765,17 +759,17 @@ export default function Accounting() {
                 {/* Long-term Liabilities */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Pasivos a Largo Plazo</h4>
-                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.liabilities.total_long)}</span>
+                    <h4 className="font-medium text-gray-700">{balanceDetailed.long_liabilities.account_type_label}</h4>
+                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.long_liabilities.total)}</span>
                   </div>
-                  {balanceDetailed.liabilities.long_term.length === 0 ? (
+                  {balanceDetailed.long_liabilities.accounts.length === 0 ? (
                     <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
                   ) : (
                     <div className="space-y-2">
-                      {balanceDetailed.liabilities.long_term.map(account => (
+                      {balanceDetailed.long_liabilities.accounts.map(account => (
                         <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
                         </div>
                       ))}
                     </div>
@@ -784,17 +778,17 @@ export default function Accounting() {
                 {/* Other Liabilities */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Otros Pasivos</h4>
-                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.liabilities.total_other)}</span>
+                    <h4 className="font-medium text-gray-700">{balanceDetailed.other_liabilities.account_type_label}</h4>
+                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.other_liabilities.total)}</span>
                   </div>
-                  {balanceDetailed.liabilities.other.length === 0 ? (
+                  {balanceDetailed.other_liabilities.accounts.length === 0 ? (
                     <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
                   ) : (
                     <div className="space-y-2">
-                      {balanceDetailed.liabilities.other.map(account => (
+                      {balanceDetailed.other_liabilities.accounts.map(account => (
                         <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                           <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
                         </div>
                       ))}
                     </div>
@@ -814,67 +808,30 @@ export default function Accounting() {
                 {expandedSections.equity ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                 <h3 className="text-lg font-semibold text-blue-700">Patrimonio</h3>
               </div>
-              <span className="text-xl font-bold text-blue-600">{formatCurrency(balanceDetailed.equity.total)}</span>
+              <span className="text-xl font-bold text-blue-600">{formatCurrency(balanceDetailed.total_equity)}</span>
             </button>
             {expandedSections.equity && (
               <div className="p-6 space-y-6">
-                {/* Capital */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Capital</h4>
-                    <span className="font-semibold text-blue-600">{formatCurrency(balanceDetailed.equity.total_capital)}</span>
-                  </div>
-                  {balanceDetailed.equity.capital.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.equity.capital.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
-                        </div>
-                      ))}
+                {balanceDetailed.equity.map((equityGroup) => (
+                  <div key={equityGroup.account_type}>
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium text-gray-700">{equityGroup.account_type_label}</h4>
+                      <span className="font-semibold text-blue-600">{formatCurrency(equityGroup.total)}</span>
                     </div>
-                  )}
-                </div>
-                {/* Retained Earnings */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Utilidades Retenidas</h4>
-                    <span className="font-semibold text-blue-600">{formatCurrency(balanceDetailed.equity.total_retained)}</span>
+                    {equityGroup.accounts.length === 0 ? (
+                      <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {equityGroup.accounts.map(account => (
+                          <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
+                            <span className="text-sm text-gray-700">{account.name}</span>
+                            <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {balanceDetailed.equity.retained.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.equity.retained.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Other Equity */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">Otro Patrimonio</h4>
-                    <span className="font-semibold text-blue-600">{formatCurrency(balanceDetailed.equity.total_other)}</span>
-                  </div>
-                  {balanceDetailed.equity.other.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.equity.other.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.balance)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                ))}
               </div>
             )}
           </div>
@@ -909,7 +866,7 @@ export default function Accounting() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Total por Cobrar</p>
-                <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(receivablesPayables.receivables.total)}</p>
+                <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(receivablesPayables.total_receivables)}</p>
               </div>
               <Users className="w-8 h-8 text-blue-400" />
             </div>
@@ -918,8 +875,8 @@ export default function Accounting() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Pendientes</p>
-                <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(receivablesPayables.receivables.total_pending)}</p>
-                <p className="text-xs text-gray-400">{receivablesPayables.receivables.count_pending} cuenta(s)</p>
+                <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(receivablesPayables.receivables_pending)}</p>
+                <p className="text-xs text-gray-400">{receivablesPayables.receivables_count} cuenta(s)</p>
               </div>
               <Clock className="w-8 h-8 text-orange-400" />
             </div>
@@ -928,8 +885,7 @@ export default function Accounting() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Vencidas</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(receivablesPayables.receivables.total_overdue)}</p>
-                <p className="text-xs text-gray-400">{receivablesPayables.receivables.count_overdue} cuenta(s)</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(receivablesPayables.receivables_overdue)}</p>
               </div>
               <AlertCircle className="w-8 h-8 text-red-400" />
             </div>
@@ -962,13 +918,13 @@ export default function Accounting() {
           </button>
         </div>
         <div className="divide-y divide-gray-100">
-          {!receivablesPayables || receivablesPayables.receivables.items.length === 0 ? (
+          {receivablesList.length === 0 ? (
             <div className="px-6 py-12 text-center text-gray-500">
               <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p>No hay cuentas por cobrar registradas</p>
+              <p>No hay cuentas por cobrar pendientes</p>
             </div>
           ) : (
-            receivablesPayables.receivables.items.map((item) => (
+            receivablesList.map((item) => (
               <div key={item.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -1025,7 +981,7 @@ export default function Accounting() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Total por Pagar</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(receivablesPayables.payables.total)}</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(receivablesPayables.total_payables)}</p>
               </div>
               <Building2 className="w-8 h-8 text-red-400" />
             </div>
@@ -1034,8 +990,8 @@ export default function Accounting() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Pendientes</p>
-                <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(receivablesPayables.payables.total_pending)}</p>
-                <p className="text-xs text-gray-400">{receivablesPayables.payables.count_pending} cuenta(s)</p>
+                <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(receivablesPayables.payables_pending)}</p>
+                <p className="text-xs text-gray-400">{receivablesPayables.payables_count} cuenta(s)</p>
               </div>
               <Clock className="w-8 h-8 text-orange-400" />
             </div>
@@ -1044,8 +1000,7 @@ export default function Accounting() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Vencidas</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(receivablesPayables.payables.total_overdue)}</p>
-                <p className="text-xs text-gray-400">{receivablesPayables.payables.count_overdue} cuenta(s)</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(receivablesPayables.payables_overdue)}</p>
               </div>
               <AlertCircle className="w-8 h-8 text-red-400" />
             </div>
@@ -1078,13 +1033,13 @@ export default function Accounting() {
           </button>
         </div>
         <div className="divide-y divide-gray-100">
-          {!receivablesPayables || receivablesPayables.payables.items.length === 0 ? (
+          {payablesList.length === 0 ? (
             <div className="px-6 py-12 text-center text-gray-500">
               <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p>No hay cuentas por pagar registradas</p>
+              <p>No hay cuentas por pagar pendientes</p>
             </div>
           ) : (
-            receivablesPayables.payables.items.map((item) => (
+            payablesList.map((item) => (
               <div key={item.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
