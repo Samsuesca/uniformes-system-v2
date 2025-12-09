@@ -69,7 +69,7 @@ class Transaction(Base):
 
     # Transaction details
     type: Mapped[TransactionType] = mapped_column(
-        SQLEnum(TransactionType, name="transaction_type_enum"),
+        SQLEnum(TransactionType, name="transaction_type_enum", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True
     )
@@ -78,7 +78,7 @@ class Transaction(Base):
         nullable=False
     )
     payment_method: Mapped[AccPaymentMethod] = mapped_column(
-        SQLEnum(AccPaymentMethod, name="acc_payment_method_enum"),
+        SQLEnum(AccPaymentMethod, name="acc_payment_method_enum", values_callable=lambda x: [e.value for e in x]),
         nullable=False
     )
 
@@ -161,7 +161,7 @@ class Expense(Base):
 
     # Expense details
     category: Mapped[ExpenseCategory] = mapped_column(
-        SQLEnum(ExpenseCategory, name="expense_category_enum"),
+        SQLEnum(ExpenseCategory, name="expense_category_enum", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True
     )
@@ -374,7 +374,7 @@ class BalanceAccount(Base):
 
     # Account details
     account_type: Mapped[AccountType] = mapped_column(
-        SQLEnum(AccountType, name="account_type_enum"),
+        SQLEnum(AccountType, name="account_type_enum", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True
     )

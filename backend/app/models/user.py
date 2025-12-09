@@ -90,7 +90,7 @@ class UserSchoolRole(Base):
         nullable=False
     )
     role: Mapped[UserRole] = mapped_column(
-        SQLEnum(UserRole, name="user_role_enum"),
+        SQLEnum(UserRole, name="user_role_enum", values_callable=lambda x: [e.value for e in x]),
         nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(

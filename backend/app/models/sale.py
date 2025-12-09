@@ -74,18 +74,18 @@ class Sale(Base):
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     paid_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     payment_method: Mapped[PaymentMethod | None] = mapped_column(
-        SQLEnum(PaymentMethod, name="payment_method_enum")
+        SQLEnum(PaymentMethod, name="payment_method_enum", values_callable=lambda x: [e.value for e in x])
     )
 
     status: Mapped[SaleStatus] = mapped_column(
-        SQLEnum(SaleStatus, name="sale_status_enum"),
+        SQLEnum(SaleStatus, name="sale_status_enum", values_callable=lambda x: [e.value for e in x]),
         default=SaleStatus.COMPLETED,
         nullable=False
     )
 
     # Source/origin of the sale (who/where created it)
     source: Mapped[SaleSource] = mapped_column(
-        SQLEnum(SaleSource, name="sale_source_enum"),
+        SQLEnum(SaleSource, name="sale_source_enum", values_callable=lambda x: [e.value for e in x]),
         default=SaleSource.DESKTOP_APP,
         nullable=False
     )
