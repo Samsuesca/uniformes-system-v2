@@ -1,16 +1,8 @@
 /**
- * API Client - Axios instance configured for backend communication
+ * API Client - Using Tauri HTTP plugin for cross-origin requests
  */
-import axios, { AxiosError, AxiosResponse } from 'axios';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { useConfigStore } from '../stores/configStore';
-
-// Create Axios instance
-export const apiClient = axios.create({
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 30000, // 30 seconds
-});
 
 // Track online status
 function updateOnlineStatus(isOnline: boolean) {
@@ -21,105 +13,129 @@ function updateOnlineStatus(isOnline: boolean) {
   }
 }
 
-// Dynamic baseURL interceptor - uses current config from store
-apiClient.interceptors.request.use(
-  (config) => {
-    // Get current API URL from config store
+// Helper function to get error message
+export const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'object' && error !== null && 'detail' in error) {
+    return String((error as { detail: unknown }).detail);
+  }
+  return 'An unexpected error occurred';
+};
+
+// API Client wrapper using Tauri fetch
+export const apiClient = {
+  async request<T>(
+    method: string,
+    endpoint: string,
+    data?: unknown,
+    options?: { headers?: Record<string, string>; params?: Record<string, unknown> }
+  ): Promise<{ data: T; status: number }> {
     const apiUrl = useConfigStore.getState().apiUrl;
-    config.baseURL = `${apiUrl}/api/v1`;
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+    let url = `${apiUrl}/api/v1${endpoint}`;
 
-// Request interceptor - add auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    // Get token from localStorage
-    const token = localStorage.getItem('access_token');
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor - handle errors and track connection status
-apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
-    // Successful response = we're online
-    updateOnlineStatus(true);
-    return response;
-  },
-  (error: AxiosError) => {
-    // Handle 401 Unauthorized - token expired or invalid
-    if (error.response?.status === 401) {
-      // We got a response, so we're online (just unauthorized)
-      updateOnlineStatus(true);
-
-      // Clear auth data
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-
-      // Redirect to login
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+    // Add query params if provided
+    if (options?.params) {
+      const searchParams = new URLSearchParams();
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, String(value));
+        }
+      });
+      const queryString = searchParams.toString();
+      if (queryString) {
+        url += `?${queryString}`;
       }
     }
 
-    // Handle 403 Forbidden - no permissions
-    if (error.response?.status === 403) {
-      // We got a response, so we're online
+    const token = localStorage.getItem('access_token');
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await tauriFetch(url, {
+        method,
+        headers,
+        body: data ? JSON.stringify(data) : undefined,
+        connectTimeout: 30000,
+      });
+
       updateOnlineStatus(true);
-      console.error('Forbidden: You do not have permission to access this resource');
-    }
 
-    // Handle network errors (no response means offline)
-    if (!error.response) {
-      updateOnlineStatus(false);
-      console.error('Network error: Could not connect to API');
-    } else {
-      // Any other error response means we're connected
-      updateOnlineStatus(true);
-    }
+      // Handle 401 Unauthorized
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+        throw new Error('Unauthorized');
+      }
 
-    return Promise.reject(error);
-  }
-);
+      // Handle 403 Forbidden
+      if (response.status === 403) {
+        throw new Error('No tienes permisos para esta acción');
+      }
 
-// Helper function to get error message
-export const getErrorMessage = (error: unknown): string => {
-  if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.detail;
-    if (typeof message === 'string') {
-      return message;
+      // Handle other errors
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      return { data: responseData as T, status: response.status };
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        updateOnlineStatus(false);
+      }
+      throw error;
     }
-    return error.message;
-  }
-  return 'An unexpected error occurred';
+  },
+
+  async get<T>(endpoint: string, options?: { headers?: Record<string, string>; params?: Record<string, unknown> }) {
+    return this.request<T>('GET', endpoint, undefined, options);
+  },
+
+  async post<T>(endpoint: string, data?: unknown, options?: { headers?: Record<string, string>; params?: Record<string, unknown> }) {
+    return this.request<T>('POST', endpoint, data, options);
+  },
+
+  async put<T>(endpoint: string, data?: unknown, options?: { headers?: Record<string, string>; params?: Record<string, unknown> }) {
+    return this.request<T>('PUT', endpoint, data, options);
+  },
+
+  async patch<T>(endpoint: string, data?: unknown, options?: { headers?: Record<string, string>; params?: Record<string, unknown> }) {
+    return this.request<T>('PATCH', endpoint, data, options);
+  },
+
+  async delete<T>(endpoint: string, options?: { headers?: Record<string, string>; params?: Record<string, unknown> }) {
+    return this.request<T>('DELETE', endpoint, undefined, options);
+  },
 };
 
 // Check connection status by calling health endpoint
 export async function checkConnection(): Promise<boolean> {
   try {
     const apiUrl = useConfigStore.getState().apiUrl;
-    await axios.get(`${apiUrl}/health`, { timeout: 5000 });
-    updateOnlineStatus(true);
-    return true;
+    const response = await tauriFetch(`${apiUrl}/health`, {
+      method: 'GET',
+      connectTimeout: 5000,
+    });
+    updateOnlineStatus(response.ok);
+    return response.ok;
   } catch {
     updateOnlineStatus(false);
     return false;
   }
 }
-
-// Initialize connection check on load
-checkConnection();
 
 export default apiClient;

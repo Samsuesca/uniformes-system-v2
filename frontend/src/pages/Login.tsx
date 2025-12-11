@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { ENVIRONMENTS, ENVIRONMENT_LABELS, type EnvironmentKey } from '../config/environments';
 import { LogIn, AlertCircle, Settings, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,24 +21,31 @@ export default function Login() {
   const [testingServer, setTestingServer] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<Record<string, 'success' | 'error' | 'testing'>>({});
 
+  const [debugError, setDebugError] = useState<string | null>(null);
+
   const selectServer = async (url: string) => {
     setSelectedServer(url);
     setTestingServer(url);
     setServerStatus(prev => ({ ...prev, [url]: 'testing' }));
+    setDebugError(null);
 
     try {
-      const response = await fetch(`${url}/health`, {
+      // Use Tauri's HTTP plugin for cross-origin requests
+      const response = await tauriFetch(`${url}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000)
+        connectTimeout: 5000
       });
       if (response.ok) {
         setServerStatus(prev => ({ ...prev, [url]: 'success' }));
         setApiUrl(url);
       } else {
         setServerStatus(prev => ({ ...prev, [url]: 'error' }));
+        setDebugError(`HTTP ${response.status}: ${response.statusText}`);
       }
-    } catch {
+    } catch (err) {
       setServerStatus(prev => ({ ...prev, [url]: 'error' }));
+      const errorMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      setDebugError(errorMsg);
     }
     setTestingServer(null);
   };
@@ -197,9 +205,16 @@ export default function Login() {
                 </p>
               )}
               {serverStatus[selectedServer] === 'error' && (
-                <p className="text-xs text-red-600 mt-2 text-center">
-                  ✗ No se pudo conectar al servidor
-                </p>
+                <div className="mt-2 p-2 bg-red-50 rounded-lg">
+                  <p className="text-xs text-red-600 text-center">
+                    ✗ No se pudo conectar al servidor
+                  </p>
+                  {debugError && (
+                    <p className="text-xs text-red-500 font-mono mt-1 break-all text-center">
+                      {debugError}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}

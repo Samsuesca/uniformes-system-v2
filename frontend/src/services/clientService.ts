@@ -109,7 +109,7 @@ export const clientService = {
    * Get top clients by total spent
    */
   async getTopClients(limit: number = 10): Promise<any[]> {
-    const response = await apiClient.get(`/clients/top?limit=${limit}`);
+    const response = await apiClient.get<any[]>(`/clients/top?limit=${limit}`);
     return response.data;
   },
 
