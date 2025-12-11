@@ -19,11 +19,12 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "devtools": true
+        "devtools": true,
+        "url": "index.html"
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://192.168.*.* http://104.156.247.226 http://104.156.247.226:* https://*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://* https://*",
       "capabilities": ["default"]
     }
   },
