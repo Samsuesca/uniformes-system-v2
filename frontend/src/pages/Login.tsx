@@ -4,14 +4,37 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { LogIn, AlertCircle } from 'lucide-react';
+import { useConfigStore } from '../stores/configStore';
+import { ENVIRONMENTS, ENVIRONMENT_LABELS, type EnvironmentKey } from '../config/environments';
+import { LogIn, AlertCircle, Settings, Check, Wifi, WifiOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
+  const { apiUrl, setApiUrl } = useConfigStore();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const testConnection = async (url: string) => {
+    setTestingConnection(true);
+    setConnectionStatus('idle');
+    try {
+      const response = await fetch(`${url}/health`, { method: 'GET', signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        setConnectionStatus('success');
+        setApiUrl(url);
+      } else {
+        setConnectionStatus('error');
+      }
+    } catch {
+      setConnectionStatus('error');
+    }
+    setTestingConnection(false);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -110,8 +133,57 @@ export default function Login() {
           </button>
         </form>
 
+        {/* Server Configuration Toggle */}
+        <div className="mt-6 pt-6 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setShowServerConfig(!showServerConfig)}
+            className="w-full flex items-center justify-center text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Configurar Servidor
+          </button>
+
+          {showServerConfig && (
+            <div className="mt-4 p-4 bg-slate-50 rounded-xl space-y-3">
+              <p className="text-xs text-slate-500 mb-3">Selecciona el servidor:</p>
+              {(Object.keys(ENVIRONMENTS) as EnvironmentKey[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => testConnection(ENVIRONMENTS[key])}
+                  disabled={testingConnection}
+                  className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
+                    apiUrl === ENVIRONMENTS[key]
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-sm font-medium">{ENVIRONMENT_LABELS[key]}</span>
+                  <div className="flex items-center gap-2">
+                    {testingConnection && apiUrl !== ENVIRONMENTS[key] ? (
+                      <span className="text-xs text-slate-400">...</span>
+                    ) : apiUrl === ENVIRONMENTS[key] ? (
+                      connectionStatus === 'success' ? (
+                        <Wifi className="w-4 h-4 text-green-500" />
+                      ) : connectionStatus === 'error' ? (
+                        <WifiOff className="w-4 h-4 text-red-500" />
+                      ) : (
+                        <Check className="w-4 h-4 text-brand-500" />
+                      )
+                    ) : null}
+                  </div>
+                </button>
+              ))}
+              <p className="text-xs text-slate-400 mt-2">
+                Actual: <span className="font-mono text-slate-600">{apiUrl}</span>
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
           <p className="text-xs text-slate-400 font-medium">
             Sistema de Gestión de Uniformes v2.0
           </p>
