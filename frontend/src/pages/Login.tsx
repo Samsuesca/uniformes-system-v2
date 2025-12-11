@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { ENVIRONMENTS, ENVIRONMENT_LABELS, type EnvironmentKey } from '../config/environments';
-import { LogIn, AlertCircle, Settings, Check, Wifi, WifiOff } from 'lucide-react';
+import { LogIn, AlertCircle, Settings, Loader2, Wifi, WifiOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -16,24 +16,30 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showServerConfig, setShowServerConfig] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [selectedServer, setSelectedServer] = useState<string>(apiUrl);
+  const [testingServer, setTestingServer] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<Record<string, 'success' | 'error' | 'testing'>>({});
 
-  const testConnection = async (url: string) => {
-    setTestingConnection(true);
-    setConnectionStatus('idle');
+  const selectServer = async (url: string) => {
+    setSelectedServer(url);
+    setTestingServer(url);
+    setServerStatus(prev => ({ ...prev, [url]: 'testing' }));
+
     try {
-      const response = await fetch(`${url}/health`, { method: 'GET', signal: AbortSignal.timeout(5000) });
+      const response = await fetch(`${url}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
       if (response.ok) {
-        setConnectionStatus('success');
+        setServerStatus(prev => ({ ...prev, [url]: 'success' }));
         setApiUrl(url);
       } else {
-        setConnectionStatus('error');
+        setServerStatus(prev => ({ ...prev, [url]: 'error' }));
       }
     } catch {
-      setConnectionStatus('error');
+      setServerStatus(prev => ({ ...prev, [url]: 'error' }));
     }
-    setTestingConnection(false);
+    setTestingServer(null);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -145,39 +151,56 @@ export default function Login() {
           </button>
 
           {showServerConfig && (
-            <div className="mt-4 p-4 bg-slate-50 rounded-xl space-y-3">
+            <div className="mt-4 p-4 bg-slate-50 rounded-xl space-y-2">
               <p className="text-xs text-slate-500 mb-3">Selecciona el servidor:</p>
-              {(Object.keys(ENVIRONMENTS) as EnvironmentKey[]).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => testConnection(ENVIRONMENTS[key])}
-                  disabled={testingConnection}
-                  className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
-                    apiUrl === ENVIRONMENTS[key]
-                      ? 'border-brand-500 bg-brand-50 text-brand-700'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <span className="text-sm font-medium">{ENVIRONMENT_LABELS[key]}</span>
-                  <div className="flex items-center gap-2">
-                    {testingConnection && apiUrl !== ENVIRONMENTS[key] ? (
-                      <span className="text-xs text-slate-400">...</span>
-                    ) : apiUrl === ENVIRONMENTS[key] ? (
-                      connectionStatus === 'success' ? (
-                        <Wifi className="w-4 h-4 text-green-500" />
-                      ) : connectionStatus === 'error' ? (
-                        <WifiOff className="w-4 h-4 text-red-500" />
-                      ) : (
-                        <Check className="w-4 h-4 text-brand-500" />
-                      )
-                    ) : null}
-                  </div>
-                </button>
-              ))}
-              <p className="text-xs text-slate-400 mt-2">
-                Actual: <span className="font-mono text-slate-600">{apiUrl}</span>
-              </p>
+              {(Object.keys(ENVIRONMENTS) as EnvironmentKey[]).map((key) => {
+                const url = ENVIRONMENTS[key];
+                const isSelected = apiUrl === url;
+                const status = serverStatus[url];
+                const isTesting = testingServer === url;
+
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => selectServer(url)}
+                    disabled={isTesting}
+                    className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all ${
+                      isSelected
+                        ? 'border-brand-500 bg-brand-50'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="text-left">
+                      <span className={`text-sm font-medium ${isSelected ? 'text-brand-700' : 'text-slate-700'}`}>
+                        {ENVIRONMENT_LABELS[key]}
+                      </span>
+                      <p className="text-xs text-slate-400 font-mono">{url}</p>
+                    </div>
+                    <div className="flex items-center">
+                      {isTesting ? (
+                        <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
+                      ) : status === 'success' ? (
+                        <Wifi className="w-5 h-5 text-green-500" />
+                      ) : status === 'error' ? (
+                        <WifiOff className="w-5 h-5 text-red-500" />
+                      ) : isSelected ? (
+                        <div className="w-3 h-3 rounded-full bg-brand-500" />
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+              {serverStatus[apiUrl] === 'success' && (
+                <p className="text-xs text-green-600 mt-2 text-center">
+                  ✓ Conectado al servidor
+                </p>
+              )}
+              {serverStatus[selectedServer] === 'error' && (
+                <p className="text-xs text-red-600 mt-2 text-center">
+                  ✗ No se pudo conectar al servidor
+                </p>
+              )}
             </div>
           )}
         </div>
