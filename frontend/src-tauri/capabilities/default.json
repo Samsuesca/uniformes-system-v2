@@ -34,6 +34,18 @@
     "fs:allow-download-write",
     "fs:allow-download-write-recursive",
     "fs:allow-home-write",
-    "fs:allow-home-write-recursive"
+    "fs:allow-home-write-recursive",
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "http://192.168.*:*" },
+        { "url": "http://104.156.247.226" },
+        { "url": "http://104.156.247.226/*" },
+        { "url": "https://*" }
+      ]
+    }
   ]
 }
