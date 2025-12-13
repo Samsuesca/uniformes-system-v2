@@ -101,6 +101,27 @@ async def get_school_summary(
     return summary
 
 
+@router.get("/slug/{slug}", response_model=SchoolResponse)
+async def get_school_by_slug(
+    slug: str,
+    db: DatabaseSession
+):
+    """
+    Get school by slug (URL-friendly identifier)
+    Public endpoint - no authentication required
+    """
+    school_service = SchoolService(db)
+    school = await school_service.get_by_slug(slug)
+
+    if not school:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"School with slug '{slug}' not found"
+        )
+
+    return SchoolResponse.model_validate(school)
+
+
 @router.put("/{school_id}", response_model=SchoolResponse)
 async def update_school(
     school_id: UUID,

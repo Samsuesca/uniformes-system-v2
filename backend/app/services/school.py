@@ -70,6 +70,21 @@ class SchoolService(BaseService[School]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_slug(self, slug: str) -> School | None:
+        """
+        Get school by slug
+
+        Args:
+            slug: School slug (URL-friendly identifier)
+
+        Returns:
+            School instance or None
+        """
+        result = await self.db.execute(
+            select(School).where(School.slug == slug.lower())
+        )
+        return result.scalar_one_or_none()
+
     async def get_active_schools(self, skip: int = 0, limit: int = 100) -> list[School]:
         """
         Get all active schools

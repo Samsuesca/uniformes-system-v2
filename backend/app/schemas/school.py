@@ -9,6 +9,7 @@ from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema
 class SchoolBase(BaseSchema):
     """Base school schema"""
     name: str = Field(..., min_length=3, max_length=255)
+    slug: str | None = Field(None, min_length=3, max_length=100, pattern=r'^[a-z0-9-]+$')
     logo_url: HttpUrl | str | None = None
     primary_color: str | None = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
     secondary_color: str | None = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
@@ -62,6 +63,7 @@ class SchoolUpdate(BaseSchema):
 class SchoolInDB(SchoolBase, IDModelSchema, TimestampSchema):
     """School as stored in database"""
     code: str
+    slug: str
     settings: dict
     is_active: bool
 
@@ -76,6 +78,7 @@ class SchoolListResponse(BaseSchema):
     id: UUID
     code: str
     name: str
+    slug: str
     logo_url: str | None
     is_active: bool
 

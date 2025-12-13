@@ -21,6 +21,7 @@ class School(Base):
     )
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     logo_url: Mapped[str | None] = mapped_column(String(500))
     primary_color: Mapped[str | None] = mapped_column(String(7))  # #003366
     secondary_color: Mapped[str | None] = mapped_column(String(7))  # #FFD700
