@@ -439,7 +439,8 @@ async def register_web_client(
     """
     Register a new web portal client (public endpoint).
 
-    Client must verify email before logging in.
+    If email already exists, returns the existing client.
+    This allows repeat customers to place orders without issues.
     """
     client_service = ClientService(db)
 
@@ -452,6 +453,15 @@ async def register_web_client(
         return ClientResponse.model_validate(client)
 
     except ValueError as e:
+        error_msg = str(e)
+        # If email already registered, return the existing client
+        if "already registered" in error_msg.lower() or "ya registrado" in error_msg.lower():
+            existing_client = await client_service.get_by_email(registration_data.email)
+            if existing_client:
+                # Reload with students
+                client_with_students = await client_service.get_with_students(existing_client.id)
+                return ClientResponse.model_validate(client_with_students)
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
