@@ -48,10 +48,10 @@ class Order(Base):
         ForeignKey("clients.id", ondelete="RESTRICT"),
         nullable=False
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True  # Allow NULL for web portal orders
     )
 
     order_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

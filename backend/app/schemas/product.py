@@ -3,6 +3,7 @@ Product, GarmentType, and Inventory Schemas
 """
 from uuid import UUID
 from decimal import Decimal
+from datetime import datetime
 from pydantic import Field, field_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
 
@@ -153,7 +154,7 @@ class InventoryAdjust(BaseSchema):
 class InventoryInDB(InventoryBase, SchoolIsolatedSchema, IDModelSchema):
     """Inventory as stored in database"""
     product_id: UUID
-    last_updated: str
+    last_updated: datetime
 
 
 class InventoryResponse(InventoryInDB):

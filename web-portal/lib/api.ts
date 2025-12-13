@@ -72,12 +72,15 @@ export interface Product {
   school_id: string;
   garment_type_id: string;
   name: string;
+  code: string;
   description?: string;
   size?: string;
   gender?: string;
   color?: string;
   price: number;
-  stock_quantity: number;
+  stock?: number; // Campo devuelto por ProductListResponse cuando with_stock=true
+  stock_quantity?: number; // Alias por compatibilidad
+  inventory_quantity?: number; // Para GlobalProduct
   min_stock_level?: number;
   location?: string;
   barcode?: string;
@@ -131,20 +134,72 @@ export const schoolsApi = {
 
 // Products
 export const productsApi = {
-  list: (schoolId: string, params?: { is_active?: boolean }) =>
-    apiClient.get<Product[]>(`/schools/${schoolId}/products`, { params }),
+  list: (schoolId: string, params?: { is_active?: boolean; with_stock?: boolean }) =>
+    apiClient.get<Product[]>('/products', { params: { school_id: schoolId, with_stock: true, ...params } }),
   get: (schoolId: string, productId: string) =>
     apiClient.get<Product>(`/schools/${schoolId}/products/${productId}`),
+  listGlobal: (params?: { with_inventory?: boolean; limit?: number }) =>
+    apiClient.get<Product[]>('/global/products', { params }),
 };
 
-// Clients
+// Clients (Web Portal Registration)
+export interface ClientWebRegister {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  students: Array<{
+    school_id: string;
+    student_name: string;
+    student_grade?: string;
+    student_section?: string;
+    notes?: string;
+  }>;
+}
+
 export const clientsApi = {
-  create: (schoolId: string, data: Partial<Client>) =>
-    apiClient.post<Client>(`/schools/${schoolId}/clients`, data),
+  // Web portal client registration (public endpoint - sin autenticación)
+  register: async (data: ClientWebRegister) => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const response = await fetch(`${API_BASE_URL}/api/v1/portal/clients/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Error en el registro' }));
+      throw new Error(error.detail || 'Error en el registro');
+    }
+
+    const result = await response.json();
+    return { data: result };
+  },
 };
 
 // Orders
 export const ordersApi = {
+  // Web portal order creation (public endpoint - sin autenticación)
+  createWeb: async (data: { school_id: string; client_id: string; items: OrderItem[]; notes?: string }) => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const response = await fetch(`${API_BASE_URL}/api/v1/portal/orders/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Error al crear el pedido' }));
+      throw new Error(error.detail || 'Error al crear el pedido');
+    }
+
+    const result = await response.json();
+    return { data: result };
+  },
   create: (schoolId: string, data: { school_id: string; client_id: string; items: OrderItem[]; notes?: string }) =>
     apiClient.post<Order>(`/schools/${schoolId}/orders`, data),
   get: (schoolId: string, orderId: string) =>

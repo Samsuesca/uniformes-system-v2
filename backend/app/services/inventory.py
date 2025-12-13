@@ -135,11 +135,11 @@ class InventoryService(SchoolIsolatedService[Inventory]):
                 f"Requested: {abs(adjust_data.adjustment)}"
             )
 
-        return await self.update(
-            inventory.id,
-            school_id,
-            {"quantity": new_quantity}
-        )
+        # Update quantity directly on the model
+        inventory.quantity = new_quantity
+        await self.db.flush()
+        await self.db.refresh(inventory)
+        return inventory
 
     async def add_stock(
         self,

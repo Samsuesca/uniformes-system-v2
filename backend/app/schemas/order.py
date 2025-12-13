@@ -141,7 +141,7 @@ class OrderInDB(OrderBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema)
     total: Decimal
     paid_amount: Decimal
     balance: Decimal  # Computed column
-    user_id: UUID  # Who created the order
+    user_id: UUID | None = None  # Who created the order (None for web portal)
 
 
 class OrderResponse(OrderInDB):
@@ -222,3 +222,17 @@ class ProductionSchedule(BaseSchema):
     orders_count: int
     total_items: int
     order_codes: list[str]
+
+
+# ============================================
+# Web Portal Schemas
+# ============================================
+
+class WebOrderResponse(BaseSchema):
+    """Simplified order response for web portal (no user_id required)"""
+    id: UUID
+    code: str
+    status: OrderStatus
+    total: Decimal
+    created_at: datetime | None = None
+    message: str = "Pedido creado exitosamente"

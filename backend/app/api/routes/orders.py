@@ -17,7 +17,7 @@ from app.models.client import Client
 from app.models.school import School
 from app.schemas.order import (
     OrderCreate, OrderUpdate, OrderPayment, OrderResponse, OrderListResponse,
-    OrderWithItems, OrderItemResponse
+    OrderWithItems, OrderItemResponse, WebOrderResponse
 )
 from app.services.order import OrderService
 
@@ -357,3 +357,59 @@ async def update_order_status(
 
     await db.commit()
     return OrderResponse.model_validate(order)
+
+
+# =============================================================================
+# Web Portal Order Endpoints (Public - for web clients)
+# =============================================================================
+web_router = APIRouter(prefix="/portal/orders", tags=["Order Portal"])
+
+
+@web_router.post(
+    "/create",
+    response_model=WebOrderResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def create_web_order(
+    order_data: OrderCreate,
+    db: DatabaseSession
+):
+    """
+    Create order from web portal (public endpoint).
+
+    This endpoint allows web clients to create orders without authentication.
+    The client_id in the order_data should be from a registered web client.
+    """
+    order_service = OrderService(db)
+
+    try:
+        # Validate that the client exists
+        client_result = await db.execute(
+            select(Client).where(Client.id == order_data.client_id)
+        )
+        client = client_result.scalar_one_or_none()
+
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Cliente no encontrado. Por favor registra tus datos primero."
+            )
+
+        # Create the order using the web-specific method
+        order = await order_service.create_web_order(order_data)
+        await db.commit()
+
+        return WebOrderResponse(
+            id=order.id,
+            code=order.code,
+            status=order.status,
+            total=order.total,
+            created_at=order.created_at,
+            message=f"¡Pedido {order.code} creado exitosamente! Te contactaremos pronto."
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )

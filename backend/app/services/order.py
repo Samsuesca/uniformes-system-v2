@@ -176,6 +176,95 @@ class OrderService(SchoolIsolatedService[Order]):
             {"status": new_status}
         )
 
+    async def create_web_order(
+        self,
+        order_data: OrderCreate
+    ) -> Order:
+        """
+        Create a new order from web portal (no user_id required)
+
+        Args:
+            order_data: Order creation data including items
+
+        Returns:
+            Created order with items
+        """
+        from app.models.sale import SaleSource
+
+        # Generate order code
+        code = await self._generate_order_code(order_data.school_id)
+
+        # Calculate totals
+        items_data = []
+        subtotal = Decimal("0")
+
+        for item_data in order_data.items:
+            # Get garment type (or use global)
+            garment = await self.db.execute(
+                select(GarmentType).where(
+                    GarmentType.id == item_data.garment_type_id
+                )
+            )
+            garment = garment.scalar_one_or_none()
+
+            # Use provided unit_price if available, otherwise default
+            unit_price = getattr(item_data, 'unit_price', None) or Decimal("50000")
+            item_subtotal = unit_price * item_data.quantity
+
+            items_data.append({
+                "school_id": order_data.school_id,
+                "garment_type_id": item_data.garment_type_id,
+                "quantity": item_data.quantity,
+                "unit_price": unit_price,
+                "subtotal": item_subtotal,
+                "size": item_data.size,
+                "color": getattr(item_data, 'color', None),
+                "gender": getattr(item_data, 'gender', None),
+                "custom_measurements": getattr(item_data, 'custom_measurements', None),
+                "embroidery_text": getattr(item_data, 'embroidery_text', None),
+                "notes": getattr(item_data, 'notes', None)
+            })
+
+            subtotal += item_subtotal
+
+        # Calculate tax (19% IVA)
+        tax_rate = Decimal("0.19")
+        tax = subtotal * tax_rate
+        total = subtotal + tax
+
+        # Determine paid amount
+        paid_amount = order_data.advance_payment or Decimal("0")
+
+        # Create order without user_id (web portal order)
+        order = Order(
+            school_id=order_data.school_id,
+            client_id=order_data.client_id,
+            code=code,
+            user_id=None,  # No user for web portal orders
+            status=OrderStatus.PENDING,
+            source=SaleSource.WEB_PORTAL,  # Mark as web portal order
+            subtotal=subtotal,
+            tax=tax,
+            total=total,
+            paid_amount=paid_amount,
+            delivery_date=order_data.delivery_date,
+            notes=order_data.notes
+        )
+        self.db.add(order)
+        await self.db.flush()
+        await self.db.refresh(order)
+
+        # Create order items
+        for item_dict in items_data:
+            item_dict["order_id"] = order.id
+            order_item = OrderItem(**item_dict)
+            self.db.add(order_item)
+
+        await self.db.flush()
+        await self.db.refresh(order)
+
+        return order
+
     async def _generate_order_code(self, school_id: UUID) -> str:
         """Generate order code: ENC-YYYY-NNNN"""
         year = datetime.now().year

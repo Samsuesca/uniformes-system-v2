@@ -123,7 +123,7 @@ export default function Products() {
       productId: product.id,
       productCode: product.code,
       productName: product.name || product.code,
-      currentStock: product.inventory_quantity ?? 0,
+      currentStock: product.stock ?? product.inventory_quantity ?? 0,
       isGlobal: false,
       schoolId: (product as any).school_id || currentSchool?.id,
     });
@@ -422,7 +422,7 @@ export default function Products() {
               {activeTab === 'school' ? (
                 // School products
                 filteredProducts.map((product) => {
-                  const stock = product.inventory_quantity ?? 0;
+                  const stock = product.stock ?? product.inventory_quantity ?? 0;
                   const minStock = product.inventory_min_stock ?? 5;
                   const isLowStock = stock <= minStock && stock > 0;
                   const isOutOfStock = stock === 0;

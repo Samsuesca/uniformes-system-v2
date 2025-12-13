@@ -14,18 +14,27 @@ export default function CatalogPage() {
 
     const [school, setSchool] = useState<School | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
+    const [globalProducts, setGlobalProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
+    const [sizeFilter, setSizeFilter] = useState('all');
     const [error, setError] = useState<string | null>(null);
     const [categories, setCategories] = useState<string[]>(['all']);
+    const [sizes, setSizes] = useState<string[]>([]);
+    const [mounted, setMounted] = useState(false);
 
     const { addItem, getTotalItems } = useCartStore();
 
+    // Prevent hydration mismatch by only showing cart count after mount
     useEffect(() => {
-        loadProducts();
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        loadAllProducts();
     }, [schoolSlug]);
 
-    const loadProducts = async () => {
+    const loadAllProducts = async () => {
         try {
             setLoading(true);
             setError(null);
@@ -35,22 +44,33 @@ export default function CatalogPage() {
             const schoolData = schoolResponse.data;
             setSchool(schoolData);
 
-            // Then get products for that school
-            const response = await productsApi.list(schoolData.id);
-            const productsData = response.data;
-            setProducts(productsData);
+            // Load both school products and global products in parallel
+            const [schoolProductsResponse, globalProductsResponse] = await Promise.allSettled([
+                productsApi.list(schoolData.id),
+                productsApi.listGlobal({ with_inventory: true, limit: 500 })
+            ]);
 
-            // Extract unique categories from products
-            const uniqueCategories = new Set<string>();
-            productsData.forEach(p => {
-                const name = p.name.toLowerCase();
-                if (name.includes('camisa') || name.includes('blusa')) uniqueCategories.add('Camisas');
-                else if (name.includes('pantalon') || name.includes('falda')) uniqueCategories.add('Pantalones');
-                else if (name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta')) uniqueCategories.add('Sudaderas');
-                else if (name.includes('zapato') || name.includes('tennis')) uniqueCategories.add('Calzado');
-                else uniqueCategories.add('Otros');
-            });
-            setCategories(['all', ...Array.from(uniqueCategories)]);
+            // Extract school products
+            const schoolProductsData = schoolProductsResponse.status === 'fulfilled'
+                ? schoolProductsResponse.value.data
+                : [];
+
+            // Extract global products (optional, don't fail if error)
+            const globalProductsData = globalProductsResponse.status === 'fulfilled'
+                ? globalProductsResponse.value.data
+                : [];
+
+            if (globalProductsResponse.status === 'rejected') {
+                console.error('Error loading global products:', globalProductsResponse.reason);
+            }
+
+            // Update state
+            setProducts(schoolProductsData);
+            setGlobalProducts(globalProductsData);
+
+            // Update categories and sizes with BOTH loaded
+            updateCategoriesAndSizes(schoolProductsData, globalProductsData);
+
         } catch (error: any) {
             console.error('Error loading products:', error);
             setError(error.response?.data?.detail || 'Error al cargar productos');
@@ -59,22 +79,109 @@ export default function CatalogPage() {
         }
     };
 
-    const filteredProducts = filter === 'all'
-        ? products
-        : products.filter(p => {
+    const loadProducts = async () => {
+        // Reload just in case (for retry button)
+        await loadAllProducts();
+    };
+
+    const updateCategoriesAndSizes = (schoolProds: Product[], globalProds: Product[]) => {
+        // Combine both product lists for categorization
+        const allProducts = [...schoolProds, ...globalProds];
+
+        // Extract unique categories from products
+        const uniqueCategories = new Set<string>();
+        const uniqueSizes = new Set<string>();
+
+        // Categorize ONLY school products (not global)
+        schoolProds.forEach(p => {
             const name = p.name.toLowerCase();
-            const filterLower = filter.toLowerCase();
-            if (filterLower === 'camisas') return name.includes('camisa') || name.includes('blusa');
-            if (filterLower === 'pantalones') return name.includes('pantalon') || name.includes('falda');
-            if (filterLower === 'sudaderas') return name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta');
-            if (filterLower === 'calzado') return name.includes('zapato') || name.includes('tennis');
-            return true; // 'Otros'
+
+            // Categorize products
+            if (name.includes('camisa') || name.includes('blusa') || name.includes('camiseta')) {
+                uniqueCategories.add('Camisas');
+            } else if (name.includes('chompa')) {
+                uniqueCategories.add('Chompas');
+            } else if (name.includes('pantalon') || name.includes('falda')) {
+                uniqueCategories.add('Pantalones');
+            } else if (name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta')) {
+                uniqueCategories.add('Sudaderas');
+            } else if (name.includes('yomber')) {
+                uniqueCategories.add('Yomber');
+            } else if (name.includes('zapato') || name.includes('tennis') || name.includes('media') || name.includes('jean')) {
+                uniqueCategories.add('Calzado');
+            }
         });
+
+        // Add "Otros" category if there are global products
+        if (globalProds.length > 0) {
+            uniqueCategories.add('Otros');
+        }
+
+        // Extract sizes from ALL products (school + global)
+        allProducts.forEach(p => {
+            if (p.size && p.size !== 'Única') {
+                uniqueSizes.add(p.size);
+            }
+        });
+
+        setCategories(['all', ...Array.from(uniqueCategories).sort()]);
+
+        // Sort sizes: numbers first, then letters
+        const sortedSizes = Array.from(uniqueSizes).sort((a, b) => {
+            const aIsNum = /^\d+$/.test(a);
+            const bIsNum = /^\d+$/.test(b);
+            if (aIsNum && bIsNum) return parseInt(a) - parseInt(b);
+            if (aIsNum) return -1;
+            if (bIsNum) return 1;
+            return a.localeCompare(b);
+        });
+        setSizes(sortedSizes);
+    };
+
+    // Combine school products and global products
+    const allProducts = [...products, ...globalProducts];
+
+    const filteredProducts = allProducts.filter(p => {
+        const name = p.name.toLowerCase();
+        const filterLower = filter.toLowerCase();
+
+        // Check if product is global (exists in globalProducts array)
+        const isGlobalProduct = globalProducts.some(gp => gp.id === p.id);
+
+        // Filter by category
+        let categoryMatch = true;
+        if (filter !== 'all') {
+            if (filterLower === 'otros') {
+                // "Otros" category shows ONLY global products
+                categoryMatch = isGlobalProduct;
+            } else {
+                // For other categories, exclude global products and match by name
+                categoryMatch = !isGlobalProduct && (
+                    (filterLower === 'camisas' && (name.includes('camisa') || name.includes('blusa') || name.includes('camiseta'))) ||
+                    (filterLower === 'chompas' && name.includes('chompa')) ||
+                    (filterLower === 'pantalones' && (name.includes('pantalon') || name.includes('falda'))) ||
+                    (filterLower === 'sudaderas' && (name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta'))) ||
+                    (filterLower === 'yomber' && name.includes('yomber')) ||
+                    (filterLower === 'calzado' && (name.includes('zapato') || name.includes('tennis') || name.includes('media') || name.includes('jean')))
+                );
+            }
+        }
+
+        // Filter by size
+        const sizeMatch = sizeFilter === 'all' || p.size === sizeFilter;
+
+        return categoryMatch && sizeMatch;
+    });
 
     const handleAddToCart = (product: Product) => {
         if (school) {
             addItem(product, school);
         }
+    };
+
+    // Helper para obtener el stock del producto
+    const getProductStock = (product: Product): number => {
+        return product.stock ?? product.stock_quantity ?? product.inventory_quantity ?? 0;
     };
 
     return (
@@ -90,15 +197,20 @@ export default function CatalogPage() {
                             <ArrowLeft className="w-5 h-5 mr-2" />
                             Volver
                         </button>
-                        <h1 className="text-2xl font-bold text-primary font-display">
-                            Catálogo de Uniformes
-                        </h1>
+                        <div className="text-center">
+                            <h1 className="text-2xl font-bold text-primary font-display">
+                                {school ? school.name : 'Catálogo de Uniformes'}
+                            </h1>
+                            <p className="text-sm text-slate-500">
+                                Catálogo de Uniformes
+                            </p>
+                        </div>
                         <button
                             onClick={() => router.push(`/${schoolSlug}/cart`)}
                             className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors relative"
                         >
                             <ShoppingCart className="w-5 h-5" />
-                            {getTotalItems() > 0 && (
+                            {mounted && getTotalItems() > 0 && (
                                 <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
                                     {getTotalItems()}
                                 </span>
@@ -108,12 +220,13 @@ export default function CatalogPage() {
                 </div>
             </header>
 
-            {/* Filters */}
+            {/* Category Filters */}
             {categories.length > 1 && (
                 <div className="bg-white border-b border-surface-200">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                        <div className="flex items-center gap-4 overflow-x-auto">
+                        <div className="flex items-center gap-4 overflow-x-auto pb-2">
                             <Filter className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                            <span className="text-sm font-semibold text-slate-600 flex-shrink-0">Categoría:</span>
                             {categories.map((category) => (
                                 <button
                                     key={category}
@@ -124,6 +237,39 @@ export default function CatalogPage() {
                                         }`}
                                 >
                                     {category === 'all' ? 'Todos' : category}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Size Filters */}
+            {sizes.length > 0 && (
+                <div className="bg-white border-b border-surface-200">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                        <div className="flex items-center gap-4 overflow-x-auto pb-2">
+                            <Filter className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                            <span className="text-sm font-semibold text-slate-600 flex-shrink-0">Talla:</span>
+                            <button
+                                onClick={() => setSizeFilter('all')}
+                                className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${sizeFilter === 'all'
+                                        ? 'bg-brand-600 text-white shadow-lg'
+                                        : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
+                                    }`}
+                            >
+                                Todas
+                            </button>
+                            {sizes.map((size) => (
+                                <button
+                                    key={size}
+                                    onClick={() => setSizeFilter(size)}
+                                    className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${sizeFilter === size
+                                            ? 'bg-brand-600 text-white shadow-lg'
+                                            : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
+                                        }`}
+                                >
+                                    {/^\d+$/.test(size) ? `Talla ${size}` : size}
                                 </button>
                             ))}
                         </div>
@@ -167,26 +313,43 @@ export default function CatalogPage() {
                                     <h3 className="font-semibold text-primary font-display mb-1">
                                         {product.name}
                                     </h3>
-                                    <p className="text-sm text-slate-500 mb-3">
-                                        {product.size || 'Talla única'}
-                                    </p>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <p className="text-sm text-slate-600">
+                                            {product.size
+                                                ? (/^\d+$/.test(product.size) ? `Talla ${product.size}` : product.size)
+                                                : 'Talla única'}
+                                        </p>
+                                        {product.color && (
+                                            <>
+                                                <span className="text-slate-300">•</span>
+                                                <p className="text-sm text-slate-600">
+                                                    {product.color}
+                                                </p>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between mb-2">
                                         <span className="text-2xl font-bold text-brand-600 font-display">
                                             ${formatNumber(product.price)}
                                         </span>
                                         <button
                                             onClick={() => handleAddToCart(product)}
-                                            disabled={product.stock_quantity <= 0}
+                                            disabled={getProductStock(product) <= 0}
                                             className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            {product.stock_quantity > 0 ? 'Agregar' : 'Agotado'}
+                                            {getProductStock(product) > 0 ? 'Agregar' : 'Agotado'}
                                         </button>
                                     </div>
-                                    {product.stock_quantity > 0 && (
-                                        <p className="text-xs text-slate-400 mt-2">
-                                            Stock: {product.stock_quantity}
-                                        </p>
-                                    )}
+                                    <p className={`text-xs mt-2 ${getProductStock(product) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                        {getProductStock(product) > 0 ? (
+                                            <>
+                                                <span className="font-semibold">Disponible</span>
+                                                <span className="text-slate-400 ml-1">({getProductStock(product)} unidades)</span>
+                                            </>
+                                        ) : (
+                                            <span className="font-semibold">Agotado</span>
+                                        )}
+                                    </p>
                                 </div>
                             </div>
                         ))}

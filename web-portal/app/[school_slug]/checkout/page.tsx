@@ -1,14 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, CheckCircle, School as SchoolIcon, Package } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
 import { clientsApi, ordersApi } from '@/lib/api';
+import { formatNumber } from '@/lib/utils';
 
 export default function CheckoutPage() {
+  const params = useParams();
   const router = useRouter();
-  const { items, getTotalPrice, clearCart } = useCartStore();
+  const schoolSlug = params.school_slug as string;
+  const { items, getTotalPrice, clearCart, getItemsBySchool } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -21,27 +24,63 @@ export default function CheckoutPage() {
     notes: '',
   });
 
+  // Helper para obtener el stock del producto
+  const getProductStock = (product: any): number => {
+    return product.stock ?? product.stock_quantity ?? product.inventory_quantity ?? 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const schoolId = 'demo-school-id'; // TODO: Get from context
+      // Validar que haya items en el carrito
+      if (items.length === 0) {
+        alert('El carrito está vacío');
+        setLoading(false);
+        return;
+      }
 
-      // Step 1: Create client first
-      const clientResponse = await clientsApi.create(schoolId, {
-        school_id: schoolId,
+      // Validar stock disponible para todos los items
+      for (const item of items) {
+        const availableStock = getProductStock(item.product);
+        if (item.quantity > availableStock) {
+          alert(`Stock insuficiente para ${item.product.name}. Disponible: ${availableStock}, Solicitado: ${item.quantity}`);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Obtener school_id del primer item (todos deben ser del mismo colegio)
+      const schoolId = items[0].school.id;
+
+      // Validar que se proporcione email (requerido para registro web)
+      if (!formData.client_email) {
+        alert('El email es requerido para completar el pedido');
+        setLoading(false);
+        return;
+      }
+
+      // Step 1: Register client (web portal endpoint)
+      // Generar contraseña temporal basada en teléfono
+      const tempPassword = `Temp${formData.client_phone.slice(-4)}!`;
+
+      const clientResponse = await clientsApi.register({
         name: formData.client_name,
-        phone: formData.client_phone,
-        email: formData.client_email || undefined,
-        student_name: formData.student_name || undefined,
-        student_grade: formData.grade || undefined,
+        email: formData.client_email,
+        password: tempPassword,
+        phone: formData.client_phone || undefined,
+        students: [{
+          school_id: schoolId,
+          student_name: formData.student_name || formData.client_name,
+          student_grade: formData.grade || undefined,
+        }]
       });
 
       const client = clientResponse.data;
 
-      // Step 2: Create order with client_id
-      await ordersApi.create(schoolId, {
+      // Step 2: Create order with client_id (using public web endpoint)
+      await ordersApi.createWeb({
         school_id: schoolId,
         client_id: client.id,
         items: items.map(item => ({
@@ -62,7 +101,17 @@ export default function CheckoutPage() {
       }, 3000);
     } catch (error: any) {
       console.error('Error creating order:', error);
-      const errorMessage = error.response?.data?.detail || 'Error al crear el pedido. Por favor intenta de nuevo.';
+      let errorMessage = error.message || error.response?.data?.detail || 'Error al crear el pedido. Por favor intenta de nuevo.';
+
+      // Mensajes más amigables dirigidos al negocio
+      if (errorMessage.includes('already registered')) {
+        errorMessage = 'Este email ya está registrado. Por favor usa un email diferente o contáctanos en la página de Soporte si necesitas ayuda.';
+      } else if (errorMessage.includes('Stock insuficiente') || errorMessage.includes('insufficient')) {
+        errorMessage = 'Lo sentimos, algunos productos no tienen stock suficiente. Por favor contáctanos en la página de Soporte para verificar disponibilidad.';
+      } else {
+        errorMessage = `Hubo un problema al procesar tu pedido. Por favor contáctanos en la página de Soporte. Error: ${errorMessage}`;
+      }
+
       alert(errorMessage);
     } finally {
       setLoading(false);
@@ -144,14 +193,18 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Email
+                      Email *
                     </label>
                     <input
                       type="email"
+                      required
                       value={formData.client_email}
                       onChange={(e) => setFormData({ ...formData, client_email: e.target.value })}
                       className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                     />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Recibirás un correo con tu contraseña temporal para acceder a tu cuenta
+                    </p>
                   </div>
                 </div>
               </div>
@@ -209,27 +262,82 @@ export default function CheckoutPage() {
 
           {/* Summary */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl border border-surface-200 p-6 sticky top-4">
+            <div className="bg-white rounded-xl border border-surface-200 p-6 sticky top-4 space-y-4">
               <h2 className="text-lg font-bold text-primary font-display mb-4">
-                Resumen
+                Resumen del Pedido
               </h2>
-              <div className="space-y-3 mb-6">
-                {items.map((item) => (
-                  <div key={item.product.id} className="flex justify-between text-sm">
-                    <span className="text-slate-600">
-                      {item.product.name} x{item.quantity}
-                    </span>
-                    <span className="font-medium">
-                      ${(item.product.price * item.quantity).toLocaleString()}
-                    </span>
+
+              {/* Items grouped by school */}
+              {Array.from(getItemsBySchool().entries()).map(([schoolId, schoolItems]) => {
+                const school = schoolItems[0].school;
+                const schoolTotal = schoolItems.reduce((sum, item) =>
+                  sum + (item.product.price * item.quantity), 0
+                );
+
+                return (
+                  <div key={schoolId} className="mb-4">
+                    {/* School header */}
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-surface-200">
+                      <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <SchoolIcon className="w-4 h-4 text-brand-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-sm text-primary truncate">
+                          {school.name}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          {schoolItems.length} {schoolItems.length === 1 ? 'producto' : 'productos'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Products from this school */}
+                    <div className="space-y-2 mb-3">
+                      {schoolItems.map((item) => (
+                        <div key={item.product.id} className="flex items-start gap-2 text-sm">
+                          <Package className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-slate-700 font-medium truncate">
+                              {item.product.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {item.product.size || 'Talla única'} × {item.quantity}
+                            </p>
+                          </div>
+                          <span className="font-semibold text-primary whitespace-nowrap">
+                            ${formatNumber(item.product.price * item.quantity)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* School subtotal */}
+                    <div className="flex justify-between items-center text-sm pt-2 border-t border-surface-100">
+                      <span className="font-semibold text-slate-700">Subtotal:</span>
+                      <span className="font-bold text-brand-600">
+                        ${formatNumber(schoolTotal)}
+                      </span>
+                    </div>
                   </div>
-                ))}
-                <div className="border-t border-surface-200 pt-3 flex justify-between">
-                  <span className="font-bold text-primary">Total</span>
-                  <span className="text-2xl font-bold text-brand-600 font-display">
-                    ${getTotalPrice().toLocaleString()}
-                  </span>
-                </div>
+                );
+              })}
+
+              {/* Total general */}
+              <div className="border-t-2 border-surface-300 pt-4 flex justify-between items-center">
+                <span className="font-bold text-lg text-primary">Total General:</span>
+                <span className="text-2xl font-bold text-brand-600 font-display">
+                  ${formatNumber(getTotalPrice())}
+                </span>
+              </div>
+
+              {/* Info */}
+              <div className="bg-blue-50 rounded-lg p-3 mt-4">
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  <span className="font-semibold">Información importante:</span><br />
+                  • Los uniformes se entregarán directamente en el colegio<br />
+                  • Te contactaremos para confirmar tallas y coordinar la entrega<br />
+                  • El pago se realiza contra entrega
+                </p>
               </div>
             </div>
           </div>

@@ -45,6 +45,7 @@ app.include_router(sales.router, prefix=f"{settings.API_V1_STR}")  # Multi-schoo
 app.include_router(sales.school_router, prefix=f"{settings.API_V1_STR}")  # School-specific sales
 app.include_router(orders.router, prefix=f"{settings.API_V1_STR}")  # Multi-school orders
 app.include_router(orders.school_router, prefix=f"{settings.API_V1_STR}")  # School-specific orders
+app.include_router(orders.web_router, prefix=f"{settings.API_V1_STR}")  # Web portal orders
 app.include_router(inventory.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(reports.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(accounting.router, prefix=f"{settings.API_V1_STR}")
