@@ -4,8 +4,7 @@ Create public-viewer user for web portal catalog access
 import asyncio
 import uuid
 from app.db.session import get_db
-from app.models.user import User
-from app.models.user_school_role import UserSchoolRole, UserRole
+from app.models.user import User, UserSchoolRole, UserRole
 from app.models.school import School
 from passlib.context import CryptContext
 from sqlalchemy import select
