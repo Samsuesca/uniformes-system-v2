@@ -1,0 +1,768 @@
+/**
+ * WebOrders - Page to manage orders from web portal
+ * Filters orders with source='web_portal' and user_id=NULL
+ */
+import { useState, useEffect, useMemo } from 'react';
+import {
+  Globe,
+  Loader2,
+  Search,
+  Filter,
+  RefreshCw,
+  Clock,
+  Wrench,
+  CheckCircle,
+  Package,
+  Phone,
+  Eye,
+  DollarSign,
+  AlertCircle,
+  X,
+  MessageCircle,
+  ChevronRight
+} from 'lucide-react';
+import { useSchoolStore } from '../stores/schoolStore';
+import { orderService } from '../services/orderService';
+import type { OrderListItem, OrderStatus, OrderWithItems } from '../types/api';
+
+// Status configuration
+const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
+  pending: { label: 'Pendiente', color: 'text-yellow-700', icon: Clock, bgColor: 'bg-yellow-100' },
+  in_production: { label: 'En Produccion', color: 'text-blue-700', icon: Wrench, bgColor: 'bg-blue-100' },
+  ready: { label: 'Listo', color: 'text-green-700', icon: CheckCircle, bgColor: 'bg-green-100' },
+  delivered: { label: 'Entregado', color: 'text-gray-700', icon: Package, bgColor: 'bg-gray-100' },
+  cancelled: { label: 'Cancelado', color: 'text-red-700', icon: X, bgColor: 'bg-red-100' },
+};
+
+export default function WebOrders() {
+  const { currentSchool } = useSchoolStore();
+  const [orders, setOrders] = useState<OrderListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Detail modal
+  const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // Payment modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [processingPayment, setProcessingPayment] = useState(false);
+
+  // Status update
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  useEffect(() => {
+    if (currentSchool?.id) {
+      loadOrders();
+    }
+  }, [currentSchool?.id]);
+
+  const loadOrders = async () => {
+    if (!currentSchool?.id) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      // Get all orders and filter by web_portal source
+      const allOrders = await orderService.getAllOrders({ school_id: currentSchool.id });
+      // Filter for web portal orders (source = web_portal)
+      const webOrders = allOrders.filter(o => o.source === 'web_portal');
+      setOrders(webOrders);
+    } catch (err: any) {
+      console.error('Error loading web orders:', err);
+      setError('Error al cargar pedidos web');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter orders
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      // Status filter
+      if (statusFilter !== 'all' && order.status !== statusFilter) return false;
+
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesCode = order.code.toLowerCase().includes(query);
+        const matchesClient = order.client_name?.toLowerCase().includes(query);
+        const matchesStudent = order.student_name?.toLowerCase().includes(query);
+        if (!matchesCode && !matchesClient && !matchesStudent) return false;
+      }
+
+      return true;
+    });
+  }, [orders, statusFilter, searchQuery]);
+
+  // Statistics
+  const stats = useMemo(() => {
+    const webOrders = orders;
+    return {
+      pending: webOrders.filter(o => o.status === 'pending').length,
+      in_production: webOrders.filter(o => o.status === 'in_production').length,
+      ready: webOrders.filter(o => o.status === 'ready').length,
+      delivered: webOrders.filter(o => o.status === 'delivered').length,
+      total: webOrders.length,
+      totalPending: webOrders.reduce((sum, o) => sum + (Number(o.balance) || 0), 0),
+    };
+  }, [orders]);
+
+  const handleViewDetail = async (orderId: string) => {
+    if (!currentSchool?.id) return;
+
+    try {
+      setLoadingDetail(true);
+      const order = await orderService.getOrder(currentSchool.id, orderId);
+      setSelectedOrder(order);
+      setShowDetailModal(true);
+    } catch (err) {
+      console.error('Error loading order detail:', err);
+      setError('Error al cargar detalle del pedido');
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleUpdateStatus = async (newStatus: OrderStatus) => {
+    if (!currentSchool?.id || !selectedOrder) return;
+
+    try {
+      setUpdatingStatus(true);
+      await orderService.updateStatus(currentSchool.id, selectedOrder.id, newStatus);
+      // Reload order detail and list
+      const updatedOrder = await orderService.getOrder(currentSchool.id, selectedOrder.id);
+      setSelectedOrder(updatedOrder);
+      loadOrders();
+    } catch (err) {
+      console.error('Error updating status:', err);
+      setError('Error al actualizar estado');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleAddPayment = async () => {
+    if (!currentSchool?.id || !selectedOrder || paymentAmount <= 0) return;
+
+    try {
+      setProcessingPayment(true);
+      await orderService.addPayment(currentSchool.id, selectedOrder.id, {
+        amount: paymentAmount,
+        payment_method: paymentMethod,
+        payment_reference: paymentRef || undefined,
+        notes: paymentNotes || undefined,
+      });
+      // Reload order detail and list
+      const updatedOrder = await orderService.getOrder(currentSchool.id, selectedOrder.id);
+      setSelectedOrder(updatedOrder);
+      setShowPaymentModal(false);
+      setPaymentAmount(0);
+      setPaymentMethod('cash');
+      setPaymentRef('');
+      setPaymentNotes('');
+      loadOrders();
+    } catch (err) {
+      console.error('Error adding payment:', err);
+      setError('Error al registrar pago');
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
+  const openWhatsApp = (phone: string | null) => {
+    if (!phone) return;
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+    window.open(`https://wa.me/${formattedPhone}`, '_blank');
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  if (!currentSchool) {
+    return (
+      <div className="p-8 text-center">
+        <Globe className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+        <p className="text-gray-500">Selecciona un colegio para ver los pedidos web</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+            <Globe className="w-7 h-7 mr-3 text-indigo-600" />
+            Pedidos Web
+          </h1>
+          <p className="text-gray-600 mt-1">Gestiona los pedidos recibidos desde el portal web</p>
+        </div>
+        <button
+          onClick={loadOrders}
+          disabled={loading}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Actualizar
+        </button>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+        <div
+          className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 cursor-pointer hover:bg-yellow-100 transition"
+          onClick={() => setStatusFilter('pending')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-yellow-700">Pendientes</p>
+              <p className="text-2xl font-bold text-yellow-900">{stats.pending}</p>
+            </div>
+            <Clock className="w-8 h-8 text-yellow-600" />
+          </div>
+        </div>
+
+        <div
+          className="bg-blue-50 border border-blue-200 rounded-lg p-4 cursor-pointer hover:bg-blue-100 transition"
+          onClick={() => setStatusFilter('in_production')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-blue-700">En Produccion</p>
+              <p className="text-2xl font-bold text-blue-900">{stats.in_production}</p>
+            </div>
+            <Wrench className="w-8 h-8 text-blue-600" />
+          </div>
+        </div>
+
+        <div
+          className="bg-green-50 border border-green-200 rounded-lg p-4 cursor-pointer hover:bg-green-100 transition"
+          onClick={() => setStatusFilter('ready')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-green-700">Listos</p>
+              <p className="text-2xl font-bold text-green-900">{stats.ready}</p>
+            </div>
+            <CheckCircle className="w-8 h-8 text-green-600" />
+          </div>
+        </div>
+
+        <div
+          className="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition"
+          onClick={() => setStatusFilter('delivered')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-700">Entregados</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.delivered}</p>
+            </div>
+            <Package className="w-8 h-8 text-gray-600" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Pedidos</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            </div>
+            <Globe className="w-8 h-8 text-indigo-600" />
+          </div>
+        </div>
+
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-red-700">Saldo Pendiente</p>
+              <p className="text-xl font-bold text-red-900">${stats.totalPending.toLocaleString()}</p>
+            </div>
+            <DollarSign className="w-8 h-8 text-red-600" />
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Status Filter */}
+          <div className="flex-1">
+            <label className="block text-xs text-gray-500 mb-1">Estado</label>
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+              >
+                <option value="all">Todos los estados</option>
+                <option value="pending">Pendientes</option>
+                <option value="in_production">En Produccion</option>
+                <option value="ready">Listos</option>
+                <option value="delivered">Entregados</option>
+                <option value="cancelled">Cancelados</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="flex-1">
+            <label className="block text-xs text-gray-500 mb-1">Buscar</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Codigo, cliente, estudiante..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Clear Filters */}
+          {(statusFilter !== 'all' || searchQuery) && (
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setStatusFilter('all');
+                  setSearchQuery('');
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start">
+          <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+          <p className="text-red-700">{error}</p>
+          <button onClick={() => setError(null)} className="ml-auto">
+            <X className="w-4 h-4 text-red-600" />
+          </button>
+        </div>
+      )}
+
+      {/* Orders Table */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            <span className="ml-3 text-gray-600">Cargando pedidos web...</span>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="text-center py-12">
+            <Globe className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+            <p className="text-gray-500">
+              {orders.length === 0
+                ? 'No hay pedidos del portal web'
+                : 'No se encontraron pedidos con los filtros aplicados'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr className="text-xs text-gray-500 uppercase">
+                  <th className="px-4 py-3 text-left">Codigo</th>
+                  <th className="px-4 py-3 text-left">Cliente</th>
+                  <th className="px-4 py-3 text-center">Items</th>
+                  <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3 text-right">Saldo</th>
+                  <th className="px-4 py-3 text-center">Estado</th>
+                  <th className="px-4 py-3 text-center">Fecha</th>
+                  <th className="px-4 py-3 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredOrders.map((order) => {
+                  const statusConfig = STATUS_CONFIG[order.status];
+                  const StatusIcon = statusConfig.icon;
+                  const balance = Number(order.balance) || 0;
+
+                  return (
+                    <tr key={order.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-medium text-indigo-600">{order.code}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-gray-900">{order.client_name || 'Sin cliente'}</p>
+                          {order.student_name && (
+                            <p className="text-sm text-gray-500">{order.student_name}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+                          {order.items_count}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium">
+                        ${Number(order.total).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-medium ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {balance > 0 ? `$${balance.toLocaleString()}` : 'Pagado'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
+                          <StatusIcon className="w-3 h-3 mr-1" />
+                          {statusConfig.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm text-gray-600">
+                        {formatDate(order.created_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleViewDetail(order.id)}
+                            disabled={loadingDetail}
+                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                            title="Ver detalle"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Detail Modal */}
+      {showDetailModal && selectedOrder && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowDetailModal(false)} />
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+                <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                  <Package className="w-6 h-6 mr-2 text-indigo-600" />
+                  Pedido {selectedOrder.code}
+                </h2>
+                <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Client Info */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-800 mb-3">Informacion del Cliente</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Nombre</p>
+                      <p className="font-medium">{selectedOrder.client_name}</p>
+                    </div>
+                    {selectedOrder.student_name && (
+                      <div>
+                        <p className="text-sm text-gray-600">Estudiante</p>
+                        <p className="font-medium">{selectedOrder.student_name}</p>
+                      </div>
+                    )}
+                    {selectedOrder.client_phone && (
+                      <div>
+                        <p className="text-sm text-gray-600">Telefono</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{selectedOrder.client_phone}</p>
+                          <button
+                            onClick={() => openWhatsApp(selectedOrder.client_phone)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            title="Enviar WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                          <a
+                            href={`tel:${selectedOrder.client_phone}`}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Llamar"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Items */}
+                <div>
+                  <h3 className="font-medium text-gray-800 mb-3">Items del Pedido</h3>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left">Producto</th>
+                          <th className="px-4 py-2 text-center">Cant.</th>
+                          <th className="px-4 py-2 text-right">Precio</th>
+                          <th className="px-4 py-2 text-right">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {selectedOrder.items.map((item) => (
+                          <tr key={item.id}>
+                            <td className="px-4 py-2">
+                              <div>
+                                <p className="font-medium">{item.garment_type_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {item.size && `Talla: ${item.size}`}
+                                  {item.color && ` | Color: ${item.color}`}
+                                </p>
+                                {item.custom_measurements && (
+                                  <p className="text-xs text-purple-600">Con medidas personalizadas</p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-center">{item.quantity}</td>
+                            <td className="px-4 py-2 text-right">${Number(item.unit_price).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right font-medium">${Number(item.subtotal).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan={3} className="px-4 py-2 text-right font-medium">Total:</td>
+                          <td className="px-4 py-2 text-right font-bold text-lg">
+                            ${Number(selectedOrder.total).toLocaleString()}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Payments */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-gray-800">Pagos</h3>
+                    {Number(selectedOrder.balance) > 0 && (
+                      <button
+                        onClick={() => {
+                          setPaymentAmount(Number(selectedOrder.balance));
+                          setShowPaymentModal(true);
+                        }}
+                        className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition flex items-center"
+                      >
+                        <DollarSign className="w-4 h-4 mr-1" />
+                        Registrar Pago
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <p className="text-sm text-gray-600">Total</p>
+                      <p className="font-bold text-lg">${Number(selectedOrder.total).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Pagado</p>
+                      <p className="font-bold text-lg text-green-600">${Number(selectedOrder.paid_amount).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Saldo</p>
+                      <p className={`font-bold text-lg ${Number(selectedOrder.balance) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {Number(selectedOrder.balance) > 0 ? `$${Number(selectedOrder.balance).toLocaleString()}` : 'Pagado'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Actions */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-800 mb-3">Estado del Pedido</h3>
+                  <div className="flex items-center gap-2 mb-4">
+                    {(() => {
+                      const config = STATUS_CONFIG[selectedOrder.status];
+                      const StatusIcon = config.icon;
+                      return (
+                        <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium ${config.bgColor} ${config.color}`}>
+                          <StatusIcon className="w-4 h-4 mr-2" />
+                          {config.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Status Workflow */}
+                  {selectedOrder.status !== 'delivered' && selectedOrder.status !== 'cancelled' && (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedOrder.status === 'pending' && (
+                        <button
+                          onClick={() => handleUpdateStatus('in_production')}
+                          disabled={updatingStatus}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center disabled:opacity-50"
+                        >
+                          {updatingStatus ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ChevronRight className="w-4 h-4 mr-1" />}
+                          Pasar a Produccion
+                        </button>
+                      )}
+                      {selectedOrder.status === 'in_production' && (
+                        <button
+                          onClick={() => handleUpdateStatus('ready')}
+                          disabled={updatingStatus}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center disabled:opacity-50"
+                        >
+                          {updatingStatus ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+                          Marcar Listo
+                        </button>
+                      )}
+                      {selectedOrder.status === 'ready' && (
+                        <button
+                          onClick={() => handleUpdateStatus('delivered')}
+                          disabled={updatingStatus}
+                          className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition flex items-center disabled:opacity-50"
+                        >
+                          {updatingStatus ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Package className="w-4 h-4 mr-1" />}
+                          Entregar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                {selectedOrder.notes && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h3 className="font-medium text-yellow-800 mb-2">Notas</h3>
+                    <p className="text-yellow-900">{selectedOrder.notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedOrder && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowPaymentModal(false)} />
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2 text-green-600" />
+                  Registrar Pago - {selectedOrder.code}
+                </h2>
+                <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-sm text-gray-600">Saldo Pendiente</p>
+                  <p className="text-2xl font-bold text-red-600">${Number(selectedOrder.balance).toLocaleString()}</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={Number(selectedOrder.balance)}
+                      value={paymentAmount || ''}
+                      onChange={(e) => setPaymentAmount(parseInt(e.target.value) || 0)}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Metodo de Pago</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                  >
+                    <option value="cash">Efectivo</option>
+                    <option value="transfer">Transferencia</option>
+                    <option value="card">Tarjeta</option>
+                    <option value="nequi">Nequi</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Referencia (opcional)</label>
+                  <input
+                    type="text"
+                    value={paymentRef}
+                    onChange={(e) => setPaymentRef(e.target.value)}
+                    placeholder="Numero de transaccion, recibo, etc."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
+                  <textarea
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Observaciones del pago..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 p-6 border-t border-gray-200">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  disabled={processingPayment}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleAddPayment}
+                  disabled={processingPayment || paymentAmount <= 0}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center"
+                >
+                  {processingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Procesando...
+                    </>
+                  ) : (
+                    'Registrar Pago'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

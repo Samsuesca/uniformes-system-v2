@@ -26,7 +26,8 @@ import {
   ShieldCheck,
   Clock,
   Wifi,
-  WifiOff
+  WifiOff,
+  Globe
 } from 'lucide-react';
 import { useConfigStore } from '../stores/configStore';
 
@@ -48,6 +49,7 @@ const navigation: NavItem[] = [
   { name: 'Ventas', path: '/sales', icon: ShoppingCart },
   { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw },
   { name: 'Encargos', path: '/orders', icon: FileText },
+  { name: 'Pedidos Web', path: '/web-orders', icon: Globe },
   { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true },
   { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true },
   { name: 'Configuración', path: '/settings', icon: Settings },

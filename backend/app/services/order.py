@@ -9,9 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
 from app.models.order import Order, OrderItem, OrderStatus
-from app.models.product import GarmentType
+from app.models.product import GarmentType, Product
 from app.schemas.order import OrderCreate, OrderUpdate, OrderPayment
 from app.services.base import SchoolIsolatedService
+
+# Required measurements for yomber orders
+YOMBER_REQUIRED_MEASUREMENTS = ['delantero', 'trasero', 'cintura', 'largo']
 
 
 class OrderService(SchoolIsolatedService[Order]):
@@ -56,19 +59,84 @@ class OrderService(SchoolIsolatedService[Order]):
             if not garment:
                 raise ValueError(f"Garment type {item_data.garment_type_id} not found")
 
-            # TODO: Calculate price based on garment type, size, customizations
-            # For now, use a default price
-            unit_price = Decimal("50000")  # Default price
+            # Get order type and additional price
+            order_type = getattr(item_data, 'order_type', 'custom')
+            additional_price = getattr(item_data, 'additional_price', None) or Decimal("0")
+            product_id = None
+            item_size = item_data.size
+            item_color = item_data.color
+
+            if order_type == "catalog":
+                # CATALOG: Price from selected product
+                if not item_data.product_id:
+                    raise ValueError("product_id requerido para encargos de catálogo")
+
+                product_result = await self.db.execute(
+                    select(Product).where(
+                        Product.id == item_data.product_id,
+                        Product.school_id == order_data.school_id,
+                        Product.is_active == True
+                    )
+                )
+                product = product_result.scalar_one_or_none()
+
+                if not product:
+                    raise ValueError(f"Product {item_data.product_id} not found")
+
+                unit_price = Decimal(str(product.price)) + additional_price
+                product_id = product.id
+                # Use product's size/color if not specified
+                item_size = item_data.size or product.size
+                item_color = item_data.color or product.color
+
+            elif order_type == "yomber":
+                # YOMBER: Validate measurements + get base price
+                if not item_data.custom_measurements:
+                    raise ValueError("Medidas personalizadas requeridas para encargos de yomber")
+
+                missing = [f for f in YOMBER_REQUIRED_MEASUREMENTS
+                          if f not in item_data.custom_measurements]
+                if missing:
+                    raise ValueError(f"Medidas faltantes para yomber: {', '.join(missing)}")
+
+                # Get price from product or manual
+                if item_data.product_id:
+                    product_result = await self.db.execute(
+                        select(Product).where(
+                            Product.id == item_data.product_id,
+                            Product.school_id == order_data.school_id,
+                            Product.is_active == True
+                        )
+                    )
+                    product = product_result.scalar_one_or_none()
+
+                    if not product:
+                        raise ValueError(f"Product {item_data.product_id} not found")
+
+                    unit_price = Decimal(str(product.price)) + additional_price
+                    product_id = product.id
+                elif item_data.unit_price:
+                    unit_price = item_data.unit_price + additional_price
+                else:
+                    raise ValueError("Precio requerido para yomber (product_id o unit_price)")
+
+            else:  # "custom"
+                # CUSTOM: Manual price required
+                if not item_data.unit_price:
+                    raise ValueError("unit_price requerido para encargos personalizados")
+                unit_price = item_data.unit_price + additional_price
+
             item_subtotal = unit_price * item_data.quantity
 
             items_data.append({
                 "school_id": order_data.school_id,
                 "garment_type_id": garment.id,
+                "product_id": product_id,
                 "quantity": item_data.quantity,
                 "unit_price": unit_price,
                 "subtotal": item_subtotal,
-                "size": item_data.size,
-                "color": item_data.color,
+                "size": item_size,
+                "color": item_color,
                 "gender": item_data.gender,
                 "custom_measurements": item_data.custom_measurements,
                 "embroidery_text": item_data.embroidery_text,
@@ -199,7 +267,7 @@ class OrderService(SchoolIsolatedService[Order]):
         subtotal = Decimal("0")
 
         for item_data in order_data.items:
-            # Get garment type (or use global)
+            # Get garment type
             garment = await self.db.execute(
                 select(GarmentType).where(
                     GarmentType.id == item_data.garment_type_id
@@ -207,18 +275,80 @@ class OrderService(SchoolIsolatedService[Order]):
             )
             garment = garment.scalar_one_or_none()
 
-            # Use provided unit_price if available, otherwise default
-            unit_price = getattr(item_data, 'unit_price', None) or Decimal("50000")
+            # Get order type and additional price
+            order_type = getattr(item_data, 'order_type', 'catalog')  # Default to catalog for web
+            additional_price = getattr(item_data, 'additional_price', None) or Decimal("0")
+            product_id = None
+            item_size = item_data.size
+            item_color = getattr(item_data, 'color', None)
+
+            if order_type == "catalog":
+                # CATALOG: Price from selected product
+                if not item_data.product_id:
+                    raise ValueError("product_id requerido para encargos de catálogo")
+
+                product_result = await self.db.execute(
+                    select(Product).where(
+                        Product.id == item_data.product_id,
+                        Product.school_id == order_data.school_id,
+                        Product.is_active == True
+                    )
+                )
+                product = product_result.scalar_one_or_none()
+
+                if not product:
+                    raise ValueError(f"Product {item_data.product_id} not found")
+
+                unit_price = Decimal(str(product.price)) + additional_price
+                product_id = product.id
+                item_size = item_data.size or product.size
+                item_color = getattr(item_data, 'color', None) or product.color
+
+            elif order_type == "yomber":
+                # YOMBER: Validate measurements
+                measurements = getattr(item_data, 'custom_measurements', None)
+                if not measurements:
+                    raise ValueError("Medidas personalizadas requeridas para encargos de yomber")
+
+                missing = [f for f in YOMBER_REQUIRED_MEASUREMENTS if f not in measurements]
+                if missing:
+                    raise ValueError(f"Medidas faltantes para yomber: {', '.join(missing)}")
+
+                if item_data.product_id:
+                    product_result = await self.db.execute(
+                        select(Product).where(
+                            Product.id == item_data.product_id,
+                            Product.school_id == order_data.school_id,
+                            Product.is_active == True
+                        )
+                    )
+                    product = product_result.scalar_one_or_none()
+                    if product:
+                        unit_price = Decimal(str(product.price)) + additional_price
+                        product_id = product.id
+                    else:
+                        raise ValueError(f"Product {item_data.product_id} not found")
+                elif getattr(item_data, 'unit_price', None):
+                    unit_price = item_data.unit_price + additional_price
+                else:
+                    raise ValueError("Precio requerido para yomber")
+
+            else:  # "custom"
+                if not getattr(item_data, 'unit_price', None):
+                    raise ValueError("unit_price requerido para encargos personalizados")
+                unit_price = item_data.unit_price + additional_price
+
             item_subtotal = unit_price * item_data.quantity
 
             items_data.append({
                 "school_id": order_data.school_id,
                 "garment_type_id": item_data.garment_type_id,
+                "product_id": product_id,
                 "quantity": item_data.quantity,
                 "unit_price": unit_price,
                 "subtotal": item_subtotal,
-                "size": item_data.size,
-                "color": getattr(item_data, 'color', None),
+                "size": item_size,
+                "color": item_color,
                 "gender": getattr(item_data, 'gender', None),
                 "custom_measurements": getattr(item_data, 'custom_measurements', None),
                 "embroidery_text": getattr(item_data, 'embroidery_text', None),

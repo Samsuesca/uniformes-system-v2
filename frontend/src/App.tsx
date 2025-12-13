@@ -13,6 +13,7 @@ import SaleDetail from './pages/SaleDetail';
 import SaleChanges from './pages/SaleChanges';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
+import WebOrders from './pages/WebOrders';
 import Accounting from './pages/Accounting';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
@@ -134,6 +135,14 @@ function App() {
           element={
             <ProtectedRoute>
               <OrderDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/web-orders"
+          element={
+            <ProtectedRoute>
+              <WebOrders />
             </ProtectedRoute>
           }
         />

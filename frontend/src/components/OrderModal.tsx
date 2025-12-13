@@ -1,12 +1,16 @@
 /**
- * Order Modal - Create new orders (encargos)
+ * Order Modal - Create new orders (encargos) with 3 order types
+ * - Catalog: Select product from catalog (for out of stock items)
+ * - Yomber: Custom measurements required
+ * - Custom: Manual price for special items
  */
-import { useState, useEffect } from 'react';
-import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, User } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, User, ShoppingBag, Ruler, Settings } from 'lucide-react';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
 import { clientService } from '../services/clientService';
-import type { GarmentType, Client, OrderItemCreate } from '../types/api';
+import YomberMeasurementsForm, { validateYomberMeasurements } from './YomberMeasurementsForm';
+import type { GarmentType, Client, OrderItemCreate, Product, OrderType, YomberMeasurements } from '../types/api';
 
 interface OrderModalProps {
   isOpen: boolean;
@@ -17,9 +21,11 @@ interface OrderModalProps {
 
 interface OrderItemForm extends OrderItemCreate {
   tempId: string;
-  garmentTypeName?: string;
+  displayName?: string;
   unitPrice: number;
 }
+
+type TabType = 'catalog' | 'yomber' | 'custom';
 
 export default function OrderModal({
   isOpen,
@@ -30,6 +36,7 @@ export default function OrderModal({
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,17 +47,45 @@ export default function OrderModal({
   const [advancePayment, setAdvancePayment] = useState<number>(0);
   const [items, setItems] = useState<OrderItemForm[]>([]);
 
-  // New item form
-  const [showAddItem, setShowAddItem] = useState(false);
-  const [newItem, setNewItem] = useState<Partial<OrderItemForm>>({
-    garment_type_id: '',
-    quantity: 1,
-    size: '',
-    color: '',
-    gender: 'unisex',
-    embroidery_text: '',
-    notes: '',
-  });
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabType>('catalog');
+
+  // Catalog tab state
+  const [catalogProductId, setCatalogProductId] = useState('');
+  const [catalogQuantity, setCatalogQuantity] = useState(1);
+  const [catalogGarmentFilter, setCatalogGarmentFilter] = useState('');
+
+  // Yomber tab state
+  const [yomberProductId, setYomberProductId] = useState('');
+  const [yomberQuantity, setYomberQuantity] = useState(1);
+  const [yomberMeasurements, setYomberMeasurements] = useState<Partial<YomberMeasurements>>({});
+  const [yomberAdditionalPrice, setYomberAdditionalPrice] = useState(0);
+  const [yomberEmbroideryText, setYomberEmbroideryText] = useState('');
+
+  // Custom tab state
+  const [customGarmentTypeId, setCustomGarmentTypeId] = useState('');
+  const [customQuantity, setCustomQuantity] = useState(1);
+  const [customSize, setCustomSize] = useState('');
+  const [customColor, setCustomColor] = useState('');
+  const [customPrice, setCustomPrice] = useState<number>(0);
+  const [customNotes, setCustomNotes] = useState('');
+  const [customEmbroideryText, setCustomEmbroideryText] = useState('');
+
+  // Filter yomber products (garment types with has_custom_measurements)
+  const yomberGarmentTypes = useMemo(() => {
+    return garmentTypes.filter(gt => gt.has_custom_measurements);
+  }, [garmentTypes]);
+
+  const yomberProducts = useMemo(() => {
+    const yomberTypeIds = yomberGarmentTypes.map(gt => gt.id);
+    return products.filter(p => yomberTypeIds.includes(p.garment_type_id));
+  }, [products, yomberGarmentTypes]);
+
+  // Filter catalog products by garment type
+  const filteredCatalogProducts = useMemo(() => {
+    if (!catalogGarmentFilter) return products;
+    return products.filter(p => p.garment_type_id === catalogGarmentFilter);
+  }, [products, catalogGarmentFilter]);
 
   useEffect(() => {
     if (isOpen) {
@@ -62,11 +97,13 @@ export default function OrderModal({
   const loadData = async () => {
     try {
       setLoadingData(true);
-      const [garmentTypesData, clientsData] = await Promise.all([
+      const [garmentTypesData, productsData, clientsData] = await Promise.all([
         productService.getGarmentTypes(schoolId),
+        productService.getProducts(schoolId),
         clientService.getClients(schoolId)
       ]);
       setGarmentTypes(garmentTypesData);
+      setProducts(productsData);
       setClients(clientsData);
     } catch (err: any) {
       console.error('Error loading data:', err);
@@ -83,57 +120,130 @@ export default function OrderModal({
     setAdvancePayment(0);
     setItems([]);
     setError(null);
-    setShowAddItem(false);
-    setNewItem({
-      garment_type_id: '',
-      quantity: 1,
-      size: '',
-      color: '',
-      gender: 'unisex',
-      embroidery_text: '',
-      notes: '',
-    });
+    setActiveTab('catalog');
+    resetCatalogForm();
+    resetYomberForm();
+    resetCustomForm();
   };
 
-  const getGarmentTypePrice = (_garmentTypeId: string): number => {
-    // For now, use a default price - in production this would come from pricing configuration
-    // This is a placeholder - the backend calculates the actual price
-    return 50000; // Default price
+  const resetCatalogForm = () => {
+    setCatalogProductId('');
+    setCatalogQuantity(1);
+    setCatalogGarmentFilter('');
   };
 
-  const handleAddItem = () => {
-    if (!newItem.garment_type_id) {
+  const resetYomberForm = () => {
+    setYomberProductId('');
+    setYomberQuantity(1);
+    setYomberMeasurements({});
+    setYomberAdditionalPrice(0);
+    setYomberEmbroideryText('');
+  };
+
+  const resetCustomForm = () => {
+    setCustomGarmentTypeId('');
+    setCustomQuantity(1);
+    setCustomSize('');
+    setCustomColor('');
+    setCustomPrice(0);
+    setCustomNotes('');
+    setCustomEmbroideryText('');
+  };
+
+  const handleAddCatalogItem = () => {
+    if (!catalogProductId) {
+      setError('Selecciona un producto');
+      return;
+    }
+
+    const product = products.find(p => p.id === catalogProductId);
+    if (!product) return;
+
+    const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
+
+    const item: OrderItemForm = {
+      tempId: Date.now().toString(),
+      order_type: 'catalog',
+      garment_type_id: product.garment_type_id,
+      product_id: product.id,
+      quantity: catalogQuantity,
+      size: product.size,
+      color: product.color || undefined,
+      displayName: `${garmentType?.name || 'Producto'} - ${product.size}${product.color ? ` (${product.color})` : ''}`,
+      unitPrice: Number(product.price),
+    };
+
+    setItems([...items, item]);
+    resetCatalogForm();
+    setError(null);
+  };
+
+  const handleAddYomberItem = () => {
+    if (!yomberProductId) {
+      setError('Selecciona un producto yomber para el precio base');
+      return;
+    }
+
+    const validation = validateYomberMeasurements(yomberMeasurements);
+    if (!validation.valid) {
+      setError('Completa todas las medidas obligatorias del yomber');
+      return;
+    }
+
+    const product = products.find(p => p.id === yomberProductId);
+    if (!product) return;
+
+    const basePrice = Number(product.price);
+    const totalPrice = basePrice + yomberAdditionalPrice;
+
+    const item: OrderItemForm = {
+      tempId: Date.now().toString(),
+      order_type: 'yomber',
+      garment_type_id: product.garment_type_id,
+      product_id: product.id,
+      quantity: yomberQuantity,
+      size: product.size,
+      custom_measurements: yomberMeasurements as YomberMeasurements,
+      additional_price: yomberAdditionalPrice > 0 ? yomberAdditionalPrice : undefined,
+      embroidery_text: yomberEmbroideryText || undefined,
+      displayName: `Yomber ${product.size} (sobre-medida)`,
+      unitPrice: totalPrice,
+    };
+
+    setItems([...items, item]);
+    resetYomberForm();
+    setError(null);
+  };
+
+  const handleAddCustomItem = () => {
+    if (!customGarmentTypeId) {
       setError('Selecciona un tipo de prenda');
       return;
     }
 
-    const garmentType = garmentTypes.find(g => g.id === newItem.garment_type_id);
-    const unitPrice = getGarmentTypePrice(newItem.garment_type_id);
+    if (!customPrice || customPrice <= 0) {
+      setError('Ingresa un precio válido');
+      return;
+    }
+
+    const garmentType = garmentTypes.find(gt => gt.id === customGarmentTypeId);
 
     const item: OrderItemForm = {
       tempId: Date.now().toString(),
-      garment_type_id: newItem.garment_type_id,
-      quantity: newItem.quantity || 1,
-      size: newItem.size || undefined,
-      color: newItem.color || undefined,
-      gender: newItem.gender || undefined,
-      embroidery_text: newItem.embroidery_text || undefined,
-      notes: newItem.notes || undefined,
-      garmentTypeName: garmentType?.name,
-      unitPrice,
+      order_type: 'custom',
+      garment_type_id: customGarmentTypeId,
+      quantity: customQuantity,
+      unit_price: customPrice,
+      size: customSize || undefined,
+      color: customColor || undefined,
+      embroidery_text: customEmbroideryText || undefined,
+      notes: customNotes || undefined,
+      displayName: `${garmentType?.name || 'Personalizado'}${customSize ? ` - ${customSize}` : ''}${customColor ? ` (${customColor})` : ''}`,
+      unitPrice: customPrice,
     };
 
     setItems([...items, item]);
-    setNewItem({
-      garment_type_id: '',
-      quantity: 1,
-      size: '',
-      color: '',
-      gender: 'unisex',
-      embroidery_text: '',
-      notes: '',
-    });
-    setShowAddItem(false);
+    resetCustomForm();
     setError(null);
   };
 
@@ -165,9 +275,14 @@ export default function OrderModal({
       const orderItems: OrderItemCreate[] = items.map(item => ({
         garment_type_id: item.garment_type_id,
         quantity: item.quantity,
+        order_type: item.order_type,
+        product_id: item.product_id,
+        unit_price: item.unit_price,
+        additional_price: item.additional_price,
         size: item.size,
         color: item.color,
         gender: item.gender,
+        custom_measurements: item.custom_measurements,
         embroidery_text: item.embroidery_text,
         notes: item.notes,
       }));
@@ -199,6 +314,19 @@ export default function OrderModal({
     }
   };
 
+  const getOrderTypeBadge = (orderType: OrderType | undefined) => {
+    switch (orderType) {
+      case 'catalog':
+        return <span className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">Catalogo</span>;
+      case 'yomber':
+        return <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">Yomber</span>;
+      case 'custom':
+        return <span className="px-1.5 py-0.5 text-xs bg-orange-100 text-orange-700 rounded">Personal.</span>;
+      default:
+        return null;
+    }
+  };
+
   if (!isOpen) return null;
 
   const total = calculateTotal();
@@ -214,7 +342,7 @@ export default function OrderModal({
 
       {/* Modal */}
       <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="relative bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
             <h2 className="text-xl font-semibold text-gray-800 flex items-center">
@@ -284,31 +412,385 @@ export default function OrderModal({
                 />
               </div>
 
-              {/* Items Section */}
+              {/* Order Type Tabs */}
               <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-gray-700">
-                    <Package className="w-4 h-4 inline mr-1" />
-                    Items del Encargo *
-                  </label>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Agregar Items al Encargo
+                </label>
+
+                {/* Tabs */}
+                <div className="flex border-b border-gray-200 mb-4">
                   <button
                     type="button"
-                    onClick={() => setShowAddItem(true)}
-                    className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                    onClick={() => setActiveTab('catalog')}
+                    className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition ${
+                      activeTab === 'catalog'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
                   >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Agregar Item
+                    <ShoppingBag className="w-4 h-4 mr-2" />
+                    Catalogo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('yomber')}
+                    className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition ${
+                      activeTab === 'yomber'
+                        ? 'border-purple-500 text-purple-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Ruler className="w-4 h-4 mr-2" />
+                    Yomber
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('custom')}
+                    className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition ${
+                      activeTab === 'custom'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Personalizado
                   </button>
                 </div>
 
-                {/* Items List */}
-                {items.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4 overflow-x-auto">
+                {/* Tab Content */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  {/* CATALOG TAB */}
+                  {activeTab === 'catalog' && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-600 mb-3">
+                        Selecciona un producto del catalogo. Ideal para productos agotados o pedidos web.
+                      </p>
+
+                      {/* Garment Type Filter */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Filtrar por tipo</label>
+                        <select
+                          value={catalogGarmentFilter}
+                          onChange={(e) => setCatalogGarmentFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        >
+                          <option value="">Todos los tipos</option>
+                          {garmentTypes.map((gt) => (
+                            <option key={gt.id} value={gt.id}>
+                              {gt.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Product Selection */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Producto *</label>
+                        <select
+                          value={catalogProductId}
+                          onChange={(e) => setCatalogProductId(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        >
+                          <option value="">Selecciona un producto</option>
+                          {filteredCatalogProducts.map((product) => {
+                            const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
+                            const stock = product.inventory_quantity ?? product.stock ?? 0;
+                            return (
+                              <option key={product.id} value={product.id}>
+                                {garmentType?.name} - {product.size}
+                                {product.color ? ` (${product.color})` : ''} -
+                                ${Number(product.price).toLocaleString()}
+                                {stock === 0 ? ' [SIN STOCK]' : ` [Stock: ${stock}]`}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      {/* Show selected product info */}
+                      {catalogProductId && (
+                        <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                          {(() => {
+                            const product = products.find(p => p.id === catalogProductId);
+                            if (!product) return null;
+                            const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
+                            return (
+                              <div className="text-sm">
+                                <p className="font-medium text-blue-900">{garmentType?.name} - {product.size}</p>
+                                <p className="text-blue-700">Precio: ${Number(product.price).toLocaleString()}</p>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Quantity */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={catalogQuantity}
+                          onChange={(e) => setCatalogQuantity(parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAddCatalogItem}
+                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Agregar al Encargo
+                      </button>
+                    </div>
+                  )}
+
+                  {/* YOMBER TAB */}
+                  {activeTab === 'yomber' && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-600 mb-3">
+                        Encargo de yomber con medidas personalizadas. Requiere: talle delantero, trasero, cintura y largo.
+                      </p>
+
+                      {yomberProducts.length === 0 ? (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                          <p className="text-yellow-800">No hay productos de yomber configurados</p>
+                          <p className="text-xs text-yellow-600 mt-1">
+                            Los tipos de prenda deben tener "has_custom_measurements" activado
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Yomber Product Selection (for base price) */}
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Producto Yomber (precio base) *</label>
+                            <select
+                              value={yomberProductId}
+                              onChange={(e) => setYomberProductId(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            >
+                              <option value="">Selecciona talla base</option>
+                              {yomberProducts.map((product) => {
+                                const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
+                                return (
+                                  <option key={product.id} value={product.id}>
+                                    {garmentType?.name} - Talla {product.size} - ${Number(product.price).toLocaleString()}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          {/* Yomber Measurements */}
+                          <YomberMeasurementsForm
+                            measurements={yomberMeasurements}
+                            onChange={setYomberMeasurements}
+                          />
+
+                          {/* Additional Price */}
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Precio Adicional (servicios)</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={yomberAdditionalPrice || ''}
+                                onChange={(e) => setYomberAdditionalPrice(parseInt(e.target.value) || 0)}
+                                placeholder="0"
+                                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Embroidery Text */}
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Texto Bordado</label>
+                            <input
+                              type="text"
+                              value={yomberEmbroideryText}
+                              onChange={(e) => setYomberEmbroideryText(e.target.value)}
+                              placeholder="Nombre para bordar"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+
+                          {/* Quantity */}
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={yomberQuantity}
+                              onChange={(e) => setYomberQuantity(parseInt(e.target.value) || 1)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+
+                          {/* Show total price */}
+                          {yomberProductId && (
+                            <div className="bg-purple-50 border border-purple-200 rounded p-3">
+                              {(() => {
+                                const product = products.find(p => p.id === yomberProductId);
+                                if (!product) return null;
+                                const basePrice = Number(product.price);
+                                const totalPrice = basePrice + yomberAdditionalPrice;
+                                return (
+                                  <div className="text-sm">
+                                    <p className="text-purple-700">Precio base: ${basePrice.toLocaleString()}</p>
+                                    {yomberAdditionalPrice > 0 && (
+                                      <p className="text-purple-700">+ Adicional: ${yomberAdditionalPrice.toLocaleString()}</p>
+                                    )}
+                                    <p className="font-medium text-purple-900">Total por unidad: ${totalPrice.toLocaleString()}</p>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleAddYomberItem}
+                            className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center justify-center"
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Agregar Yomber
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* CUSTOM TAB */}
+                  {activeTab === 'custom' && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-600 mb-3">
+                        Para productos fuera del catalogo, tallas especiales, o con modificaciones. Precio manual requerido.
+                      </p>
+
+                      {/* Garment Type */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Tipo de Prenda *</label>
+                        <select
+                          value={customGarmentTypeId}
+                          onChange={(e) => setCustomGarmentTypeId(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        >
+                          <option value="">Selecciona tipo</option>
+                          {garmentTypes.map((gt) => (
+                            <option key={gt.id} value={gt.id}>
+                              {gt.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Size */}
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Talla</label>
+                          <input
+                            type="text"
+                            value={customSize}
+                            onChange={(e) => setCustomSize(e.target.value)}
+                            placeholder="ej: XL, 2, 18"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        </div>
+
+                        {/* Color */}
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Color</label>
+                          <input
+                            type="text"
+                            value={customColor}
+                            onChange={(e) => setCustomColor(e.target.value)}
+                            placeholder="ej: Azul marino"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Price */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Precio Unitario *</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={customPrice || ''}
+                            onChange={(e) => setCustomPrice(parseInt(e.target.value) || 0)}
+                            placeholder="Ingresa el precio"
+                            className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Embroidery Text */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Texto Bordado</label>
+                        <input
+                          type="text"
+                          value={customEmbroideryText}
+                          onChange={(e) => setCustomEmbroideryText(e.target.value)}
+                          placeholder="Nombre para bordar"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Notas / Especificaciones</label>
+                        <textarea
+                          value={customNotes}
+                          onChange={(e) => setCustomNotes(e.target.value)}
+                          placeholder="Detalles especiales, modificaciones, etc."
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
+                        />
+                      </div>
+
+                      {/* Quantity */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={customQuantity}
+                          onChange={(e) => setCustomQuantity(parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAddCustomItem}
+                        className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition flex items-center justify-center"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Agregar Personalizado
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Items List */}
+              {items.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">
+                    Items del Encargo ({items.length})
+                  </h4>
+                  <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
                     <table className="w-full min-w-[500px]">
                       <thead>
                         <tr className="text-xs text-gray-500 uppercase">
-                          <th className="text-left pb-2">Prenda</th>
-                          <th className="text-center pb-2">Talla</th>
+                          <th className="text-left pb-2">Item</th>
+                          <th className="text-center pb-2">Tipo</th>
                           <th className="text-center pb-2">Cant.</th>
                           <th className="text-right pb-2">Precio</th>
                           <th className="text-right pb-2">Subtotal</th>
@@ -320,13 +802,18 @@ export default function OrderModal({
                           <tr key={item.tempId} className="text-sm">
                             <td className="py-2">
                               <div>
-                                <p className="font-medium">{item.garmentTypeName}</p>
+                                <p className="font-medium">{item.displayName}</p>
                                 {item.embroidery_text && (
                                   <p className="text-xs text-gray-500">Bordado: {item.embroidery_text}</p>
                                 )}
+                                {item.custom_measurements && (
+                                  <p className="text-xs text-purple-600">Con medidas personalizadas</p>
+                                )}
                               </div>
                             </td>
-                            <td className="py-2 text-center">{item.size || '-'}</td>
+                            <td className="py-2 text-center">
+                              {getOrderTypeBadge(item.order_type)}
+                            </td>
                             <td className="py-2 text-center">{item.quantity}</td>
                             <td className="py-2 text-right">${item.unitPrice.toLocaleString()}</td>
                             <td className="py-2 text-right font-medium">
@@ -346,124 +833,8 @@ export default function OrderModal({
                       </tbody>
                     </table>
                   </div>
-                )}
-
-                {items.length === 0 && !showAddItem && (
-                  <div className="bg-gray-50 rounded-lg p-8 text-center">
-                    <Package className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-500">No hay items agregados</p>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddItem(true)}
-                      className="mt-3 text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      Agregar primer item
-                    </button>
-                  </div>
-                )}
-
-                {/* Add Item Form */}
-                {showAddItem && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="font-medium text-blue-900 mb-3">Agregar Item</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Tipo de Prenda *</label>
-                        <select
-                          value={newItem.garment_type_id}
-                          onChange={(e) => setNewItem({ ...newItem, garment_type_id: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        >
-                          <option value="">Selecciona...</option>
-                          {garmentTypes.map((gt) => (
-                            <option key={gt.id} value={gt.id}>
-                              {gt.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={newItem.quantity}
-                          onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 1 })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Talla</label>
-                        <input
-                          type="text"
-                          value={newItem.size}
-                          onChange={(e) => setNewItem({ ...newItem, size: e.target.value })}
-                          placeholder="Ej: M, L, 12, 14"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Color</label>
-                        <input
-                          type="text"
-                          value={newItem.color}
-                          onChange={(e) => setNewItem({ ...newItem, color: e.target.value })}
-                          placeholder="Ej: Blanco, Azul"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Genero</label>
-                        <select
-                          value={newItem.gender}
-                          onChange={(e) => setNewItem({ ...newItem, gender: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        >
-                          <option value="unisex">Unisex</option>
-                          <option value="male">Masculino</option>
-                          <option value="female">Femenino</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Texto Bordado</label>
-                        <input
-                          type="text"
-                          value={newItem.embroidery_text}
-                          onChange={(e) => setNewItem({ ...newItem, embroidery_text: e.target.value })}
-                          placeholder="Nombre para bordado"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1">Notas</label>
-                        <input
-                          type="text"
-                          value={newItem.notes}
-                          onChange={(e) => setNewItem({ ...newItem, notes: e.target.value })}
-                          placeholder="Notas adicionales..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2 mt-4">
-                      <button
-                        type="button"
-                        onClick={() => setShowAddItem(false)}
-                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAddItem}
-                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Agregar
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Totals */}
               {items.length > 0 && (

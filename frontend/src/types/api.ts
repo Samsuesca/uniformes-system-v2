@@ -132,6 +132,9 @@ export interface GarmentType {
   school_id: string;
   name: string;
   description: string | null;
+  category: string | null;
+  has_custom_measurements: boolean;
+  requires_embroidery: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -286,6 +289,27 @@ export interface SaleChangeListItem {
 // ============================================
 
 export type OrderStatus = 'pending' | 'in_production' | 'ready' | 'delivered' | 'cancelled';
+export type OrderType = 'catalog' | 'yomber' | 'custom';
+
+// Yomber measurements interface
+export interface YomberMeasurements {
+  // Required
+  delantero: number;
+  trasero: number;
+  cintura: number;
+  largo: number;
+  // Optional
+  espalda?: number;
+  cadera?: number;
+  hombro?: number;
+  pierna?: number;
+  entrepierna?: number;
+  manga?: number;
+  cuello?: number;
+  pecho?: number;
+  busto?: number;
+  tiro?: number;
+}
 
 export interface OrderItem {
   id: string;
@@ -310,10 +334,19 @@ export interface OrderItem {
 export interface OrderItemCreate {
   garment_type_id: string;
   quantity: number;
+  // Order type
+  order_type?: OrderType;
+  // For catalog/yomber orders - product for price
+  product_id?: string;
+  // For custom orders - manual price
+  unit_price?: number;
+  // Additional services price
+  additional_price?: number;
+  // Common fields
   size?: string;
   color?: string;
   gender?: string;
-  custom_measurements?: Record<string, number>;
+  custom_measurements?: YomberMeasurements | Record<string, number>;
   embroidery_text?: string;
   notes?: string;
 }

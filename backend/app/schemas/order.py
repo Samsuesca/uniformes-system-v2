@@ -59,13 +59,35 @@ class OrderItemCreate(BaseSchema):
     """Schema for creating order item"""
     garment_type_id: UUID
     quantity: int = Field(..., gt=0)
-    unit_price: Decimal | None = Field(None, ge=0)  # Optional, will use product price if not provided
+
+    # Order type: "catalog" | "yomber" | "custom"
+    order_type: str = Field(default="custom")
+
+    # For catalog/yomber orders - select specific product for price
+    product_id: UUID | None = None
+
+    # For custom orders - manual price
+    unit_price: Decimal | None = Field(None, ge=0)
+
+    # Additional services price (mainly for yomber)
+    additional_price: Decimal | None = Field(None, ge=0)
+
+    # Common fields
     size: str | None = Field(None, max_length=10)
     color: str | None = Field(None, max_length=50)
     gender: str | None = Field(None, max_length=10)
     custom_measurements: dict | None = None
     embroidery_text: str | None = Field(None, max_length=100)
     notes: str | None = None
+
+    @field_validator('order_type')
+    @classmethod
+    def validate_order_type(cls, v: str) -> str:
+        """Validate order type field"""
+        valid_types = ['catalog', 'yomber', 'custom']
+        if v not in valid_types:
+            raise ValueError(f'Order type must be one of: {", ".join(valid_types)}')
+        return v
 
 
 class OrderItemUpdate(BaseSchema):
