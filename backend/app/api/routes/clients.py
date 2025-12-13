@@ -480,13 +480,13 @@ async def register_web_client(
 
 
 @web_router.post(
-    "/verify-email/{token}"
+    "/verify-token/{token}"
 )
-async def verify_email(
+async def verify_email_token(
     token: str,
     db: DatabaseSession
 ):
-    """Verify client email with token."""
+    """Verify client email with token (legacy endpoint)."""
     client_service = ClientService(db)
     client = await client_service.verify_email(token)
 

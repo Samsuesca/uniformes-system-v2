@@ -98,6 +98,7 @@ async def list_all_orders(
             id=order.id,
             code=order.code,
             status=order.status,
+            source=order.source,  # Include source for filtering web_portal orders
             client_name=order.client.name if order.client else None,
             student_name=order.client.student_name if order.client else None,
             delivery_date=order.delivery_date,
@@ -221,13 +222,15 @@ async def list_orders_for_school(
             id=order.id,
             code=order.code,
             status=order.status,
+            source=order.source,  # Include source for filtering web_portal orders
             client_name="",  # TODO: Join with client
             student_name=None,
             delivery_date=order.delivery_date,
             total=order.total,
             balance=order.balance,
             created_at=order.created_at,
-            items_count=0  # TODO: Count items
+            items_count=0,  # TODO: Count items
+            school_id=order.school_id
         )
         for order in orders
     ]
