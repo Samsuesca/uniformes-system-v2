@@ -59,13 +59,13 @@ class OrderItemCreate(BaseSchema):
     """Schema for creating order item"""
     garment_type_id: UUID
     quantity: int = Field(..., gt=0)
+    unit_price: Decimal | None = Field(None, ge=0)  # Optional, will use product price if not provided
     size: str | None = Field(None, max_length=10)
     color: str | None = Field(None, max_length=50)
     gender: str | None = Field(None, max_length=10)
     custom_measurements: dict | None = None
     embroidery_text: str | None = Field(None, max_length=100)
     notes: str | None = None
-    # unit_price and subtotal will be calculated
 
 
 class OrderItemUpdate(BaseSchema):
