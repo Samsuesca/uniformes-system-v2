@@ -1,20 +1,22 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Product } from './api';
+import type { Product, School } from './api';
 
-interface CartItem {
+export interface CartItem {
   product: Product;
+  school: School;
   quantity: number;
 }
 
 interface CartStore {
   items: CartItem[];
-  addItem: (product: Product) => void;
+  addItem: (product: Product, school: School) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
+  getItemsBySchool: () => Map<string, CartItem[]>;
 }
 
 export const useCartStore = create<CartStore>()(
@@ -22,7 +24,7 @@ export const useCartStore = create<CartStore>()(
     (set, get) => ({
       items: [],
 
-      addItem: (product: Product) => {
+      addItem: (product: Product, school: School) => {
         const items = get().items;
         const existingItem = items.find((item) => item.product.id === product.id);
 
@@ -37,7 +39,7 @@ export const useCartStore = create<CartStore>()(
           });
         } else {
           // Si no existe, agregar nuevo item
-          set({ items: [...items, { product, quantity: 1 }] });
+          set({ items: [...items, { product, school, quantity: 1 }] });
         }
       },
 
@@ -71,6 +73,21 @@ export const useCartStore = create<CartStore>()(
           (total, item) => total + item.product.price * item.quantity,
           0
         );
+      },
+
+      getItemsBySchool: () => {
+        const items = get().items;
+        const grouped = new Map<string, CartItem[]>();
+
+        items.forEach((item) => {
+          const schoolId = item.school.id;
+          if (!grouped.has(schoolId)) {
+            grouped.set(schoolId, []);
+          }
+          grouped.get(schoolId)!.push(item);
+        });
+
+        return grouped;
       },
     }),
     {

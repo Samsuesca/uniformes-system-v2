@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ShoppingCart, ArrowLeft, Filter } from 'lucide-react';
-import { productsApi, type Product, getProductImage } from '@/lib/api';
+import { productsApi, schoolsApi, type Product, getProductImage } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 
 export default function CatalogPage() {
@@ -14,21 +14,29 @@ export default function CatalogPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
+    const [error, setError] = useState<string | null>(null);
 
     const { addItem, getTotalItems } = useCartStore();
 
     useEffect(() => {
         loadProducts();
-    }, []);
+    }, [schoolSlug]);
 
     const loadProducts = async () => {
         try {
-            // TODO: Get school ID from slug first
-            const schoolId = 'demo-school-id';
-            const response = await productsApi.list(schoolId);
+            setLoading(true);
+            setError(null);
+
+            // Get school by slug first
+            const schoolResponse = await schoolsApi.getBySlug(schoolSlug);
+            const school = schoolResponse.data;
+
+            // Then get products for that school
+            const response = await productsApi.list(school.id);
             setProducts(response.data);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error loading products:', error);
+            setError(error.response?.data?.detail || 'Error al cargar productos');
         } finally {
             setLoading(false);
         }
@@ -96,7 +104,18 @@ export default function CatalogPage() {
 
             {/* Products Grid */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {loading ? (
+                {error ? (
+                    <div className="text-center py-12 bg-red-50 rounded-xl border border-red-200">
+                        <p className="text-red-600 font-semibold mb-2">Error al cargar el catálogo</p>
+                        <p className="text-sm text-red-500">{error}</p>
+                        <button
+                            onClick={loadProducts}
+                            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            Reintentar
+                        </button>
+                    </div>
+                ) : loading ? (
                     <div className="text-center py-12">
                         <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-200 border-t-brand-600"></div>
                         <p className="mt-4 text-slate-600">Cargando productos...</p>

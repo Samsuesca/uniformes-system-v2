@@ -35,25 +35,30 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 via-surface-50 to-brand-100">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-surface-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-primary font-display tracking-tight">
-            Uniformes System
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      {/* Hero Section */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <h1 className="text-5xl md:text-6xl font-bold font-display mb-4">
+            Uniformes Escolares
           </h1>
-          <p className="text-slate-500 mt-1">Portal de Clientes</p>
+          <p className="text-xl md:text-2xl text-blue-100 mb-2">
+            Encuentra el uniforme perfecto para tu institución
+          </p>
+          <p className="text-blue-200">
+            Calidad, variedad y los mejores precios
+          </p>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-primary font-display tracking-tight mb-4">
+          <h2 className="text-3xl font-bold text-gray-800 font-display mb-3">
             Selecciona tu Colegio
           </h2>
-          <p className="text-lg text-slate-600">
-            Encuentra el catálogo de uniformes de tu institución
+          <p className="text-lg text-gray-600">
+            Busca tu institución y explora nuestro catálogo completo
           </p>
         </div>
 
@@ -83,29 +88,36 @@ export default function Home() {
             <p className="text-slate-600">No se encontraron colegios</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredSchools.map((school) => (
               <button
                 key={school.id}
                 onClick={() => handleSchoolSelect(school.slug)}
-                className="group bg-white rounded-xl border border-surface-200 p-6 hover:shadow-lg hover:border-brand-300 hover:-translate-y-1 transition-all duration-300 text-left"
+                className="group bg-white rounded-2xl border-2 border-gray-200 p-8 hover:shadow-2xl hover:border-blue-400 hover:-translate-y-2 transition-all duration-300 text-left"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 rounded-xl bg-brand-50 flex items-center justify-center group-hover:bg-brand-600 transition-colors">
-                      <SchoolIcon className="w-6 h-6 text-brand-600 group-hover:text-white transition-colors" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-primary font-display">{school.name}</h3>
-                      <p className="text-sm text-slate-500">Ver catálogo</p>
-                    </div>
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mx-auto mb-4 group-hover:from-blue-500 group-hover:to-indigo-500 transition-all">
+                    <SchoolIcon className="w-10 h-10 text-blue-600 group-hover:text-white transition-colors" />
                   </div>
-                  <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all" />
+                  <h3 className="text-xl font-bold text-gray-800 font-display mb-2">
+                    {school.name}
+                  </h3>
+                  <div className="flex items-center justify-center gap-2 text-blue-600 font-semibold group-hover:gap-3 transition-all">
+                    <span>Ver catálogo</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </div>
                 </div>
               </button>
             ))}
           </div>
         )}
+
+        {/* Footer Info */}
+        <div className="mt-16 text-center text-gray-500">
+          <p className="text-sm">
+            ¿No encuentras tu colegio? Contáctanos para más información
+          </p>
+        </div>
       </main>
     </div>
   );

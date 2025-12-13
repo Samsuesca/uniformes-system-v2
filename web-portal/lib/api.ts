@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getPublicToken, clearPublicToken } from './auth';
 
 // API Base URL - se configura desde variables de entorno
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -11,6 +12,47 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
+  async (config) => {
+    // Get public token for catalog access
+    try {
+      const token = await getPublicToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.error('Failed to add auth token:', error);
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor to handle token expiration
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Token expired, clear cache and retry once
+      clearPublicToken();
+      const originalRequest = error.config;
+
+      if (!originalRequest._retry) {
+        originalRequest._retry = true;
+        try {
+          const token = await getPublicToken();
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return apiClient(originalRequest);
+        } catch (retryError) {
+          return Promise.reject(retryError);
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Types
 export interface School {
