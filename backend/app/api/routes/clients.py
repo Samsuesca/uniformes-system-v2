@@ -30,13 +30,17 @@ from app.schemas.client import (
     ClientPasswordChange,
     PhoneVerificationSend,
     PhoneVerificationConfirm,
+    EmailVerificationSend,
+    EmailVerificationConfirm,
 )
 from app.services.client import ClientService
+from app.services.email import send_verification_email, send_welcome_email
 
 # In-memory store for verification codes (in production, use Redis)
 import random
 from datetime import datetime, timedelta
 phone_verification_codes: dict[str, tuple[str, datetime]] = {}
+email_verification_codes: dict[str, tuple[str, datetime]] = {}
 
 
 # =============================================================================
@@ -733,5 +737,99 @@ async def confirm_phone_verification(
     return {
         "message": "Teléfono verificado exitosamente",
         "phone": phone,
+        "verified": True
+    }
+
+
+# =============================================================================
+# Email Verification Endpoints
+# =============================================================================
+
+@web_router.post("/verify-email/send")
+async def send_email_verification(
+    data: EmailVerificationSend,
+    db: DatabaseSession
+):
+    """
+    Send a verification code to the email address.
+
+    Uses Resend to send emails (3,000/month free).
+    In dev mode without API key, code is logged to console.
+    """
+    email = data.email.lower().strip()
+    name = data.name or "Usuario"
+
+    # Check if email is already registered
+    client_service = ClientService(db)
+    existing = await client_service.get_by_email(email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este email ya está registrado. Por favor inicia sesión."
+        )
+
+    # Generate 6-digit code
+    code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+
+    # Store with 10-minute expiry
+    expiry = datetime.utcnow() + timedelta(minutes=10)
+    email_verification_codes[email] = (code, expiry)
+
+    # Send email
+    sent = send_verification_email(email, code, name)
+
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al enviar el correo. Intenta de nuevo."
+        )
+
+    return {
+        "message": "Código de verificación enviado a tu correo",
+        "expires_in": 600,  # 10 minutes
+    }
+
+
+@web_router.post("/verify-email/confirm")
+async def confirm_email_verification(
+    data: EmailVerificationConfirm,
+    db: DatabaseSession
+):
+    """
+    Verify the email with the code sent.
+    """
+    email = data.email.lower().strip()
+    code = data.code
+
+    # Check if code exists
+    if email not in email_verification_codes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontró código de verificación. Solicita uno nuevo."
+        )
+
+    stored_code, expiry = email_verification_codes[email]
+
+    # Check if expired
+    if datetime.utcnow() > expiry:
+        del email_verification_codes[email]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El código ha expirado. Solicita uno nuevo."
+        )
+
+    # Verify code
+    if code != stored_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Código incorrecto"
+        )
+
+    # Code is valid - remove from store
+    del email_verification_codes[email]
+
+    return {
+        "message": "Email verificado exitosamente",
+        "email": email,
         "verified": True
     }

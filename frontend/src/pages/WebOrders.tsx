@@ -25,6 +25,7 @@ import Layout from '../components/Layout';
 import { useSchoolStore } from '../stores/schoolStore';
 import { orderService } from '../services/orderService';
 import type { OrderListItem, OrderStatus, OrderWithItems } from '../types/api';
+import type { School } from '../services/schoolService';
 
 // Status configuration
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
@@ -36,7 +37,7 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: t
 };
 
 export default function WebOrders() {
-  const { currentSchool } = useSchoolStore();
+  const { currentSchool, availableSchools } = useSchoolStore();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +48,7 @@ export default function WebOrders() {
 
   // Detail modal
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null);
+  const [selectedOrderSchoolId, setSelectedOrderSchoolId] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
@@ -62,21 +64,33 @@ export default function WebOrders() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
-    if (currentSchool?.id) {
+    if (availableSchools.length > 0) {
       loadOrders();
     }
-  }, [currentSchool?.id]);
+  }, [availableSchools]);
 
   const loadOrders = async () => {
-    if (!currentSchool?.id) return;
+    if (availableSchools.length === 0) return;
 
     try {
       setLoading(true);
       setError(null);
-      // Get all orders and filter by web_portal source
-      const allOrders = await orderService.getAllOrders({ school_id: currentSchool.id });
+
+      // Load orders from ALL available schools (not just current)
+      const ordersPromises = availableSchools.map(school =>
+        orderService.getAllOrders({ school_id: school.id })
+          .then(orders => orders.map(o => ({ ...o, school_name: school.name })))
+          .catch(() => [] as OrderListItem[]) // Ignore errors for individual schools
+      );
+
+      const allSchoolOrders = await Promise.all(ordersPromises);
+      const allOrders = allSchoolOrders.flat();
+
       // Filter for web portal orders (source = web_portal)
-      const webOrders = allOrders.filter(o => o.source === 'web_portal');
+      const webOrders = allOrders
+        .filter(o => o.source === 'web_portal')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       setOrders(webOrders);
     } catch (err: any) {
       console.error('Error loading web orders:', err);
@@ -118,12 +132,11 @@ export default function WebOrders() {
     };
   }, [orders]);
 
-  const handleViewDetail = async (orderId: string) => {
-    if (!currentSchool?.id) return;
-
+  const handleViewDetail = async (orderId: string, schoolId: string) => {
     try {
       setLoadingDetail(true);
-      const order = await orderService.getOrder(currentSchool.id, orderId);
+      setSelectedOrderSchoolId(schoolId);
+      const order = await orderService.getOrder(schoolId, orderId);
       setSelectedOrder(order);
       setShowDetailModal(true);
     } catch (err) {
@@ -135,13 +148,13 @@ export default function WebOrders() {
   };
 
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
-    if (!currentSchool?.id || !selectedOrder) return;
+    if (!selectedOrderSchoolId || !selectedOrder) return;
 
     try {
       setUpdatingStatus(true);
-      await orderService.updateStatus(currentSchool.id, selectedOrder.id, newStatus);
+      await orderService.updateStatus(selectedOrderSchoolId, selectedOrder.id, newStatus);
       // Reload order detail and list
-      const updatedOrder = await orderService.getOrder(currentSchool.id, selectedOrder.id);
+      const updatedOrder = await orderService.getOrder(selectedOrderSchoolId, selectedOrder.id);
       setSelectedOrder(updatedOrder);
       loadOrders();
     } catch (err) {
@@ -153,18 +166,18 @@ export default function WebOrders() {
   };
 
   const handleAddPayment = async () => {
-    if (!currentSchool?.id || !selectedOrder || paymentAmount <= 0) return;
+    if (!selectedOrderSchoolId || !selectedOrder || paymentAmount <= 0) return;
 
     try {
       setProcessingPayment(true);
-      await orderService.addPayment(currentSchool.id, selectedOrder.id, {
+      await orderService.addPayment(selectedOrderSchoolId, selectedOrder.id, {
         amount: paymentAmount,
         payment_method: paymentMethod,
         payment_reference: paymentRef || undefined,
         notes: paymentNotes || undefined,
       });
       // Reload order detail and list
-      const updatedOrder = await orderService.getOrder(currentSchool.id, selectedOrder.id);
+      const updatedOrder = await orderService.getOrder(selectedOrderSchoolId, selectedOrder.id);
       setSelectedOrder(updatedOrder);
       setShowPaymentModal(false);
       setPaymentAmount(0);
@@ -195,12 +208,12 @@ export default function WebOrders() {
     });
   };
 
-  if (!currentSchool) {
+  if (availableSchools.length === 0) {
     return (
       <Layout>
         <div className="p-8 text-center">
           <Globe className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">Selecciona un colegio para ver los pedidos web</p>
+          <p className="text-gray-500">No tienes acceso a ningún colegio</p>
         </div>
       </Layout>
     );
@@ -390,6 +403,7 @@ export default function WebOrders() {
               <thead className="bg-gray-50">
                 <tr className="text-xs text-gray-500 uppercase">
                   <th className="px-4 py-3 text-left">Codigo</th>
+                  <th className="px-4 py-3 text-left">Colegio</th>
                   <th className="px-4 py-3 text-left">Cliente</th>
                   <th className="px-4 py-3 text-center">Items</th>
                   <th className="px-4 py-3 text-right">Total</th>
@@ -409,6 +423,9 @@ export default function WebOrders() {
                     <tr key={order.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <span className="font-mono font-medium text-indigo-600">{order.code}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-gray-700">{order.school_name || '-'}</span>
                       </td>
                       <td className="px-4 py-3">
                         <div>
@@ -443,7 +460,7 @@ export default function WebOrders() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
                           <button
-                            onClick={() => handleViewDetail(order.id)}
+                            onClick={() => handleViewDetail(order.id, order.school_id!)}
                             disabled={loadingDetail}
                             className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
                             title="Ver detalle"

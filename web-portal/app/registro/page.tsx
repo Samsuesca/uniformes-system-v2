@@ -2,34 +2,32 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, Eye, EyeOff, Phone, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, Eye, EyeOff, Mail, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { clientsApi, schoolsApi, type School } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-type RegistrationStep = 'phone' | 'verify' | 'details';
+type RegistrationStep = 'email' | 'verify' | 'details';
 
 export default function RegistroPage() {
   const router = useRouter();
   const { login } = useClientAuth();
 
-  const [step, setStep] = useState<RegistrationStep>('phone');
+  const [step, setStep] = useState<RegistrationStep>('email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Phone verification
-  const [phone, setPhone] = useState('');
+  // Email verification
+  const [email, setEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
-  const [codeExpiry, setCodeExpiry] = useState<Date | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Registration form
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
+    phone: '',
     password: '',
     password_confirm: '',
     student_name: '',
@@ -60,9 +58,14 @@ export default function RegistroPage() {
     }
   }, [resendCooldown]);
 
+  const validateEmail = (email: string) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
   const handleSendCode = async () => {
-    if (!phone || phone.length < 10) {
-      setError('Ingresa un número de teléfono válido (10 dígitos)');
+    if (!email || !validateEmail(email)) {
+      setError('Ingresa un correo electrónico válido');
       return;
     }
 
@@ -70,21 +73,20 @@ export default function RegistroPage() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/portal/clients/verify-phone/send`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/portal/clients/verify-email/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ email, name: formData.name || undefined }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.detail || 'Error al enviar código');
       }
 
-      setCodeSent(true);
       setStep('verify');
-      setResendCooldown(60); // 60 seconds cooldown
-      setCodeExpiry(new Date(Date.now() + 5 * 60 * 1000)); // 5 min expiry
+      setResendCooldown(60);
     } catch (err: any) {
       setError(err.message || 'Error al enviar el código');
     } finally {
@@ -102,14 +104,15 @@ export default function RegistroPage() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/portal/clients/verify-phone/confirm`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/portal/clients/verify-email/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code: verificationCode }),
+        body: JSON.stringify({ email, code: verificationCode }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.detail || 'Código inválido');
       }
 
@@ -144,9 +147,9 @@ export default function RegistroPage() {
     try {
       await clientsApi.register({
         name: formData.name,
-        email: formData.email,
+        email: email,
         password: formData.password,
-        phone: phone,
+        phone: formData.phone || undefined,
         students: [{
           school_id: formData.school_id,
           student_name: formData.student_name || formData.name,
@@ -155,7 +158,7 @@ export default function RegistroPage() {
       });
 
       // Auto-login
-      await login(formData.email, formData.password);
+      await login(email, formData.password);
       setSuccess(true);
 
       // Redirect after 2 seconds
@@ -214,58 +217,54 @@ export default function RegistroPage() {
 
           {/* Step indicator */}
           <div className="flex items-center justify-center gap-2 mb-8">
-            {['phone', 'verify', 'details'].map((s, i) => (
+            {['email', 'verify', 'details'].map((s, i) => (
               <div key={s} className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
                   step === s
                     ? 'bg-blue-600 text-white'
-                    : ['phone', 'verify', 'details'].indexOf(step) > i
+                    : ['email', 'verify', 'details'].indexOf(step) > i
                       ? 'bg-green-500 text-white'
                       : 'bg-gray-200 text-gray-500'
                 }`}>
-                  {['phone', 'verify', 'details'].indexOf(step) > i ? '✓' : i + 1}
+                  {['email', 'verify', 'details'].indexOf(step) > i ? '✓' : i + 1}
                 </div>
                 {i < 2 && <div className={`w-8 h-1 ${
-                  ['phone', 'verify', 'details'].indexOf(step) > i ? 'bg-green-500' : 'bg-gray-200'
+                  ['email', 'verify', 'details'].indexOf(step) > i ? 'bg-green-500' : 'bg-gray-200'
                 }`} />}
               </div>
             ))}
           </div>
 
-          {/* Step 1: Phone */}
-          {step === 'phone' && (
+          {/* Step 1: Email */}
+          {step === 'email' && (
             <>
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Phone className="w-8 h-8 text-blue-600" />
+                  <Mail className="w-8 h-8 text-blue-600" />
                 </div>
                 <h1 className="text-2xl font-bold text-gray-800 mb-2">
-                  Verifica tu teléfono
+                  Verifica tu correo
                 </h1>
                 <p className="text-gray-600">
-                  Te enviaremos un código de verificación por SMS
+                  Te enviaremos un código de verificación a tu email
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Número de teléfono
+                    Correo electrónico
                   </label>
                   <input
-                    type="tel"
-                    value={phone}
+                    type="email"
+                    value={email}
                     onChange={(e) => {
-                      setPhone(e.target.value.replace(/\D/g, ''));
+                      setEmail(e.target.value);
                       setError('');
                     }}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    placeholder="3001234567"
-                    maxLength={10}
+                    placeholder="tu@email.com"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Ingresa tu número sin espacios ni guiones
-                  </p>
                 </div>
 
                 {error && (
@@ -277,7 +276,7 @@ export default function RegistroPage() {
 
                 <button
                   onClick={handleSendCode}
-                  disabled={loading || phone.length < 10}
+                  disabled={loading || !email}
                   className="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loading ? (
@@ -304,7 +303,7 @@ export default function RegistroPage() {
                   Ingresa el código
                 </h1>
                 <p className="text-gray-600">
-                  Enviamos un código de 6 dígitos al <span className="font-semibold">{phone}</span>
+                  Enviamos un código de 6 dígitos a <span className="font-semibold">{email}</span>
                 </p>
               </div>
 
@@ -365,13 +364,13 @@ export default function RegistroPage() {
 
                 <button
                   onClick={() => {
-                    setStep('phone');
+                    setStep('email');
                     setVerificationCode('');
                     setError('');
                   }}
                   className="w-full text-sm text-gray-600 hover:text-gray-800"
                 >
-                  Cambiar número de teléfono
+                  Cambiar correo electrónico
                 </button>
               </div>
             </>
@@ -388,7 +387,7 @@ export default function RegistroPage() {
                   Completa tu registro
                 </h1>
                 <p className="text-gray-600">
-                  Teléfono verificado: <span className="font-semibold text-green-600">{phone}</span>
+                  Email verificado: <span className="font-semibold text-green-600">{email}</span>
                 </p>
               </div>
 
@@ -409,15 +408,15 @@ export default function RegistroPage() {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Correo electrónico *
+                    Teléfono (opcional)
                   </label>
                   <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    placeholder="tu@email.com"
+                    placeholder="3001234567"
+                    maxLength={10}
                   />
                 </div>
 

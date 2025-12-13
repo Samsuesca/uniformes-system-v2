@@ -187,7 +187,7 @@ class ClientPasswordChange(BaseSchema):
 
 
 # =============================================================================
-# Phone Verification Schemas
+# Phone Verification Schemas (deprecated - use email instead)
 # =============================================================================
 
 class PhoneVerificationSend(BaseSchema):
@@ -198,6 +198,22 @@ class PhoneVerificationSend(BaseSchema):
 class PhoneVerificationConfirm(BaseSchema):
     """Confirm phone verification code"""
     phone: str = Field(..., min_length=10, max_length=15)
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+# =============================================================================
+# Email Verification Schemas
+# =============================================================================
+
+class EmailVerificationSend(BaseSchema):
+    """Request to send email verification code"""
+    email: EmailStr
+    name: str | None = Field(None, max_length=255)
+
+
+class EmailVerificationConfirm(BaseSchema):
+    """Confirm email verification code"""
+    email: EmailStr
     code: str = Field(..., min_length=6, max_length=6)
 
 

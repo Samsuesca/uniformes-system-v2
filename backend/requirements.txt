@@ -20,6 +20,9 @@ celery==5.3.4
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
+# Email
+resend==2.0.0
+
 # Utilities
 python-dotenv==1.0.0
 structlog==23.2.0

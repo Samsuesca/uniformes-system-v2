@@ -37,7 +37,12 @@ class Settings(BaseSettings):
         "http://localhost:5173",  # Vite dev server
         # For LAN testing (will be overridden in .env for specific IPs)
     ]
-    
+
+    # Email (Resend)
+    RESEND_API_KEY: Optional[str] = None
+    EMAIL_FROM: str = "Uniformes <noreply@resend.dev>"
+    FRONTEND_URL: str = "http://localhost:3000"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

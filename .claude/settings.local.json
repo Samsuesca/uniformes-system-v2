@@ -17,7 +17,10 @@
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"PGPASSWORD=''UniformesCloud2025'' psql -h localhost -U uniformes_user -d uniformes_db -c \"\"\n\\d order_items\n\"\" | grep -A 5 ''Foreign-key''\")",
       "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Restructure order system with 3 order types (catalog, yomber, custom)\n\n- Backend: Update OrderItemCreate schema with order_type, product_id, additional_price\n- Backend: Replace hardcoded $50,000 price with type-based pricing logic\n- Frontend: Add OrderType, YomberMeasurements types to api.ts\n- Frontend: Create YomberMeasurementsForm component for yomber orders\n- Frontend: Refactor OrderModal with 3 tabs (Catálogo, Yomber, Personalizado)\n- Frontend: Create WebOrders page to manage web portal orders\n- Frontend: Add /web-orders route and navigation link\n\nOrder types:\n- Catalog: Price from selected product (out-of-stock items)\n- Yomber: Base product price + additional services + required measurements\n- Custom: Manual price entry for special items\nEOF\n)\")",
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"journalctl -u uniformes-api -n 50 --no-pager\")",
-      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"journalctl -u uniformes-api --since ''10 minutes ago'' --no-pager | grep -i ''error\\|500\\|traceback'' -A 5\")"
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"journalctl -u uniformes-api --since ''10 minutes ago'' --no-pager | grep -i ''error\\|500\\|traceback'' -A 5\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2/backend && source venv/bin/activate && PGPASSWORD=''$Un1f0rm3s2024!'' psql -h localhost -U uniformes_user -d uniformes_db -c \"\"SELECT id, code, source, user_id, created_at FROM orders ORDER BY created_at DESC LIMIT 10;\"\"\")",
+      "Bash(source venv/bin/activate)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []
