@@ -186,5 +186,20 @@ class ClientPasswordChange(BaseSchema):
     new_password: str = Field(..., min_length=8, max_length=100)
 
 
+# =============================================================================
+# Phone Verification Schemas
+# =============================================================================
+
+class PhoneVerificationSend(BaseSchema):
+    """Request to send verification code"""
+    phone: str = Field(..., min_length=10, max_length=15)
+
+
+class PhoneVerificationConfirm(BaseSchema):
+    """Confirm phone verification code"""
+    phone: str = Field(..., min_length=10, max_length=15)
+    code: str = Field(..., min_length=6, max_length=6)
+
+
 # Update forward references
 ClientWebTokenResponse.model_rebuild()

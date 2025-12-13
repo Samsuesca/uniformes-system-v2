@@ -28,8 +28,15 @@ from app.schemas.client import (
     ClientPasswordResetRequest,
     ClientPasswordReset,
     ClientPasswordChange,
+    PhoneVerificationSend,
+    PhoneVerificationConfirm,
 )
 from app.services.client import ClientService
+
+# In-memory store for verification codes (in production, use Redis)
+import random
+from datetime import datetime, timedelta
+phone_verification_codes: dict[str, tuple[str, datetime]] = {}
 
 
 # =============================================================================
@@ -647,3 +654,84 @@ async def get_client_orders(
         }
         for order in orders
     ]
+
+
+# =============================================================================
+# Phone Verification Endpoints
+# =============================================================================
+
+@web_router.post("/verify-phone/send")
+async def send_phone_verification(
+    data: PhoneVerificationSend,
+    db: DatabaseSession
+):
+    """
+    Send a verification code to the phone number.
+
+    In production, this would send an SMS via Twilio/AWS SNS/etc.
+    For now, it stores the code in memory and returns it in the response (dev only).
+    """
+    # Clean phone number
+    phone = data.phone.replace(" ", "").replace("-", "")
+
+    # Generate 6-digit code
+    code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+
+    # Store with 5-minute expiry
+    expiry = datetime.utcnow() + timedelta(minutes=5)
+    phone_verification_codes[phone] = (code, expiry)
+
+    # In production: Send SMS here via Twilio/AWS SNS
+    # For now, we'll include the code in response for testing (REMOVE IN PRODUCTION)
+
+    return {
+        "message": "Código de verificación enviado",
+        "expires_in": 300,  # 5 minutes
+        # DEV ONLY - Remove this in production
+        "dev_code": code
+    }
+
+
+@web_router.post("/verify-phone/confirm")
+async def confirm_phone_verification(
+    data: PhoneVerificationConfirm,
+    db: DatabaseSession
+):
+    """
+    Verify the phone number with the code sent via SMS.
+    """
+    phone = data.phone.replace(" ", "").replace("-", "")
+    code = data.code
+
+    # Check if code exists
+    if phone not in phone_verification_codes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontró código de verificación. Solicita uno nuevo."
+        )
+
+    stored_code, expiry = phone_verification_codes[phone]
+
+    # Check if expired
+    if datetime.utcnow() > expiry:
+        del phone_verification_codes[phone]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El código ha expirado. Solicita uno nuevo."
+        )
+
+    # Verify code
+    if code != stored_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Código incorrecto"
+        )
+
+    # Code is valid - remove from store
+    del phone_verification_codes[phone]
+
+    return {
+        "message": "Teléfono verificado exitosamente",
+        "phone": phone,
+        "verified": True
+    }

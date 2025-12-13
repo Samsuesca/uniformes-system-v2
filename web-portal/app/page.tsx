@@ -271,10 +271,20 @@ export default function Home() {
               </button>
             </form>
 
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">
-                ¿No tienes cuenta? Tu cuenta se crea automáticamente al hacer tu primer pedido.
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-sm text-gray-600 text-center mb-3">
+                ¿No tienes cuenta?
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLoginModal(false);
+                  router.push('/registro');
+                }}
+                className="w-full py-3 bg-gray-100 text-gray-800 rounded-xl hover:bg-gray-200 transition-colors font-semibold"
+              >
+                Crear una cuenta
+              </button>
             </div>
 
             <button
