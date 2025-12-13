@@ -21,6 +21,7 @@ import {
   MessageCircle,
   ChevronRight
 } from 'lucide-react';
+import Layout from '../components/Layout';
 import { useSchoolStore } from '../stores/schoolStore';
 import { orderService } from '../services/orderService';
 import type { OrderListItem, OrderStatus, OrderWithItems } from '../types/api';
@@ -196,15 +197,17 @@ export default function WebOrders() {
 
   if (!currentSchool) {
     return (
-      <div className="p-8 text-center">
-        <Globe className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Selecciona un colegio para ver los pedidos web</p>
-      </div>
+      <Layout>
+        <div className="p-8 text-center">
+          <Globe className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">Selecciona un colegio para ver los pedidos web</p>
+        </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="p-6">
+    <Layout>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -763,6 +766,6 @@ export default function WebOrders() {
           </div>
         </div>
       )}
-    </div>
+    </Layout>
   );
 }
