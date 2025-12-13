@@ -43,10 +43,10 @@ export default function Home() {
             Uniformes Escolares
           </h1>
           <p className="text-xl md:text-2xl text-blue-100 mb-2">
-            Encuentra el uniforme perfecto para tu institución
+            Encuentra todo lo necesario para ti
           </p>
           <p className="text-blue-200">
-            Calidad, variedad y los mejores precios
+            Calidad y los mejores precios
           </p>
         </div>
       </div>

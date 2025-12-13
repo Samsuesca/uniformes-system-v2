@@ -3,18 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ShoppingCart, ArrowLeft, Filter } from 'lucide-react';
-import { productsApi, schoolsApi, type Product, getProductImage } from '@/lib/api';
+import { productsApi, schoolsApi, type Product, type School, getProductImage } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
+import { formatNumber } from '@/lib/utils';
 
 export default function CatalogPage() {
     const params = useParams();
     const router = useRouter();
     const schoolSlug = params.school_slug as string;
 
+    const [school, setSchool] = useState<School | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
     const [error, setError] = useState<string | null>(null);
+    const [categories, setCategories] = useState<string[]>(['all']);
 
     const { addItem, getTotalItems } = useCartStore();
 
@@ -29,11 +32,25 @@ export default function CatalogPage() {
 
             // Get school by slug first
             const schoolResponse = await schoolsApi.getBySlug(schoolSlug);
-            const school = schoolResponse.data;
+            const schoolData = schoolResponse.data;
+            setSchool(schoolData);
 
             // Then get products for that school
-            const response = await productsApi.list(school.id);
-            setProducts(response.data);
+            const response = await productsApi.list(schoolData.id);
+            const productsData = response.data;
+            setProducts(productsData);
+
+            // Extract unique categories from products
+            const uniqueCategories = new Set<string>();
+            productsData.forEach(p => {
+                const name = p.name.toLowerCase();
+                if (name.includes('camisa') || name.includes('blusa')) uniqueCategories.add('Camisas');
+                else if (name.includes('pantalon') || name.includes('falda')) uniqueCategories.add('Pantalones');
+                else if (name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta')) uniqueCategories.add('Sudaderas');
+                else if (name.includes('zapato') || name.includes('tennis')) uniqueCategories.add('Calzado');
+                else uniqueCategories.add('Otros');
+            });
+            setCategories(['all', ...Array.from(uniqueCategories)]);
         } catch (error: any) {
             console.error('Error loading products:', error);
             setError(error.response?.data?.detail || 'Error al cargar productos');
@@ -44,10 +61,20 @@ export default function CatalogPage() {
 
     const filteredProducts = filter === 'all'
         ? products
-        : products.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
+        : products.filter(p => {
+            const name = p.name.toLowerCase();
+            const filterLower = filter.toLowerCase();
+            if (filterLower === 'camisas') return name.includes('camisa') || name.includes('blusa');
+            if (filterLower === 'pantalones') return name.includes('pantalon') || name.includes('falda');
+            if (filterLower === 'sudaderas') return name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta');
+            if (filterLower === 'calzado') return name.includes('zapato') || name.includes('tennis');
+            return true; // 'Otros'
+        });
 
     const handleAddToCart = (product: Product) => {
-        addItem(product);
+        if (school) {
+            addItem(product, school);
+        }
     };
 
     return (
@@ -82,25 +109,27 @@ export default function CatalogPage() {
             </header>
 
             {/* Filters */}
-            <div className="bg-white border-b border-surface-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex items-center gap-4 overflow-x-auto">
-                        <Filter className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                        {['all', 'camisa', 'pantalon', 'sudadera'].map((category) => (
-                            <button
-                                key={category}
-                                onClick={() => setFilter(category)}
-                                className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${filter === category
-                                        ? 'bg-brand-600 text-white shadow-lg'
-                                        : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
-                                    }`}
-                            >
-                                {category === 'all' ? 'Todos' : category.charAt(0).toUpperCase() + category.slice(1)}
-                            </button>
-                        ))}
+            {categories.length > 1 && (
+                <div className="bg-white border-b border-surface-200">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                        <div className="flex items-center gap-4 overflow-x-auto">
+                            <Filter className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                            {categories.map((category) => (
+                                <button
+                                    key={category}
+                                    onClick={() => setFilter(category)}
+                                    className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${filter === category
+                                            ? 'bg-brand-600 text-white shadow-lg'
+                                            : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
+                                        }`}
+                                >
+                                    {category === 'all' ? 'Todos' : category}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* Products Grid */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -143,18 +172,21 @@ export default function CatalogPage() {
                                     </p>
                                     <div className="flex items-center justify-between">
                                         <span className="text-2xl font-bold text-brand-600 font-display">
-                                            ${product.price.toLocaleString()}
+                                            ${formatNumber(product.price)}
                                         </span>
                                         <button
                                             onClick={() => handleAddToCart(product)}
-                                            className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium"
+                                            disabled={product.stock_quantity <= 0}
+                                            className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            Agregar
+                                            {product.stock_quantity > 0 ? 'Agregar' : 'Agotado'}
                                         </button>
                                     </div>
-                                    <p className="text-xs text-slate-400 mt-2">
-                                        Stock: {product.stock_quantity}
-                                    </p>
+                                    {product.stock_quantity > 0 && (
+                                        <p className="text-xs text-slate-400 mt-2">
+                                            Stock: {product.stock_quantity}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         ))}
