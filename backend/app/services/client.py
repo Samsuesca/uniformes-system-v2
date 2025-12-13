@@ -14,7 +14,9 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from passlib.context import CryptContext
+from jose import jwt
 
+from app.core.config import settings
 from app.models.client import Client, ClientStudent, ClientType
 from app.models.sale import Sale
 from app.models.order import Order
@@ -181,10 +183,7 @@ class ClientService(BaseService[Client]):
         client = await self.get_by_email(email)
         if not client:
             return None
-        if client.client_type != ClientType.WEB:
-            return None
-        if not client.is_verified:
-            return None
+        # Allow both WEB and REGULAR clients with password_hash to login
         if not client.password_hash:
             return None
         if not pwd_context.verify(password, client.password_hash):
@@ -711,3 +710,64 @@ class ClientService(BaseService[Client]):
 
         result = await self.db.execute(query)
         return result.scalar_one()
+
+    # ==========================================================================
+    # JWT Token Generation for Web Clients
+    # ==========================================================================
+
+    def create_client_token(self, client: Client) -> str:
+        """
+        Create JWT access token for web portal client.
+
+        Args:
+            client: Client entity
+
+        Returns:
+            JWT access token string
+        """
+        expires_delta = timedelta(days=7)  # Longer expiration for clients
+        expire = datetime.utcnow() + expires_delta
+
+        to_encode = {
+            "sub": str(client.id),
+            "email": client.email,
+            "client_type": "web_client",
+            "exp": expire,
+        }
+
+        access_token = jwt.encode(
+            to_encode,
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM
+        )
+
+        return access_token
+
+    async def get_client_orders(
+        self,
+        client_id: UUID,
+        skip: int = 0,
+        limit: int = 50
+    ) -> list[Order]:
+        """
+        Get all orders for a client.
+
+        Args:
+            client_id: Client UUID
+            skip: Pagination offset
+            limit: Maximum results
+
+        Returns:
+            List of orders
+        """
+        from sqlalchemy.orm import selectinload
+
+        result = await self.db.execute(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.client_id == client_id)
+            .order_by(Order.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(result.scalars().all())

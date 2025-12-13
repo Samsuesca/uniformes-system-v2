@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle, School as SchoolIcon, Package } from 'lucide-react';
+import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
 import { clientsApi, ordersApi } from '@/lib/api';
+import { useClientAuth } from '@/lib/clientAuth';
 import { formatNumber } from '@/lib/utils';
 
 export default function CheckoutPage() {
@@ -12,8 +13,14 @@ export default function CheckoutPage() {
   const router = useRouter();
   const schoolSlug = params.school_slug as string;
   const { items, getTotalPrice, clearCart, getItemsBySchool } = useCartStore();
+  const { client: authClient, isAuthenticated, login } = useClientAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [orderCode, setOrderCode] = useState('');
+  const [tempPassword, setTempPassword] = useState('');
+  const [copiedPassword, setCopiedPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const [formData, setFormData] = useState({
     client_name: '',
@@ -24,9 +31,31 @@ export default function CheckoutPage() {
     notes: '',
   });
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Pre-fill form if user is logged in
+  useEffect(() => {
+    if (mounted && isAuthenticated && authClient) {
+      setFormData(prev => ({
+        ...prev,
+        client_name: authClient.name || prev.client_name,
+        client_email: authClient.email || prev.client_email,
+        client_phone: authClient.phone || prev.client_phone,
+      }));
+    }
+  }, [mounted, isAuthenticated, authClient]);
+
   // Helper para obtener el stock del producto
   const getProductStock = (product: any): number => {
     return product.stock ?? product.stock_quantity ?? product.inventory_quantity ?? 0;
+  };
+
+  const handleCopyPassword = () => {
+    navigator.clipboard.writeText(tempPassword);
+    setCopiedPassword(true);
+    setTimeout(() => setCopiedPassword(false), 2000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,28 +90,41 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Step 1: Register client (web portal endpoint)
-      // Generar contraseña temporal basada en teléfono
-      const tempPassword = `Temp${formData.client_phone.slice(-4)}!`;
+      let clientId: string;
+      let generatedPassword = '';
 
-      const clientResponse = await clientsApi.register({
-        name: formData.client_name,
-        email: formData.client_email,
-        password: tempPassword,
-        phone: formData.client_phone || undefined,
-        students: [{
-          school_id: schoolId,
-          student_name: formData.student_name || formData.client_name,
-          student_grade: formData.grade || undefined,
-        }]
-      });
+      // Check if already authenticated
+      if (isAuthenticated && authClient) {
+        clientId = authClient.id;
+      } else {
+        // Step 1: Register client (web portal endpoint)
+        // Generar contraseña temporal basada en teléfono
+        generatedPassword = `Temp${formData.client_phone.slice(-4)}!`;
+        setTempPassword(generatedPassword);
 
-      const client = clientResponse.data;
+        const clientResponse = await clientsApi.register({
+          name: formData.client_name,
+          email: formData.client_email,
+          password: generatedPassword,
+          phone: formData.client_phone || undefined,
+          students: [{
+            school_id: schoolId,
+            student_name: formData.student_name || formData.client_name,
+            student_grade: formData.grade || undefined,
+          }]
+        });
+
+        const client = clientResponse.data;
+        clientId = client.id;
+
+        // Auto-login the client
+        await login(formData.client_email, generatedPassword);
+      }
 
       // Step 2: Create order with client_id (using public web endpoint)
-      await ordersApi.createWeb({
+      const orderResponse = await ordersApi.createWeb({
         school_id: schoolId,
-        client_id: client.id,
+        client_id: clientId,
         items: items.map(item => ({
           garment_type_id: item.product.garment_type_id,
           quantity: item.quantity,
@@ -93,19 +135,16 @@ export default function CheckoutPage() {
         notes: formData.notes || undefined,
       });
 
+      setOrderCode(orderResponse.data.code || '');
       setSuccess(true);
       clearCart();
-
-      setTimeout(() => {
-        router.push('/');
-      }, 3000);
     } catch (error: any) {
       console.error('Error creating order:', error);
       let errorMessage = error.message || error.response?.data?.detail || 'Error al crear el pedido. Por favor intenta de nuevo.';
 
       // Mensajes más amigables dirigidos al negocio
       if (errorMessage.includes('already registered')) {
-        errorMessage = 'Este email ya está registrado. Por favor usa un email diferente o contáctanos en la página de Soporte si necesitas ayuda.';
+        errorMessage = 'Este email ya está registrado. Por favor inicia sesión o usa un email diferente.';
       } else if (errorMessage.includes('Stock insuficiente') || errorMessage.includes('insufficient')) {
         errorMessage = 'Lo sentimos, algunos productos no tienen stock suficiente. Por favor contáctanos en la página de Soporte para verificar disponibilidad.';
       } else {
@@ -128,12 +167,69 @@ export default function CheckoutPage() {
           <h2 className="text-2xl font-bold text-primary font-display mb-2">
             ¡Pedido Confirmado!
           </h2>
+          {orderCode && (
+            <p className="text-lg font-semibold text-brand-600 mb-4">
+              Código: {orderCode}
+            </p>
+          )}
           <p className="text-slate-600 mb-6">
             Hemos recibido tu pedido. Te contactaremos pronto para coordinar la entrega.
           </p>
-          <p className="text-sm text-slate-500">
-            Redirigiendo al inicio...
-          </p>
+
+          {/* Show password info for new users */}
+          {tempPassword && !isAuthenticated && (
+            <div className="bg-blue-50 rounded-xl p-4 mb-6 text-left">
+              <p className="text-sm font-semibold text-blue-800 mb-2">
+                Tu cuenta ha sido creada
+              </p>
+              <p className="text-xs text-blue-700 mb-3">
+                Usa estas credenciales para ver el estado de tus pedidos:
+              </p>
+              <div className="space-y-2">
+                <div className="bg-white rounded-lg p-2">
+                  <p className="text-xs text-gray-500">Email:</p>
+                  <p className="text-sm font-mono">{formData.client_email}</p>
+                </div>
+                <div className="bg-white rounded-lg p-2">
+                  <p className="text-xs text-gray-500">Contraseña:</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-mono">
+                      {showPassword ? tempPassword : '••••••••'}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                      <button
+                        onClick={handleCopyPassword}
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        {copiedPassword ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => router.push('/mi-cuenta')}
+              className="w-full py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
+            >
+              Ver Mis Pedidos
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="w-full py-3 text-slate-600 hover:text-slate-800 transition-colors"
+            >
+              Volver al Inicio
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -158,6 +254,21 @@ export default function CheckoutPage() {
           Finalizar Pedido
         </h1>
 
+        {/* Logged in banner */}
+        {mounted && isAuthenticated && authClient && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 flex items-center gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            <div>
+              <p className="text-green-800 font-semibold">
+                Sesión iniciada como {authClient.name}
+              </p>
+              <p className="text-green-700 text-sm">
+                Tu pedido se asociará a tu cuenta automáticamente
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Form */}
           <div className="lg:col-span-2">
@@ -176,7 +287,8 @@ export default function CheckoutPage() {
                       required
                       value={formData.client_name}
                       onChange={(e) => setFormData({ ...formData, client_name: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                      disabled={isAuthenticated && !!authClient}
+                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
                     />
                   </div>
                   <div>
@@ -200,11 +312,14 @@ export default function CheckoutPage() {
                       required
                       value={formData.client_email}
                       onChange={(e) => setFormData({ ...formData, client_email: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                      disabled={isAuthenticated && !!authClient}
+                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
                     />
-                    <p className="text-xs text-slate-500 mt-1">
-                      Recibirás un correo con tu contraseña temporal para acceder a tu cuenta
-                    </p>
+                    {!isAuthenticated && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Se creará una cuenta para ti. Recibirás tu contraseña al confirmar el pedido.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

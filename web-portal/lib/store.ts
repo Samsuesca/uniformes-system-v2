@@ -80,6 +80,12 @@ export const useCartStore = create<CartStore>()(
         const grouped = new Map<string, CartItem[]>();
 
         items.forEach((item) => {
+          // Migración: Si el item no tiene school, lo ignoramos (datos viejos)
+          if (!item.school || !item.school.id) {
+            console.warn('Cart item without school info, skipping:', item);
+            return;
+          }
+
           const schoolId = item.school.id;
           if (!grouped.has(schoolId)) {
             grouped.set(schoolId, []);

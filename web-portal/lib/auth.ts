@@ -23,6 +23,9 @@ export async function getPublicToken(): Promise<string> {
 
     // Backend returns { token: { access_token, ... }, user: {...} }
     cachedToken = response.data.token.access_token;
+    if (!cachedToken) {
+      throw new Error('Token not received from server');
+    }
     return cachedToken;
   } catch (error) {
     console.error('Failed to get public token:', error);

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, School as SchoolIcon, ArrowRight } from 'lucide-react';
+import { Search, School as SchoolIcon, ArrowRight, User, LogOut, Package, Eye, EyeOff } from 'lucide-react';
 import { schoolsApi, type School } from '@/lib/api';
+import { useClientAuth } from '@/lib/clientAuth';
 
 export default function Home() {
   const router = useRouter();
@@ -11,7 +12,15 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Auth state
+  const { client, isAuthenticated, login, logout, isLoading: authLoading, error: authError, clearError } = useClientAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     loadSchools();
   }, []);
 
@@ -34,18 +43,74 @@ export default function Home() {
     router.push(`/${slug}`);
   };
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await login(loginForm.email, loginForm.password);
+    if (success) {
+      setShowLoginModal(false);
+      setLoginForm({ email: '', password: '' });
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Hero Section */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-          <h1 className="text-5xl md:text-6xl font-bold font-display mb-4">
-            Uniformes Escolares
-          </h1>
-          <p className="text-xl md:text-2xl text-blue-100 mb-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-bold font-display">
+              Uniformes Escolares
+            </div>
+
+            {/* Auth Section */}
+            {mounted && (
+              <div className="flex items-center gap-4">
+                {isAuthenticated && client ? (
+                  <>
+                    <button
+                      onClick={() => router.push('/mi-cuenta')}
+                      className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+                    >
+                      <Package className="w-4 h-4" />
+                      <span className="hidden sm:inline">Mis Pedidos</span>
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-sm font-semibold">{client.name}</p>
+                        <p className="text-xs text-blue-200">{client.email}</p>
+                      </div>
+                      <button
+                        onClick={handleLogout}
+                        className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+                        title="Cerrar sesión"
+                      >
+                        <LogOut className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setShowLoginModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                  >
+                    <User className="w-4 h-4" />
+                    <span>Iniciar Sesión</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold font-display mb-4">
             Encuentra todo lo necesario para ti
-          </p>
-          <p className="text-blue-200">
+          </h1>
+          <p className="text-xl text-blue-100 mb-2">
             Calidad y los mejores precios
           </p>
         </div>
@@ -119,6 +184,101 @@ export default function Home() {
           </p>
         </div>
       </main>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <User className="w-8 h-8 text-blue-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 font-display">
+                Iniciar Sesión
+              </h2>
+              <p className="text-gray-600 mt-2">
+                Accede para ver tu historial de pedidos
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Correo electrónico
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={loginForm.email}
+                  onChange={(e) => {
+                    setLoginForm({ ...loginForm, email: e.target.value });
+                    clearError();
+                  }}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  placeholder="tu@email.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={loginForm.password}
+                    onChange={(e) => {
+                      setLoginForm({ ...loginForm, password: e.target.value });
+                      clearError();
+                    }}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all pr-12"
+                    placeholder="Tu contraseña"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {authError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {authLoading ? 'Iniciando...' : 'Iniciar Sesión'}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                ¿No tienes cuenta? Tu cuenta se crea automáticamente al hacer tu primer pedido.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowLoginModal(false);
+                clearError();
+                setLoginForm({ email: '', password: '' });
+              }}
+              className="mt-4 w-full py-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

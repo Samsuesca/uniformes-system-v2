@@ -516,12 +516,16 @@ async def login_web_client(
 
     await db.commit()
 
-    # TODO: Generate JWT token for client
-    # For now, return placeholder
+    # Generate real JWT token for client
+    access_token = client_service.create_client_token(client)
+
+    # Load client with students
+    client_with_students = await client_service.get_with_students(client.id)
+
     return ClientWebTokenResponse(
-        access_token="TODO_GENERATE_CLIENT_JWT",
+        access_token=access_token,
         token_type="bearer",
-        client=ClientResponse.model_validate(client)
+        client=ClientResponse.model_validate(client_with_students)
     )
 
 
@@ -565,3 +569,81 @@ async def confirm_password_reset(
 
     await db.commit()
     return {"message": "Contraseña actualizada exitosamente"}
+
+
+@web_router.get(
+    "/me",
+    response_model=ClientResponse
+)
+async def get_current_client(
+    client_id: UUID = Query(..., description="Client ID from JWT token"),
+    db: DatabaseSession = None
+):
+    """
+    Get current authenticated client profile.
+
+    Client ID should be extracted from JWT token by the frontend.
+    """
+    client_service = ClientService(db)
+    client = await client_service.get_with_students(client_id)
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    return ClientResponse.model_validate(client)
+
+
+@web_router.get(
+    "/me/orders"
+)
+async def get_client_orders(
+    client_id: UUID = Query(..., description="Client ID from JWT token"),
+    db: DatabaseSession = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100)
+):
+    """
+    Get all orders for the authenticated client.
+
+    Returns orders sorted by creation date (most recent first).
+    """
+    client_service = ClientService(db)
+
+    # Verify client exists
+    client = await client_service.get(client_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    orders = await client_service.get_client_orders(client_id, skip=skip, limit=limit)
+
+    # Format response
+    return [
+        {
+            "id": str(order.id),
+            "code": order.code,
+            "status": order.status.value,
+            "total": float(order.total),
+            "balance": float(order.balance),
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+            "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
+            "items_count": len(order.items) if order.items else 0,
+            "items": [
+                {
+                    "id": str(item.id),
+                    "quantity": item.quantity,
+                    "unit_price": float(item.unit_price),
+                    "subtotal": float(item.subtotal),
+                    "size": item.size,
+                    "color": item.color,
+                }
+                for item in (order.items or [])
+            ]
+        }
+        for order in orders
+    ]
