@@ -258,6 +258,17 @@ export default function Home() {
               >
                 {authLoading ? 'Iniciando...' : 'Iniciar Sesión'}
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLoginModal(false);
+                  router.push('/recuperar-password');
+                }}
+                className="w-full text-sm text-blue-600 hover:text-blue-700 mt-3"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
             </form>
 
             <div className="mt-6 text-center">

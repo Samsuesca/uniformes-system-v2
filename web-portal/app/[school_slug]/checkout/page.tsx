@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
 import { clientsApi, ordersApi } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
@@ -17,19 +17,19 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [orderCode, setOrderCode] = useState('');
-  const [tempPassword, setTempPassword] = useState('');
-  const [copiedPassword, setCopiedPassword] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   const [formData, setFormData] = useState({
     client_name: '',
     client_phone: '',
     client_email: '',
+    client_password: '',
+    client_password_confirm: '',
     student_name: '',
     grade: '',
     notes: '',
   });
+  const [showFormPassword, setShowFormPassword] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -50,12 +50,6 @@ export default function CheckoutPage() {
   // Helper para obtener el stock del producto
   const getProductStock = (product: any): number => {
     return product.stock ?? product.stock_quantity ?? product.inventory_quantity ?? 0;
-  };
-
-  const handleCopyPassword = () => {
-    navigator.clipboard.writeText(tempPassword);
-    setCopiedPassword(true);
-    setTimeout(() => setCopiedPassword(false), 2000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,21 +85,29 @@ export default function CheckoutPage() {
       }
 
       let clientId: string;
-      let generatedPassword = '';
 
       // Check if already authenticated
       if (isAuthenticated && authClient) {
         clientId = authClient.id;
       } else {
+        // Validar contraseña para nuevos usuarios
+        if (!formData.client_password || formData.client_password.length < 8) {
+          alert('La contraseña debe tener al menos 8 caracteres');
+          setLoading(false);
+          return;
+        }
+        if (formData.client_password !== formData.client_password_confirm) {
+          alert('Las contraseñas no coinciden');
+          setLoading(false);
+          return;
+        }
+
         // Step 1: Register client (web portal endpoint)
-        // Generar contraseña temporal basada en teléfono
-        generatedPassword = `Temp${formData.client_phone.slice(-4)}!`;
-        setTempPassword(generatedPassword);
 
         const clientResponse = await clientsApi.register({
           name: formData.client_name,
           email: formData.client_email,
-          password: generatedPassword,
+          password: formData.client_password,
           phone: formData.client_phone || undefined,
           students: [{
             school_id: schoolId,
@@ -118,7 +120,7 @@ export default function CheckoutPage() {
         clientId = client.id;
 
         // Auto-login the client
-        await login(formData.client_email, generatedPassword);
+        await login(formData.client_email, formData.client_password);
       }
 
       // Step 2: Create order with client_id (using public web endpoint)
@@ -176,45 +178,15 @@ export default function CheckoutPage() {
             Hemos recibido tu pedido. Te contactaremos pronto para coordinar la entrega.
           </p>
 
-          {/* Show password info for new users */}
-          {tempPassword && !isAuthenticated && (
-            <div className="bg-blue-50 rounded-xl p-4 mb-6 text-left">
-              <p className="text-sm font-semibold text-blue-800 mb-2">
-                Tu cuenta ha sido creada
-              </p>
-              <p className="text-xs text-blue-700 mb-3">
-                Usa estas credenciales para ver el estado de tus pedidos:
-              </p>
-              <div className="space-y-2">
-                <div className="bg-white rounded-lg p-2">
-                  <p className="text-xs text-gray-500">Email:</p>
-                  <p className="text-sm font-mono">{formData.client_email}</p>
-                </div>
-                <div className="bg-white rounded-lg p-2">
-                  <p className="text-xs text-gray-500">Contraseña:</p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-mono">
-                      {showPassword ? tempPassword : '••••••••'}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={handleCopyPassword}
-                        className="text-blue-600 hover:text-blue-700"
-                      >
-                        {copiedPassword ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Account created info */}
+          <div className="bg-green-50 rounded-xl p-4 mb-6 text-left">
+            <p className="text-sm font-semibold text-green-800 mb-1">
+              Tu cuenta ha sido creada
+            </p>
+            <p className="text-xs text-green-700">
+              Ya puedes iniciar sesión con tu email y contraseña para ver el estado de tus pedidos.
+            </p>
+          </div>
 
           <div className="flex flex-col gap-3">
             <button
@@ -315,12 +287,53 @@ export default function CheckoutPage() {
                       disabled={isAuthenticated && !!authClient}
                       className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
                     />
-                    {!isAuthenticated && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        Se creará una cuenta para ti. Recibirás tu contraseña al confirmar el pedido.
-                      </p>
-                    )}
                   </div>
+
+                  {/* Password fields for new users */}
+                  {!isAuthenticated && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Contraseña *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showFormPassword ? 'text' : 'password'}
+                            required
+                            minLength={8}
+                            value={formData.client_password}
+                            onChange={(e) => setFormData({ ...formData, client_password: e.target.value })}
+                            className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all pr-12"
+                            placeholder="Mínimo 8 caracteres"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowFormPassword(!showFormPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            {showFormPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Esta será tu contraseña para acceder a tu cuenta
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Confirmar contraseña *
+                        </label>
+                        <input
+                          type={showFormPassword ? 'text' : 'password'}
+                          required
+                          minLength={8}
+                          value={formData.client_password_confirm}
+                          onChange={(e) => setFormData({ ...formData, client_password_confirm: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                          placeholder="Repite tu contraseña"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
