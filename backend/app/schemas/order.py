@@ -157,7 +157,7 @@ class OrderInDB(OrderBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema)
     """Order as stored in database"""
     code: str
     status: OrderStatus
-    source: SaleSource
+    source: SaleSource | None = None  # Optional for backwards compatibility with old orders
     subtotal: Decimal
     tax: Decimal
     total: Decimal

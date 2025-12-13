@@ -60,17 +60,21 @@ export default function Orders() {
         status: statusFilter || undefined,
         limit: 100
       });
-      setOrders(data);
 
-      // Calculate stats from current data
+      // Filter out web portal orders - they are managed in WebOrders page
+      const desktopOrders = data.filter(o => o.source !== 'web_portal');
+      setOrders(desktopOrders);
+
+      // Calculate stats from current data (excluding web portal orders)
       const allOrders = (statusFilter || schoolFilter)
         ? await orderService.getAllOrders({ school_id: schoolFilter || undefined })
         : data;
+      const filteredForStats = allOrders.filter(o => o.source !== 'web_portal');
       setStats({
-        pending: allOrders.filter(o => o.status === 'pending').length,
-        inProduction: allOrders.filter(o => o.status === 'in_production').length,
-        ready: allOrders.filter(o => o.status === 'ready').length,
-        delivered: allOrders.filter(o => o.status === 'delivered').length,
+        pending: filteredForStats.filter(o => o.status === 'pending').length,
+        inProduction: filteredForStats.filter(o => o.status === 'in_production').length,
+        ready: filteredForStats.filter(o => o.status === 'ready').length,
+        delivered: filteredForStats.filter(o => o.status === 'delivered').length,
       });
     } catch (err: any) {
       console.error('Error loading orders:', err);
