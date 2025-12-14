@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select
 from decimal import Decimal
 
-from app.db.session import async_session_maker
+from app.db.session import AsyncSessionLocal
 from app.models.school import School
 from app.models.accounting import BalanceAccount, AccountType
 
@@ -24,7 +24,7 @@ from app.models.accounting import BalanceAccount, AccountType
 async def create_default_accounts_for_all_schools():
     """Create Caja and Banco accounts for all active schools"""
 
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         try:
             # Get all active schools
             result = await db.execute(
