@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff, Mail, AlertCircle, Loader2, User, X } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
 import { clientsApi, ordersApi } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
@@ -16,7 +16,7 @@ export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
   const schoolSlug = params.school_slug as string;
-  const { items, getTotalPrice, clearCart, getItemsBySchool } = useCartStore();
+  const { items, getTotalPrice, clearCart, getItemsBySchool, hasOrderItems } = useCartStore();
   const { client: authClient, isAuthenticated, login } = useClientAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -41,6 +41,13 @@ export default function CheckoutPage() {
     notes: '',
   });
   const [showFormPassword, setShowFormPassword] = useState(false);
+
+  // Login modal state
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -160,13 +167,16 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Validar stock disponible para todos los items
+      // Validar stock disponible solo para items que NO son encargos
+      // Los encargos (isOrder=true) no requieren stock - se ordenarán/fabricarán
       for (const item of items) {
-        const availableStock = getProductStock(item.product);
-        if (item.quantity > availableStock) {
-          setError(`Stock insuficiente para ${item.product.name}. Disponible: ${availableStock}, Solicitado: ${item.quantity}`);
-          setLoading(false);
-          return;
+        if (!item.isOrder) {
+          const availableStock = getProductStock(item.product);
+          if (item.quantity > availableStock) {
+            setError(`Stock insuficiente para ${item.product.name}. Disponible: ${availableStock}, Solicitado: ${item.quantity}`);
+            setLoading(false);
+            return;
+          }
         }
       }
 
@@ -328,17 +338,24 @@ export default function CheckoutPage() {
             {/* Products from this school */}
             <div className="space-y-2 mb-3">
               {schoolItems.map((item) => (
-                <div key={item.product.id} className="flex items-start gap-2 text-sm">
-                  <Package className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+                <div key={item.product.id} className={`flex items-start gap-2 text-sm p-2 rounded-lg ${item.isOrder ? 'bg-orange-50' : ''}`}>
+                  <Package className={`w-4 h-4 flex-shrink-0 mt-0.5 ${item.isOrder ? 'text-orange-500' : 'text-slate-400'}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-slate-700 font-medium truncate">
-                      {item.product.name}
-                    </p>
+                    <div className="flex items-center gap-1">
+                      <p className={`font-medium truncate ${item.isOrder ? 'text-orange-700' : 'text-slate-700'}`}>
+                        {item.product.name}
+                      </p>
+                      {item.isOrder && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 bg-orange-500 text-white text-[10px] font-medium rounded">
+                          Encargo
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-500">
                       {item.product.size || 'Talla única'} × {item.quantity}
                     </p>
                   </div>
-                  <span className="font-semibold text-primary whitespace-nowrap">
+                  <span className={`font-semibold whitespace-nowrap ${item.isOrder ? 'text-orange-600' : 'text-primary'}`}>
                     ${formatNumber(item.product.price * item.quantity)}
                   </span>
                 </div>
@@ -363,6 +380,16 @@ export default function CheckoutPage() {
           ${formatNumber(getTotalPrice())}
         </span>
       </div>
+
+      {/* Order items notice */}
+      {hasOrderItems() && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mt-4">
+          <p className="text-xs text-orange-700">
+            <span className="font-semibold">Nota:</span> Tu pedido incluye productos por encargo.
+            El tiempo de entrega puede variar según disponibilidad.
+          </p>
+        </div>
+      )}
 
       {/* Info */}
       <div className="bg-blue-50 rounded-lg p-3 mt-4">
@@ -511,7 +538,7 @@ export default function CheckoutPage() {
                     <p className="text-sm text-slate-600">
                       ¿Ya tienes cuenta?{' '}
                       <button
-                        onClick={() => router.push('/')}
+                        onClick={() => setShowLoginModal(true)}
                         className="text-brand-600 hover:text-brand-700 font-semibold"
                       >
                         Inicia sesión
@@ -784,6 +811,140 @@ export default function CheckoutPage() {
           </div>
         </div>
       </main>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => {
+                setShowLoginModal(false);
+                setLoginError('');
+                setLoginForm({ email: '', password: '' });
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <User className="w-8 h-8 text-brand-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-primary font-display">
+                Iniciar Sesión
+              </h2>
+              <p className="text-slate-600 mt-2">
+                Continúa con tu compra usando tu cuenta
+              </p>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setLoginLoading(true);
+                setLoginError('');
+                try {
+                  const success = await login(loginForm.email, loginForm.password);
+                  if (success) {
+                    setShowLoginModal(false);
+                    setLoginForm({ email: '', password: '' });
+                  } else {
+                    setLoginError('Credenciales inválidas');
+                  }
+                } catch {
+                  setLoginError('Error al iniciar sesión');
+                } finally {
+                  setLoginLoading(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Correo electrónico
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={loginForm.email}
+                  onChange={(e) => {
+                    setLoginForm({ ...loginForm, email: e.target.value });
+                    setLoginError('');
+                  }}
+                  className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                  placeholder="tu@email.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    required
+                    value={loginForm.password}
+                    onChange={(e) => {
+                      setLoginForm({ ...loginForm, password: e.target.value });
+                      setLoginError('');
+                    }}
+                    className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all pr-12"
+                    placeholder="Tu contraseña"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {loginError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {loginError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loginLoading}
+                className="w-full py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loginLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Iniciando...
+                  </>
+                ) : (
+                  'Iniciar Sesión'
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLoginModal(false);
+                  router.push('/recuperar-password');
+                }}
+                className="w-full text-sm text-brand-600 hover:text-brand-700"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </form>
+
+            <div className="mt-4 pt-4 border-t border-surface-200 text-center">
+              <p className="text-sm text-slate-600">
+                ¿No tienes cuenta? Continúa arriba para crear una.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

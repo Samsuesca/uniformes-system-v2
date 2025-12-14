@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X } from 'lucide-react';
 import { orderService } from '../services/orderService';
 import type { OrderWithItems, OrderStatus } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -23,6 +23,11 @@ export default function OrderDetail() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentLoading, setPaymentLoading] = useState(false);
+
+  // Edit delivery date state
+  const [editingDeliveryDate, setEditingDeliveryDate] = useState(false);
+  const [newDeliveryDate, setNewDeliveryDate] = useState('');
+  const [savingDeliveryDate, setSavingDeliveryDate] = useState(false);
 
   const schoolId = currentSchool?.id || '';
 
@@ -137,6 +142,34 @@ export default function OrderDetail() {
     }
   };
 
+  const handleEditDeliveryDate = () => {
+    setNewDeliveryDate(order?.delivery_date || '');
+    setEditingDeliveryDate(true);
+  };
+
+  const handleSaveDeliveryDate = async () => {
+    if (!order) return;
+
+    try {
+      setSavingDeliveryDate(true);
+      await orderService.updateOrder(schoolId, order.id, {
+        delivery_date: newDeliveryDate || undefined,
+      });
+      setEditingDeliveryDate(false);
+      await loadOrder();
+    } catch (err: any) {
+      console.error('Error updating delivery date:', err);
+      setError(err.response?.data?.detail || 'Error al actualizar la fecha de entrega');
+    } finally {
+      setSavingDeliveryDate(false);
+    }
+  };
+
+  const handleCancelEditDeliveryDate = () => {
+    setEditingDeliveryDate(false);
+    setNewDeliveryDate('');
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -236,12 +269,60 @@ export default function OrderDetail() {
             {statusConfig.icon}
             <span className="font-semibold">{statusConfig.label}</span>
           </div>
-          {order.delivery_date && (
-            <div className="mt-4 flex items-center text-gray-600">
-              <Calendar className="w-5 h-5 mr-2 text-gray-400" />
-              <span>Entrega: {formatDate(order.delivery_date)}</span>
+
+          {/* Delivery Date - Editable */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center text-gray-600">
+                <Calendar className="w-5 h-5 mr-2 text-gray-400" />
+                <span className="text-sm font-medium">Fecha de Entrega:</span>
+              </div>
+              {!editingDeliveryDate && order.status !== 'cancelled' && order.status !== 'delivered' && (
+                <button
+                  onClick={handleEditDeliveryDate}
+                  className="text-blue-600 hover:text-blue-700 p-1 rounded transition"
+                  title="Editar fecha de entrega"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
-          )}
+
+            {editingDeliveryDate ? (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="date"
+                  value={newDeliveryDate}
+                  onChange={(e) => setNewDeliveryDate(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <button
+                  onClick={handleSaveDeliveryDate}
+                  disabled={savingDeliveryDate}
+                  className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                  title="Guardar"
+                >
+                  {savingDeliveryDate ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                </button>
+                <button
+                  onClick={handleCancelEditDeliveryDate}
+                  disabled={savingDeliveryDate}
+                  className="p-2 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300 transition"
+                  title="Cancelar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <p className="mt-1 text-gray-900 font-medium">
+                {order.delivery_date ? formatDate(order.delivery_date) : 'Sin fecha asignada'}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Client Card */}

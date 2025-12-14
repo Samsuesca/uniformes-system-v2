@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, School as SchoolIcon, ArrowRight, User, LogOut, Package, Eye, EyeOff } from 'lucide-react';
+import { Search, School as SchoolIcon, ArrowRight, User, LogOut, Package, Eye, EyeOff, HelpCircle, MessageCircle } from 'lucide-react';
+import Footer from '@/components/Footer';
 import { schoolsApi, type School } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
 
@@ -57,7 +58,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex flex-col">
       {/* Hero Section */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -117,7 +118,7 @@ export default function Home() {
       </div>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-gray-800 font-display mb-3">
             Selecciona tu Colegio
@@ -177,13 +178,36 @@ export default function Home() {
           </div>
         )}
 
-        {/* Footer Info */}
-        <div className="mt-16 text-center text-gray-500">
-          <p className="text-sm">
-            ¿No encuentras tu colegio? Contáctanos para más información
+        {/* Contact CTA */}
+        <div className="mt-16 bg-white rounded-2xl border border-surface-200 p-8 text-center">
+          <h3 className="text-xl font-bold text-gray-800 font-display mb-3">
+            ¿Necesitas ayuda?
+          </h3>
+          <p className="text-gray-600 mb-6">
+            ¿No encuentras tu colegio o tienes preguntas sobre nuestros uniformes?
           </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a
+              href="https://wa.me/573105997451?text=Hola, necesito información sobre uniformes"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-semibold"
+            >
+              <MessageCircle className="w-5 h-5" />
+              WhatsApp
+            </a>
+            <button
+              onClick={() => router.push('/soporte')}
+              className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
+            >
+              <HelpCircle className="w-5 h-5" />
+              Centro de Soporte
+            </button>
+          </div>
         </div>
       </main>
+
+      <Footer />
 
       {/* Login Modal */}
       {showLoginModal && (

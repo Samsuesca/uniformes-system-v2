@@ -469,7 +469,7 @@ export default function CatalogPage() {
                                 </p>
 
                                 <a
-                                    href="https://wa.me/573001234567?text=Hola, estoy interesado en un yomber personalizado"
+                                    href="https://wa.me/573105997451?text=Hola, estoy interesado en un yomber personalizado"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-semibold"
@@ -479,7 +479,7 @@ export default function CatalogPage() {
                                 </a>
 
                                 <a
-                                    href="tel:+573001234567"
+                                    href="tel:+573105997451"
                                     className="w-full flex items-center justify-center gap-2 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
                                 >
                                     <Phone className="w-5 h-5" />

@@ -244,6 +244,30 @@ class OrderService(SchoolIsolatedService[Order]):
             {"status": new_status}
         )
 
+    async def update_order(
+        self,
+        order_id: UUID,
+        school_id: UUID,
+        order_update: OrderUpdate
+    ) -> Order | None:
+        """
+        Update order details (delivery_date, notes, status)
+
+        Args:
+            order_id: Order UUID
+            school_id: School UUID
+            order_update: Update data
+
+        Returns:
+            Updated order
+        """
+        update_data = order_update.model_dump(exclude_unset=True)
+        if not update_data:
+            # No updates, just return the order
+            return await self.get(order_id, school_id)
+
+        return await self.update(order_id, school_id, update_data)
+
     async def create_web_order(
         self,
         order_data: OrderCreate

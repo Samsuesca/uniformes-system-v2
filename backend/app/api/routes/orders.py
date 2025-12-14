@@ -362,6 +362,32 @@ async def update_order_status(
     return OrderResponse.model_validate(order)
 
 
+@school_router.patch(
+    "/{order_id}",
+    response_model=OrderResponse,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def update_order(
+    school_id: UUID,
+    order_id: UUID,
+    order_update: OrderUpdate,
+    db: DatabaseSession
+):
+    """Update order details (delivery_date, notes) - requires SELLER role"""
+    order_service = OrderService(db)
+
+    order = await order_service.update_order(order_id, school_id, order_update)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    await db.commit()
+    return OrderResponse.model_validate(order)
+
+
 # =============================================================================
 # Web Portal Order Endpoints (Public - for web clients)
 # =============================================================================

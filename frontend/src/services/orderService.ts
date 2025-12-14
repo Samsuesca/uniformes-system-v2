@@ -91,4 +91,15 @@ export const orderService = {
     );
     return response.data;
   },
+
+  /**
+   * Update order details (delivery_date, notes) - school-specific
+   */
+  async updateOrder(schoolId: string, orderId: string, data: { delivery_date?: string; notes?: string }): Promise<Order> {
+    const response = await apiClient.patch<Order>(
+      `/schools/${schoolId}/orders/${orderId}`,
+      data
+    );
+    return response.data;
+  },
 };
