@@ -213,11 +213,12 @@ class BalanceIntegrationService:
         # Crear BalanceEntry para auditoría
         entry = BalanceEntry(
             account_id=account_id,
+            school_id=transaction.school_id,  # Required field
             entry_date=transaction.transaction_date,
             amount=delta,
             balance_after=new_balance,
             description=f"Auto: {transaction.description}",
-            reference_code=transaction.reference_code,
+            reference=transaction.reference_code,  # BalanceEntry uses 'reference' not 'reference_code'
             created_by=created_by
         )
         self.db.add(entry)
@@ -266,11 +267,12 @@ class BalanceIntegrationService:
         from_account.balance -= amount
         entry_from = BalanceEntry(
             account_id=from_account_id,
+            school_id=transaction.school_id,  # Required field
             entry_date=transaction.transaction_date,
             amount=-amount,
             balance_after=from_account.balance,
             description=f"Transferencia a {to_account.name}: {transaction.description}",
-            reference_code=transaction.reference_code,
+            reference=transaction.reference_code,  # BalanceEntry uses 'reference'
             created_by=created_by
         )
         self.db.add(entry_from)
@@ -279,11 +281,12 @@ class BalanceIntegrationService:
         to_account.balance += amount
         entry_to = BalanceEntry(
             account_id=to_account_id,
+            school_id=transaction.school_id,  # Required field
             entry_date=transaction.transaction_date,
             amount=amount,
             balance_after=to_account.balance,
             description=f"Transferencia desde {from_account.name}: {transaction.description}",
-            reference_code=transaction.reference_code,
+            reference=transaction.reference_code,  # BalanceEntry uses 'reference'
             created_by=created_by
         )
         self.db.add(entry_to)
