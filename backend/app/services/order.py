@@ -187,7 +187,7 @@ class OrderService(SchoolIsolatedService[Order]):
         await self.db.flush()
 
         # === CONTABILIDAD ===
-        # Si hay anticipo, crear transacción de ingreso
+        # Si hay anticipo, crear transacción de ingreso + actualizar balance
         if paid_amount > Decimal("0"):
             transaction = Transaction(
                 school_id=order_data.school_id,
@@ -202,6 +202,12 @@ class OrderService(SchoolIsolatedService[Order]):
                 created_by=user_id
             )
             self.db.add(transaction)
+            await self.db.flush()
+
+            # Apply balance integration (agrega a Caja/Banco)
+            from app.services.balance_integration import BalanceIntegrationService
+            balance_service = BalanceIntegrationService(self.db)
+            await balance_service.apply_transaction_to_balance(transaction, user_id)
 
         # Crear cuenta por cobrar por el saldo pendiente
         balance = total - paid_amount
@@ -291,6 +297,12 @@ class OrderService(SchoolIsolatedService[Order]):
             created_by=user_id
         )
         self.db.add(transaction)
+        await self.db.flush()
+
+        # Apply balance integration (agrega a Caja/Banco)
+        from app.services.balance_integration import BalanceIntegrationService
+        balance_service = BalanceIntegrationService(self.db)
+        await balance_service.apply_transaction_to_balance(transaction, user_id)
 
         # Actualizar cuenta por cobrar si existe
         result = await self.db.execute(
@@ -499,7 +511,7 @@ class OrderService(SchoolIsolatedService[Order]):
 
         # === CONTABILIDAD ===
         # Para pedidos web, el anticipo es generalmente 0 (pago contra entrega)
-        # Si hay anticipo, crear transacción de ingreso
+        # Si hay anticipo, crear transacción de ingreso + actualizar balance
         if paid_amount > Decimal("0"):
             transaction = Transaction(
                 school_id=order_data.school_id,
@@ -514,6 +526,12 @@ class OrderService(SchoolIsolatedService[Order]):
                 created_by=None
             )
             self.db.add(transaction)
+            await self.db.flush()
+
+            # Apply balance integration (agrega a Banco para transferencias web)
+            from app.services.balance_integration import BalanceIntegrationService
+            balance_service = BalanceIntegrationService(self.db)
+            await balance_service.apply_transaction_to_balance(transaction, None)
 
         # Crear cuenta por cobrar por el saldo pendiente
         balance = total - paid_amount

@@ -546,8 +546,46 @@ export const accountingService = {
   createAccountPayable,
   payAccountPayable,
   deleteAccountPayable,
+  // Cash Balances (Caja/Banco)
+  getCashBalances,
+  initializeDefaultAccounts,
   // Helpers
   getAccountTypeLabel,
   getAccountTypeColor,
   getAccountTypeCategory
+};
+
+// ============================================
+// Cash Balances (Saldos de Caja y Banco)
+// ============================================
+
+export interface CashBalanceInfo {
+  id: string;
+  name: string;
+  balance: number;
+  last_updated: string | null;
+}
+
+export interface CashBalancesResponse {
+  caja: CashBalanceInfo | null;
+  banco: CashBalanceInfo | null;
+  total_liquid: number;
+}
+
+export const getCashBalances = async (schoolId: string): Promise<CashBalancesResponse> => {
+  const response = await apiClient.get(`/schools/${schoolId}/accounting/cash-balances`);
+  return response.data;
+};
+
+export const initializeDefaultAccounts = async (
+  schoolId: string,
+  cajaInitialBalance: number = 0,
+  bancoInitialBalance: number = 0
+): Promise<{ message: string; accounts: Record<string, string> }> => {
+  const response = await apiClient.post(
+    `/schools/${schoolId}/accounting/initialize-default-accounts`,
+    null,
+    { params: { caja_initial_balance: cajaInitialBalance, banco_initial_balance: bancoInitialBalance } }
+  );
+  return response.data;
 };

@@ -107,6 +107,21 @@ class Transaction(Base):
         nullable=True
     )
 
+    # Balance account integration
+    # Links transaction to the balance account it affects (Caja, Banco, etc.)
+    balance_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    # For TRANSFER type: destination account
+    transfer_to_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_accounts.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # Audit
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -131,6 +146,13 @@ class Transaction(Base):
     order: Mapped["Order | None"] = relationship(back_populates="transactions")
     expense: Mapped["Expense | None"] = relationship(back_populates="transaction")
     created_by_user: Mapped["User | None"] = relationship()
+    # Balance account relationships
+    balance_account: Mapped["BalanceAccount | None"] = relationship(
+        foreign_keys=[balance_account_id]
+    )
+    transfer_to_account: Mapped["BalanceAccount | None"] = relationship(
+        foreign_keys=[transfer_to_account_id]
+    )
 
     def __repr__(self) -> str:
         return f"<Transaction({self.type.value}: ${self.amount} on {self.transaction_date})>"

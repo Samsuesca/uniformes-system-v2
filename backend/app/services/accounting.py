@@ -1,5 +1,9 @@
 """
 Accounting Service - Transactions, Expenses, and Cash Flow Management
+
+Integración de Balance:
+- Las transacciones automáticamente actualizan las cuentas del balance (Caja/Banco)
+- CASH -> Caja, TRANSFER/CARD -> Banco, CREDIT -> No afecta cuentas
 """
 from uuid import UUID
 from datetime import datetime, date
@@ -43,9 +47,20 @@ class TransactionService(SchoolIsolatedService[Transaction]):
     async def create_transaction(
         self,
         data: TransactionCreate,
-        created_by: UUID | None = None
+        created_by: UUID | None = None,
+        skip_balance_update: bool = False
     ) -> Transaction:
-        """Create a new transaction"""
+        """
+        Create a new transaction and update balance account.
+
+        Args:
+            data: Transaction data
+            created_by: User ID
+            skip_balance_update: Skip balance integration (for migrations/special cases)
+
+        Returns:
+            Created transaction
+        """
         transaction = Transaction(
             school_id=data.school_id,
             type=data.type,
@@ -62,6 +77,13 @@ class TransactionService(SchoolIsolatedService[Transaction]):
         )
         self.db.add(transaction)
         await self.db.flush()
+
+        # Apply balance integration (Caja/Banco)
+        if not skip_balance_update:
+            from app.services.balance_integration import BalanceIntegrationService
+            balance_service = BalanceIntegrationService(self.db)
+            await balance_service.apply_transaction_to_balance(transaction, created_by)
+
         await self.db.refresh(transaction)
         return transaction
 
@@ -71,7 +93,7 @@ class TransactionService(SchoolIsolatedService[Transaction]):
         payment_method: AccPaymentMethod,
         created_by: UUID | None = None
     ) -> Transaction:
-        """Create income transaction from a sale"""
+        """Create income transaction from a sale with balance integration"""
         transaction = Transaction(
             school_id=sale.school_id,
             type=TransactionType.INCOME,
@@ -86,6 +108,12 @@ class TransactionService(SchoolIsolatedService[Transaction]):
         )
         self.db.add(transaction)
         await self.db.flush()
+
+        # Apply balance integration (Caja/Banco)
+        from app.services.balance_integration import BalanceIntegrationService
+        balance_service = BalanceIntegrationService(self.db)
+        await balance_service.apply_transaction_to_balance(transaction, created_by)
+
         await self.db.refresh(transaction)
         return transaction
 
@@ -96,7 +124,7 @@ class TransactionService(SchoolIsolatedService[Transaction]):
         payment_method: AccPaymentMethod,
         created_by: UUID | None = None
     ) -> Transaction:
-        """Create income transaction from an order payment"""
+        """Create income transaction from an order payment with balance integration"""
         transaction = Transaction(
             school_id=order.school_id,
             type=TransactionType.INCOME,
@@ -111,6 +139,12 @@ class TransactionService(SchoolIsolatedService[Transaction]):
         )
         self.db.add(transaction)
         await self.db.flush()
+
+        # Apply balance integration (Caja/Banco)
+        from app.services.balance_integration import BalanceIntegrationService
+        balance_service = BalanceIntegrationService(self.db)
+        await balance_service.apply_transaction_to_balance(transaction, created_by)
+
         await self.db.refresh(transaction)
         return transaction
 
@@ -230,7 +264,7 @@ class ExpenseService(SchoolIsolatedService[Expense]):
         payment: ExpensePayment,
         created_by: UUID | None = None
     ) -> Expense | None:
-        """Record a payment for an expense"""
+        """Record a payment for an expense with balance integration"""
         expense = await self.get(expense_id, school_id)
         if not expense:
             return None
@@ -260,6 +294,11 @@ class ExpenseService(SchoolIsolatedService[Expense]):
         )
         self.db.add(transaction)
         await self.db.flush()
+
+        # Apply balance integration (descuenta de Caja/Banco)
+        from app.services.balance_integration import BalanceIntegrationService
+        balance_service = BalanceIntegrationService(self.db)
+        await balance_service.apply_transaction_to_balance(transaction, created_by)
 
         await self.db.refresh(expense)
         return expense
@@ -823,7 +862,7 @@ class AccountsReceivableService(SchoolIsolatedService[AccountsReceivable]):
         payment: AccountsReceivablePayment,
         created_by: UUID | None = None
     ) -> AccountsReceivable | None:
-        """Record a payment on accounts receivable"""
+        """Record a payment on accounts receivable with balance integration"""
         receivable = await self.get(receivable_id, school_id)
         if not receivable:
             return None
@@ -849,8 +888,13 @@ class AccountsReceivableService(SchoolIsolatedService[AccountsReceivable]):
             created_by=created_by
         )
         self.db.add(transaction)
-
         await self.db.flush()
+
+        # Apply balance integration (agrega a Caja/Banco)
+        from app.services.balance_integration import BalanceIntegrationService
+        balance_service = BalanceIntegrationService(self.db)
+        await balance_service.apply_transaction_to_balance(transaction, created_by)
+
         await self.db.refresh(receivable)
         return receivable
 
@@ -924,7 +968,7 @@ class AccountsPayableService(SchoolIsolatedService[AccountsPayable]):
         payment: AccountsPayablePayment,
         created_by: UUID | None = None
     ) -> AccountsPayable | None:
-        """Record a payment on accounts payable"""
+        """Record a payment on accounts payable with balance integration"""
         payable = await self.get(payable_id, school_id)
         if not payable:
             return None
@@ -950,8 +994,13 @@ class AccountsPayableService(SchoolIsolatedService[AccountsPayable]):
             created_by=created_by
         )
         self.db.add(transaction)
-
         await self.db.flush()
+
+        # Apply balance integration (descuenta de Caja/Banco)
+        from app.services.balance_integration import BalanceIntegrationService
+        balance_service = BalanceIntegrationService(self.db)
+        await balance_service.apply_transaction_to_balance(transaction, created_by)
+
         await self.db.refresh(payable)
         return payable
 

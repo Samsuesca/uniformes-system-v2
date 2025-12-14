@@ -1239,3 +1239,83 @@ async def pay_payable(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+# ============================================
+# Cash Balances (Saldos de Caja y Banco)
+# ============================================
+
+@router.get(
+    "/cash-balances",
+    dependencies=[Depends(require_school_access(UserRole.VIEWER))]
+)
+async def get_cash_balances(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get current cash and bank balances (requires VIEWER role)
+
+    Returns:
+        - caja: Current cash balance
+        - banco: Current bank account balance
+        - total_liquid: Sum of both
+    """
+    from app.services.balance_integration import BalanceIntegrationService
+
+    service = BalanceIntegrationService(db)
+    balances = await service.get_cash_balances(school_id)
+
+    return balances
+
+
+@router.post(
+    "/initialize-default-accounts",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def initialize_default_accounts(
+    school_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    caja_initial_balance: float = 0,
+    banco_initial_balance: float = 0
+):
+    """
+    Initialize default balance accounts (Caja, Banco) for the school (requires ADMIN role)
+
+    This is useful for initial setup or if accounts were deleted.
+    If accounts already exist, they won't be duplicated.
+
+    Args:
+        caja_initial_balance: Initial cash balance (default 0)
+        banco_initial_balance: Initial bank balance (default 0)
+
+    Returns:
+        Mapping of account types to UUIDs
+    """
+    from decimal import Decimal
+    from app.services.balance_integration import BalanceIntegrationService
+
+    service = BalanceIntegrationService(db)
+
+    try:
+        accounts_map = await service.initialize_default_accounts_for_school(
+            school_id,
+            caja_initial_balance=Decimal(str(caja_initial_balance)),
+            banco_initial_balance=Decimal(str(banco_initial_balance)),
+            created_by=current_user.id
+        )
+
+        await db.commit()
+
+        return {
+            "message": "Default accounts initialized successfully",
+            "accounts": accounts_map
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

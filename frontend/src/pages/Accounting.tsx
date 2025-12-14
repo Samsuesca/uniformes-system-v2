@@ -13,7 +13,9 @@ import {
   accountingService,
   getExpenseCategoryLabel,
   getExpenseCategoryColor,
-  getPaymentMethodLabel
+  getPaymentMethodLabel,
+  getCashBalances,
+  type CashBalancesResponse
 } from '../services/accountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
@@ -55,6 +57,9 @@ export default function Accounting() {
   const [receivablesPayables, setReceivablesPayables] = useState<ReceivablesPayablesSummary | null>(null);
   const [receivablesList, setReceivablesList] = useState<AccountsReceivableListItem[]>([]);
   const [payablesList, setPayablesList] = useState<AccountsPayableListItem[]>([]);
+
+  // Cash balances (Caja/Banco)
+  const [cashBalances, setCashBalances] = useState<CashBalancesResponse | null>(null);
 
   // UI states
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -121,12 +126,14 @@ export default function Accounting() {
       setError(null);
 
       if (activeTab === 'dashboard') {
-        const [dashboardData, pendingData] = await Promise.all([
+        const [dashboardData, pendingData, cashData] = await Promise.all([
           accountingService.getAccountingDashboard(schoolId),
-          accountingService.getPendingExpenses(schoolId)
+          accountingService.getPendingExpenses(schoolId),
+          getCashBalances(schoolId)
         ]);
         setDashboard(dashboardData);
         setPendingExpenses(pendingData);
+        setCashBalances(cashData);
       } else if (activeTab === 'balance') {
         const [summary, detailed] = await Promise.all([
           accountingService.getBalanceGeneralSummary(schoolId),
@@ -419,6 +426,68 @@ export default function Accounting() {
               </div>
               <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
                 <Receipt className="w-6 h-6 text-orange-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Balances (Caja/Banco) */}
+      {cashBalances && (
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-blue-600" />
+            Saldos Actuales
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Caja */}
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1">
+                    <Wallet className="w-4 h-4" />
+                    Caja (Efectivo)
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-800 mt-1">
+                    {cashBalances.caja ? formatCurrency(cashBalances.caja.balance) : '$0'}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-emerald-700" />
+                </div>
+              </div>
+            </div>
+
+            {/* Banco */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-700 flex items-center gap-1">
+                    <Landmark className="w-4 h-4" />
+                    Banco
+                  </p>
+                  <p className="text-2xl font-bold text-blue-800 mt-1">
+                    {cashBalances.banco ? formatCurrency(cashBalances.banco.balance) : '$0'}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-blue-700" />
+                </div>
+              </div>
+            </div>
+
+            {/* Total Líquido */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-purple-700">Total Líquido</p>
+                  <p className="text-2xl font-bold text-purple-800 mt-1">
+                    {formatCurrency(cashBalances.total_liquid)}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-purple-200 rounded-full flex items-center justify-center">
+                  <Calculator className="w-5 h-5 text-purple-700" />
+                </div>
               </div>
             </div>
           </div>

@@ -1,15 +1,21 @@
 """
 Sale Service
+
+Contabilidad de Ventas:
+- Las ventas efectivas (CASH, TRANSFER, CARD) crean transacción de ingreso + actualizan balance
+- Las ventas a crédito (CREDIT) solo crean cuenta por cobrar, no afectan Caja/Banco
+- Las ventas históricas pueden saltarse la creación de transacciones
 """
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.sale import Sale, SaleItem, SaleStatus, SaleChange, ChangeStatus, ChangeType
+from app.models.sale import Sale, SaleItem, SaleStatus, SaleChange, ChangeStatus, ChangeType, PaymentMethod
 from app.models.product import Product, GlobalProduct
+from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
 from app.schemas.sale import SaleCreate, SaleUpdate, SaleChangeCreate, SaleChangeUpdate
 from app.services.base import SchoolIsolatedService
 from app.services.global_product import GlobalInventoryService
@@ -197,6 +203,59 @@ class SaleService(SchoolIsolatedService[Sale]):
                         sale_data.school_id,
                         item_dict["quantity"]
                     )
+
+        await self.db.flush()
+
+        # === CONTABILIDAD ===
+        # Solo para ventas no históricas
+        if not is_historical and sale.total > Decimal("0"):
+            # Mapear payment_method de Sale a AccPaymentMethod
+            payment_method_map = {
+                PaymentMethod.CASH: AccPaymentMethod.CASH,
+                PaymentMethod.TRANSFER: AccPaymentMethod.TRANSFER,
+                PaymentMethod.CARD: AccPaymentMethod.CARD,
+                PaymentMethod.CREDIT: AccPaymentMethod.CREDIT,
+            }
+            acc_payment_method = payment_method_map.get(
+                sale.payment_method or PaymentMethod.CASH,
+                AccPaymentMethod.CASH
+            )
+
+            # CREDIT no afecta cuentas de balance - solo genera cuenta por cobrar
+            if sale.payment_method == PaymentMethod.CREDIT:
+                # Crear cuenta por cobrar por el total
+                receivable = AccountsReceivable(
+                    school_id=sale.school_id,
+                    client_id=sale.client_id,
+                    sale_id=sale.id,
+                    amount=sale.total,
+                    description=f"Venta a crédito {sale.code}",
+                    invoice_date=sale.sale_date.date() if hasattr(sale.sale_date, 'date') else sale.sale_date,
+                    due_date=None,  # Sin fecha de vencimiento definida
+                    created_by=user_id
+                )
+                self.db.add(receivable)
+            else:
+                # Ventas efectivas: crear transacción de ingreso
+                transaction = Transaction(
+                    school_id=sale.school_id,
+                    type=TransactionType.INCOME,
+                    amount=sale.total,
+                    payment_method=acc_payment_method,
+                    description=f"Venta {sale.code}",
+                    category="sales",
+                    reference_code=sale.code,
+                    transaction_date=sale.sale_date.date() if hasattr(sale.sale_date, 'date') else sale.sale_date,
+                    sale_id=sale.id,
+                    created_by=user_id
+                )
+                self.db.add(transaction)
+                await self.db.flush()
+
+                # Apply balance integration (agrega a Caja/Banco)
+                from app.services.balance_integration import BalanceIntegrationService
+                balance_service = BalanceIntegrationService(self.db)
+                await balance_service.apply_transaction_to_balance(transaction, user_id)
 
         await self.db.flush()
 
