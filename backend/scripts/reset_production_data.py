@@ -99,12 +99,12 @@ async def reset_production_data():
             print(f"  ✓ clients eliminados: {result.rowcount}")
 
             # 13. Reset all inventory to 0
-            result = await db.execute(text("UPDATE inventory SET quantity = 0, reserved = 0"))
+            result = await db.execute(text("UPDATE inventory SET quantity = 0"))
             print(f"  ✓ inventory reseteado a 0: {result.rowcount} registros")
 
             # 14. Reset global_inventory to 0 (if exists)
             try:
-                result = await db.execute(text("UPDATE global_inventory SET quantity = 0, reserved = 0"))
+                result = await db.execute(text("UPDATE global_inventory SET quantity = 0"))
                 print(f"  ✓ global_inventory reseteado a 0: {result.rowcount} registros")
             except Exception:
                 print("  - global_inventory no existe o está vacío")
