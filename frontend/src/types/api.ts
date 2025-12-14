@@ -289,6 +289,7 @@ export interface SaleChangeListItem {
 // ============================================
 
 export type OrderStatus = 'pending' | 'in_production' | 'ready' | 'delivered' | 'cancelled';
+export type OrderItemStatus = 'pending' | 'in_production' | 'ready' | 'delivered' | 'cancelled';
 export type OrderType = 'catalog' | 'yomber' | 'custom';
 
 // Yomber measurements interface
@@ -329,6 +330,9 @@ export interface OrderItem {
   custom_measurements: Record<string, number> | null;
   embroidery_text: string | null;
   notes: string | null;
+  // Item-level status for individual tracking
+  item_status: OrderItemStatus;
+  status_updated_at: string | null;
 }
 
 export interface OrderItemCreate {
@@ -393,6 +397,9 @@ export interface OrderListItem {
   // Multi-school support
   school_id: string | null;
   school_name: string | null;
+  // Partial delivery tracking
+  items_delivered: number;
+  items_total: number;
 }
 
 export interface OrderCreate {
@@ -409,6 +416,10 @@ export interface OrderPayment {
   payment_method: string;
   payment_reference?: string;
   notes?: string;
+}
+
+export interface OrderItemStatusUpdate {
+  item_status: OrderItemStatus;
 }
 
 // ============================================

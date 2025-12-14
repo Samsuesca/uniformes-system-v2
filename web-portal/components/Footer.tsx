@@ -1,7 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { Phone, Mail, MessageCircle, HelpCircle } from 'lucide-react';
+import { Phone, Mail, MessageCircle, HelpCircle, MapPin, Clock, ExternalLink } from 'lucide-react';
+
+// Puntos de venta - fácil de expandir en el futuro
+const STORE_LOCATIONS = [
+  {
+    name: 'Sede Principal - Boston',
+    address: 'Calle 56 D #26 BE 04',
+    neighborhood: 'Villas de San José, Boston - Barrio Sucre',
+    city: 'Medellín, Antioquia',
+    googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Calle+56D+26BE+04+Villas+de+San+Jose+Boston+Medellin',
+    hours: 'Lun-Vie: 8AM-6PM | Sáb: 9AM-2PM'
+  }
+];
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -9,7 +21,7 @@ export default function Footer() {
   return (
     <footer className="bg-white border-t border-surface-200 mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
           <div>
             <h3 className="text-lg font-bold text-primary font-display mb-3">
@@ -18,6 +30,37 @@ export default function Footer() {
             <p className="text-sm text-slate-600">
               Uniformes escolares de calidad, confeccionados con los mejores materiales.
             </p>
+          </div>
+
+          {/* Store Locations */}
+          <div>
+            <h4 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-brand-600" />
+              Puntos de Venta
+            </h4>
+            <div className="space-y-4">
+              {STORE_LOCATIONS.map((location, index) => (
+                <div key={index} className="text-sm">
+                  <p className="font-medium text-slate-700">{location.name}</p>
+                  <p className="text-slate-600">{location.address}</p>
+                  <p className="text-slate-600">{location.neighborhood}</p>
+                  <p className="text-slate-500 text-xs">{location.city}</p>
+                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                    <Clock className="w-3 h-3" />
+                    {location.hours}
+                  </div>
+                  <a
+                    href={location.googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 mt-2 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Ver en Google Maps
+                  </a>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Contact */}

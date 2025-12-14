@@ -236,11 +236,15 @@ export default function WebOrders() {
         </button>
       </div>
 
-      {/* Statistics Cards */}
+      {/* Statistics Cards - Clickable to filter (click again to clear) */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
-        <div
-          className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 cursor-pointer hover:bg-yellow-100 transition"
-          onClick={() => setStatusFilter('pending')}
+        <button
+          onClick={() => setStatusFilter(statusFilter === 'pending' ? 'all' : 'pending')}
+          className={`text-left rounded-lg p-4 transition-all ${
+            statusFilter === 'pending'
+              ? 'bg-yellow-200 border-2 border-yellow-500 ring-2 ring-yellow-300'
+              : 'bg-yellow-50 border border-yellow-200 hover:border-yellow-400'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -249,11 +253,15 @@ export default function WebOrders() {
             </div>
             <Clock className="w-8 h-8 text-yellow-600" />
           </div>
-        </div>
+        </button>
 
-        <div
-          className="bg-blue-50 border border-blue-200 rounded-lg p-4 cursor-pointer hover:bg-blue-100 transition"
-          onClick={() => setStatusFilter('in_production')}
+        <button
+          onClick={() => setStatusFilter(statusFilter === 'in_production' ? 'all' : 'in_production')}
+          className={`text-left rounded-lg p-4 transition-all ${
+            statusFilter === 'in_production'
+              ? 'bg-blue-200 border-2 border-blue-500 ring-2 ring-blue-300'
+              : 'bg-blue-50 border border-blue-200 hover:border-blue-400'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -262,11 +270,15 @@ export default function WebOrders() {
             </div>
             <Wrench className="w-8 h-8 text-blue-600" />
           </div>
-        </div>
+        </button>
 
-        <div
-          className="bg-green-50 border border-green-200 rounded-lg p-4 cursor-pointer hover:bg-green-100 transition"
-          onClick={() => setStatusFilter('ready')}
+        <button
+          onClick={() => setStatusFilter(statusFilter === 'ready' ? 'all' : 'ready')}
+          className={`text-left rounded-lg p-4 transition-all ${
+            statusFilter === 'ready'
+              ? 'bg-green-200 border-2 border-green-500 ring-2 ring-green-300'
+              : 'bg-green-50 border border-green-200 hover:border-green-400'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -275,11 +287,15 @@ export default function WebOrders() {
             </div>
             <CheckCircle className="w-8 h-8 text-green-600" />
           </div>
-        </div>
+        </button>
 
-        <div
-          className="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition"
-          onClick={() => setStatusFilter('delivered')}
+        <button
+          onClick={() => setStatusFilter(statusFilter === 'delivered' ? 'all' : 'delivered')}
+          className={`text-left rounded-lg p-4 transition-all ${
+            statusFilter === 'delivered'
+              ? 'bg-gray-300 border-2 border-gray-500 ring-2 ring-gray-300'
+              : 'bg-gray-50 border border-gray-200 hover:border-gray-400'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -288,7 +304,7 @@ export default function WebOrders() {
             </div>
             <Package className="w-8 h-8 text-gray-600" />
           </div>
-        </div>
+        </button>
 
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-center justify-between">

@@ -14,7 +14,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
-from app.models.order import Order, OrderItem, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus, OrderItemStatus
 from app.models.product import GarmentType, Product
 from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
 from app.schemas.order import OrderCreate, OrderUpdate, OrderPayment
@@ -567,3 +567,116 @@ class OrderService(SchoolIsolatedService[Order]):
 
         sequence = count.scalar_one() + 1
         return f"{prefix}{sequence:04d}"
+
+    async def update_item_status(
+        self,
+        order_id: UUID,
+        item_id: UUID,
+        school_id: UUID,
+        new_status: OrderItemStatus,
+        user_id: UUID | None = None
+    ) -> OrderItem | None:
+        """
+        Update status of an individual order item
+
+        Args:
+            order_id: Order UUID
+            item_id: OrderItem UUID
+            school_id: School UUID
+            new_status: New status for the item
+            user_id: User making the change
+
+        Returns:
+            Updated OrderItem or None if not found
+        """
+        # Get the item
+        result = await self.db.execute(
+            select(OrderItem).where(
+                OrderItem.id == item_id,
+                OrderItem.order_id == order_id,
+                OrderItem.school_id == school_id
+            )
+        )
+        item = result.scalar_one_or_none()
+
+        if not item:
+            return None
+
+        # Don't allow changes to finalized items
+        if item.item_status in [OrderItemStatus.DELIVERED, OrderItemStatus.CANCELLED]:
+            raise ValueError(f"No se puede cambiar estado de item {item.item_status.value}")
+
+        # Update item status
+        item.item_status = new_status
+        item.status_updated_at = datetime.utcnow()
+
+        await self.db.flush()
+
+        # Auto-sync order status based on items
+        await self._sync_order_status_from_items(order_id, school_id)
+
+        await self.db.refresh(item)
+        return item
+
+    async def _sync_order_status_from_items(
+        self,
+        order_id: UUID,
+        school_id: UUID
+    ) -> None:
+        """
+        Synchronize Order status based on item statuses
+
+        Rules:
+        - If ANY item is in_production → Order = in_production
+        - If ALL active items are ready or delivered → Order = ready
+        - If ALL active items are delivered → Order = delivered
+        - If ALL items are pending → Order = pending
+        """
+        order = await self.get_order_with_items(order_id, school_id)
+        if not order or order.status == OrderStatus.CANCELLED:
+            return
+
+        items = order.items
+        active_items = [i for i in items if i.item_status != OrderItemStatus.CANCELLED]
+
+        if not active_items:
+            # All items cancelled - cancel the order
+            order.status = OrderStatus.CANCELLED
+            await self.db.flush()
+            return
+
+        all_delivered = all(i.item_status == OrderItemStatus.DELIVERED for i in active_items)
+        all_ready_or_delivered = all(
+            i.item_status in [OrderItemStatus.READY, OrderItemStatus.DELIVERED]
+            for i in active_items
+        )
+        any_in_production = any(i.item_status == OrderItemStatus.IN_PRODUCTION for i in active_items)
+
+        if all_delivered:
+            order.status = OrderStatus.DELIVERED
+        elif all_ready_or_delivered:
+            order.status = OrderStatus.READY
+        elif any_in_production:
+            order.status = OrderStatus.IN_PRODUCTION
+        else:
+            order.status = OrderStatus.PENDING
+
+        await self.db.flush()
+
+    async def get_item(
+        self,
+        item_id: UUID,
+        order_id: UUID,
+        school_id: UUID
+    ) -> OrderItem | None:
+        """Get a single order item"""
+        result = await self.db.execute(
+            select(OrderItem)
+            .options(selectinload(OrderItem.garment_type))
+            .where(
+                OrderItem.id == item_id,
+                OrderItem.order_id == order_id,
+                OrderItem.school_id == school_id
+            )
+        )
+        return result.scalar_one_or_none()

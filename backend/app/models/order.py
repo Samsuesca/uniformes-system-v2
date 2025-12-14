@@ -21,6 +21,15 @@ class OrderStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class OrderItemStatus(str, enum.Enum):
+    """Individual order item status - allows independent tracking per item"""
+    PENDING = "pending"
+    IN_PRODUCTION = "in_production"
+    READY = "ready"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+
 class Order(Base):
     """Custom orders with personalized measurements"""
     __tablename__ = "orders"
@@ -168,6 +177,15 @@ class OrderItem(Base):
     custom_measurements: Mapped[dict | None] = mapped_column(JSONB)
     embroidery_text: Mapped[str | None] = mapped_column(String(100))
     notes: Mapped[str | None] = mapped_column(Text)
+
+    # Individual item status - allows independent tracking per item
+    item_status: Mapped[OrderItemStatus] = mapped_column(
+        SQLEnum(OrderItemStatus, name="order_item_status_enum", create_type=False),
+        default=OrderItemStatus.PENDING,
+        nullable=False,
+        index=True
+    )
+    status_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     order: Mapped["Order"] = relationship(back_populates="items")

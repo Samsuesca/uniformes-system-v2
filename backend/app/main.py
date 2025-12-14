@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products
+from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.include_router(orders.web_router, prefix=f"{settings.API_V1_STR}")  # Web po
 app.include_router(inventory.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(reports.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(accounting.router, prefix=f"{settings.API_V1_STR}")
+app.include_router(global_accounting.router, prefix=f"{settings.API_V1_STR}")  # Global accounting endpoints
 app.include_router(global_products.router, prefix=f"{settings.API_V1_STR}")
 
 

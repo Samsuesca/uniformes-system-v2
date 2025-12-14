@@ -253,9 +253,15 @@ class SaleService(SchoolIsolatedService[Sale]):
                 await self.db.flush()
 
                 # Apply balance integration (agrega a Caja/Banco)
-                from app.services.balance_integration import BalanceIntegrationService
-                balance_service = BalanceIntegrationService(self.db)
-                await balance_service.apply_transaction_to_balance(transaction, user_id)
+                # Wrapped in try-catch so sales don't fail if balance integration has issues
+                try:
+                    from app.services.balance_integration import BalanceIntegrationService
+                    balance_service = BalanceIntegrationService(self.db)
+                    await balance_service.apply_transaction_to_balance(transaction, user_id)
+                except Exception as e:
+                    # Log the error but don't fail the sale
+                    import logging
+                    logging.error(f"Balance integration failed for sale {sale.code}: {e}")
 
         await self.db.flush()
 

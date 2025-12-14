@@ -35,10 +35,13 @@ export default function SaleChanges() {
 
   const schoolId = currentSchool?.id || '';
 
+  // Recargar datos cuando cambia el colegio seleccionado
   useEffect(() => {
-    loadAllChanges();
-    loadAllSales();
-  }, []);
+    if (schoolId) {
+      loadAllChanges();
+      loadAllSales();
+    }
+  }, [schoolId]);
 
   const loadAllSales = async () => {
     try {
@@ -224,13 +227,26 @@ export default function SaleChanges() {
               {loading ? 'Cargando...' : `${filteredChanges.length} solicitudes encontradas`}
             </p>
           </div>
-          <button
-            onClick={() => setShowSaleSearch(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Nuevo Cambio/Devolución
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                loadAllChanges();
+                loadAllSales();
+              }}
+              disabled={loading}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg flex items-center transition disabled:opacity-50"
+              title="Actualizar lista"
+            >
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowSaleSearch(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Nuevo Cambio/Devolución
+            </button>
+          </div>
         </div>
 
         {/* Stats */}

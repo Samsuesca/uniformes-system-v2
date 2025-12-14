@@ -60,10 +60,13 @@ class Transaction(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global transactions
+    # NULL = global transaction (business-wide)
+    # UUID = school-specific transaction (for reports)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -141,7 +144,7 @@ class Transaction(Base):
     )
 
     # Relationships
-    school: Mapped["School"] = relationship(back_populates="transactions")
+    school: Mapped["School | None"] = relationship(back_populates="transactions")
     sale: Mapped["Sale | None"] = relationship(back_populates="transactions")
     order: Mapped["Order | None"] = relationship(back_populates="transactions")
     expense: Mapped["Expense | None"] = relationship(back_populates="transaction")
@@ -174,10 +177,13 @@ class Expense(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global expenses
+    # NULL = global expense (business-wide, e.g., utilities, rent)
+    # UUID = school-specific expense (for reports)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -231,7 +237,7 @@ class Expense(Base):
     )
 
     # Relationships
-    school: Mapped["School"] = relationship(back_populates="expenses")
+    school: Mapped["School | None"] = relationship(back_populates="expenses")
     transaction: Mapped["Transaction | None"] = relationship(
         back_populates="expense",
         uselist=False
@@ -260,10 +266,13 @@ class DailyCashRegister(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global cash register
+    # NULL = global register (business-wide, one per day)
+    # UUID = school-specific register (optional)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -336,7 +345,7 @@ class DailyCashRegister(Base):
     )
 
     # Relationships
-    school: Mapped["School"] = relationship(back_populates="cash_registers")
+    school: Mapped["School | None"] = relationship(back_populates="cash_registers")
 
     @property
     def net_flow(self) -> Decimal:
@@ -387,10 +396,13 @@ class BalanceAccount(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global accounts
+    # NULL = global account (business-wide, e.g., Caja, Banco)
+    # UUID = school-specific account (optional)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -443,7 +455,7 @@ class BalanceAccount(Base):
     )
 
     # Relationships
-    school: Mapped["School"] = relationship()
+    school: Mapped["School | None"] = relationship()
     entries: Mapped[list["BalanceEntry"]] = relationship(
         back_populates="account",
         cascade="all, delete-orphan"
@@ -479,10 +491,13 @@ class BalanceEntry(Base):
         nullable=False,
         index=True
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global entries
+    # NULL = global entry (business-wide)
+    # UUID = school-specific entry (optional)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -508,7 +523,7 @@ class BalanceEntry(Base):
 
     # Relationships
     account: Mapped["BalanceAccount"] = relationship(back_populates="entries")
-    school: Mapped["School"] = relationship()
+    school: Mapped["School | None"] = relationship()
 
     def __repr__(self) -> str:
         return f"<BalanceEntry({self.entry_date}: ${self.amount} -> Balance: ${self.balance_after})>"
@@ -531,10 +546,13 @@ class AccountsReceivable(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global receivables
+    # NULL = global receivable (business-wide)
+    # UUID = school-specific receivable (from client of that school)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
     client_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -592,7 +610,7 @@ class AccountsReceivable(Base):
     )
 
     # Relationships
-    school: Mapped["School"] = relationship()
+    school: Mapped["School | None"] = relationship()
     client: Mapped["Client | None"] = relationship()
     sale: Mapped["Sale | None"] = relationship()
     order: Mapped["Order | None"] = relationship()
@@ -623,10 +641,13 @@ class AccountsPayable(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
+    # school_id is nullable for global payables
+    # NULL = global payable (business-wide, e.g., suppliers)
+    # UUID = school-specific payable (optional)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("schools.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("schools.id", ondelete="SET NULL"),
+        nullable=True,
         index=True
     )
 
@@ -670,7 +691,7 @@ class AccountsPayable(Base):
     )
 
     # Relationships
-    school: Mapped["School"] = relationship()
+    school: Mapped["School | None"] = relationship()
 
     @property
     def balance(self) -> Decimal:

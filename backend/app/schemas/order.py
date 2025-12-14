@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import date, datetime
 from pydantic import Field, field_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
-from app.models.order import OrderStatus
+from app.models.order import OrderStatus, OrderItemStatus
 from app.models.sale import SaleSource
 
 
@@ -101,9 +101,16 @@ class OrderItemUpdate(BaseSchema):
     notes: str | None = None
 
 
+class OrderItemStatusUpdate(BaseSchema):
+    """Schema for updating order item status"""
+    item_status: OrderItemStatus
+
+
 class OrderItemInDB(OrderItemBase, SchoolIsolatedSchema, IDModelSchema):
     """OrderItem as stored in database"""
     order_id: UUID
+    item_status: OrderItemStatus = OrderItemStatus.PENDING
+    status_updated_at: datetime | None = None
 
 
 class OrderItemResponse(OrderItemInDB):
@@ -198,6 +205,9 @@ class OrderListResponse(BaseSchema):
     # Multi-school support
     school_id: UUID | None = None
     school_name: str | None = None
+    # Partial delivery tracking
+    items_delivered: int = 0
+    items_total: int = 0
 
 
 # ============================================

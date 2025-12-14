@@ -12,12 +12,13 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole
-from app.models.order import Order, OrderItem, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus, OrderItemStatus
 from app.models.client import Client
 from app.models.school import School
 from app.schemas.order import (
     OrderCreate, OrderUpdate, OrderPayment, OrderResponse, OrderListResponse,
-    OrderWithItems, OrderItemResponse, WebOrderResponse
+    OrderWithItems, OrderItemResponse, WebOrderResponse, OrderItemStatusUpdate,
+    OrderItemWithGarment
 )
 from app.services.order import OrderService
 
@@ -107,7 +108,10 @@ async def list_all_orders(
             created_at=order.created_at,
             items_count=len(order.items) if order.items else 0,
             school_id=order.school_id,
-            school_name=order.school.name if order.school else None
+            school_name=order.school.name if order.school else None,
+            # Partial delivery tracking
+            items_delivered=sum(1 for item in order.items if item.item_status == OrderItemStatus.DELIVERED) if order.items else 0,
+            items_total=len(order.items) if order.items else 0
         )
         for order in orders
     ]
@@ -273,6 +277,8 @@ async def get_order_for_school(
             "custom_measurements": item.custom_measurements,
             "embroidery_text": item.embroidery_text,
             "notes": item.notes,
+            "item_status": item.item_status,
+            "status_updated_at": item.status_updated_at,
             "garment_type_name": item.garment_type.name if item.garment_type else "Unknown",
             "garment_type_category": item.garment_type.category if item.garment_type else None,
             "requires_embroidery": item.garment_type.requires_embroidery if item.garment_type else False,
@@ -387,6 +393,86 @@ async def update_order(
 
     await db.commit()
     return OrderResponse.model_validate(order)
+
+
+@school_router.patch(
+    "/{order_id}/items/{item_id}/status",
+    response_model=OrderItemWithGarment,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def update_item_status(
+    school_id: UUID,
+    order_id: UUID,
+    item_id: UUID,
+    status_update: OrderItemStatusUpdate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Update individual order item status (requires SELLER role)
+
+    This allows tracking progress of individual items within an order.
+    For example: a catalog item may be ready while a yomber is still in production.
+
+    Status transitions:
+    - pending → in_production, ready, delivered, cancelled
+    - in_production → ready, delivered, cancelled
+    - ready → delivered, cancelled
+    - delivered → (final state)
+    - cancelled → (final state)
+
+    The order status is automatically synchronized based on item statuses.
+    """
+    order_service = OrderService(db)
+
+    try:
+        item = await order_service.update_item_status(
+            order_id=order_id,
+            item_id=item_id,
+            school_id=school_id,
+            new_status=status_update.item_status,
+            user_id=current_user.id
+        )
+
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item no encontrado"
+            )
+
+        await db.commit()
+
+        # Reload item with garment type for response
+        item = await order_service.get_item(item_id, order_id, school_id)
+
+        return OrderItemWithGarment(
+            id=item.id,
+            order_id=item.order_id,
+            school_id=item.school_id,
+            garment_type_id=item.garment_type_id,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            subtotal=item.subtotal,
+            size=item.size,
+            color=item.color,
+            gender=item.gender,
+            custom_measurements=item.custom_measurements,
+            embroidery_text=item.embroidery_text,
+            notes=item.notes,
+            item_status=item.item_status,
+            status_updated_at=item.status_updated_at,
+            garment_type_name=item.garment_type.name if item.garment_type else "Unknown",
+            garment_type_category=item.garment_type.category if item.garment_type else None,
+            requires_embroidery=item.garment_type.requires_embroidery if item.garment_type else False,
+            has_custom_measurements=bool(item.custom_measurements)
+        )
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 # =============================================================================

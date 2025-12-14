@@ -6,7 +6,7 @@
  * - School-specific: /schools/{school_id}/orders - Original endpoints
  */
 import apiClient from '../utils/api-client';
-import type { Order, OrderListItem, OrderWithItems, OrderCreate, OrderPayment, OrderStatus } from '../types/api';
+import type { Order, OrderListItem, OrderWithItems, OrderCreate, OrderPayment, OrderStatus, OrderItemStatus, OrderItem } from '../types/api';
 
 export interface OrderFilters {
   school_id?: string;
@@ -99,6 +99,25 @@ export const orderService = {
     const response = await apiClient.patch<Order>(
       `/schools/${schoolId}/orders/${orderId}`,
       data
+    );
+    return response.data;
+  },
+
+  /**
+   * Update individual order item status (school-specific)
+   *
+   * Allows tracking progress of individual items within an order.
+   * For example: a catalog item may be ready while a yomber is still in production.
+   */
+  async updateItemStatus(
+    schoolId: string,
+    orderId: string,
+    itemId: string,
+    status: OrderItemStatus
+  ): Promise<OrderItem> {
+    const response = await apiClient.patch<OrderItem>(
+      `/schools/${schoolId}/orders/${orderId}/items/${itemId}/status`,
+      { item_status: status }
     );
     return response.data;
   },

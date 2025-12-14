@@ -1,14 +1,23 @@
 /**
  * Order Detail Page - View and manage a single order
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
-import type { OrderWithItems, OrderStatus } from '../types/api';
+import type { OrderWithItems, OrderStatus, OrderItemStatus } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
+
+// Item status configuration
+const ITEM_STATUS_CONFIG: Record<OrderItemStatus, { label: string; color: string; bgColor: string; icon: string }> = {
+  pending: { label: 'Pendiente', color: 'text-yellow-700', bgColor: 'bg-yellow-100', icon: '🟡' },
+  in_production: { label: 'En Producción', color: 'text-blue-700', bgColor: 'bg-blue-100', icon: '🔵' },
+  ready: { label: 'Listo', color: 'text-green-700', bgColor: 'bg-green-100', icon: '🟢' },
+  delivered: { label: 'Entregado', color: 'text-gray-700', bgColor: 'bg-gray-100', icon: '✅' },
+  cancelled: { label: 'Cancelado', color: 'text-red-700', bgColor: 'bg-red-100', icon: '❌' },
+};
 
 export default function OrderDetail() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -30,7 +39,42 @@ export default function OrderDetail() {
   const [newDeliveryDate, setNewDeliveryDate] = useState('');
   const [savingDeliveryDate, setSavingDeliveryDate] = useState(false);
 
+  // Expanded measurements for yomber items
+  const [expandedMeasurements, setExpandedMeasurements] = useState<Set<string>>(new Set());
+
+  // Item status update loading state (by item ID)
+  const [updatingItemStatus, setUpdatingItemStatus] = useState<string | null>(null);
+
   const schoolId = currentSchool?.id || '';
+
+  // Toggle measurement visibility
+  const toggleMeasurements = (itemId: string) => {
+    const newExpanded = new Set(expandedMeasurements);
+    if (newExpanded.has(itemId)) {
+      newExpanded.delete(itemId);
+    } else {
+      newExpanded.add(itemId);
+    }
+    setExpandedMeasurements(newExpanded);
+  };
+
+  // Labels for measurements in Spanish
+  const measurementLabels: Record<string, string> = {
+    delantero: 'Talle Delantero',
+    trasero: 'Talle Trasero',
+    cintura: 'Cintura',
+    largo: 'Largo',
+    espalda: 'Espalda',
+    cadera: 'Cadera',
+    hombro: 'Hombro',
+    pierna: 'Pierna',
+    entrepierna: 'Entrepierna',
+    manga: 'Manga',
+    cuello: 'Cuello',
+    pecho: 'Pecho',
+    busto: 'Busto',
+    tiro: 'Tiro',
+  };
 
   useEffect(() => {
     if (orderId) {
@@ -164,6 +208,28 @@ export default function OrderDetail() {
   const handleCancelEditDeliveryDate = () => {
     setEditingDeliveryDate(false);
     setNewDeliveryDate('');
+  };
+
+  // Handle item status change
+  const handleItemStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
+    if (!order) return;
+
+    try {
+      setUpdatingItemStatus(itemId);
+      await orderService.updateItemStatus(schoolId, order.id, itemId, newStatus);
+      // Reload order to get updated item statuses and potentially updated order status
+      await loadOrder();
+    } catch (err: any) {
+      console.error('Error updating item status:', err);
+      setError(err.response?.data?.detail || 'Error al actualizar el estado del item');
+    } finally {
+      setUpdatingItemStatus(null);
+    }
+  };
+
+  // Check if item status can be changed
+  const canChangeItemStatus = (itemStatus: OrderItemStatus): boolean => {
+    return !['delivered', 'cancelled'].includes(itemStatus);
   };
 
   if (loading) {
@@ -374,10 +440,16 @@ export default function OrderDetail() {
                   Producto
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Tipo
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Talla / Color
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Cantidad
+                </th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Estado
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Precio Unit.
@@ -388,31 +460,125 @@ export default function OrderDetail() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {order.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    {item.garment_type_name}
-                    {item.embroidery_text && (
-                      <span className="ml-2 text-xs text-gray-500">
-                        (Bordado: {item.embroidery_text})
-                      </span>
+              {order.items.map((item) => {
+                // Check if item has custom measurements (Yomber)
+                const hasValidMeasurements = item.custom_measurements &&
+                  typeof item.custom_measurements === 'object' &&
+                  Object.keys(item.custom_measurements).length > 0;
+                const isYomber = item.has_custom_measurements || hasValidMeasurements;
+                const isExpanded = expandedMeasurements.has(item.id);
+
+                return (
+                  <Fragment key={item.id}>
+                    <tr className={isYomber ? 'bg-purple-50' : ''}>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        <div className="flex items-center">
+                          {item.garment_type_name}
+                          {item.embroidery_text && (
+                            <span className="ml-2 text-xs text-gray-500">
+                              (Bordado: {item.embroidery_text})
+                            </span>
+                          )}
+                        </div>
+                        {item.notes && (
+                          <p className="text-xs text-gray-500 mt-1">{item.notes}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isYomber ? (
+                          hasValidMeasurements ? (
+                            <button
+                              onClick={() => toggleMeasurements(item.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 transition"
+                            >
+                              <Ruler className="w-3 h-3" />
+                              Yomber
+                              {isExpanded ? (
+                                <ChevronUp className="w-3 h-3" />
+                              ) : (
+                                <ChevronDown className="w-3 h-3" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-purple-50 text-purple-600 rounded-full">
+                              <Ruler className="w-3 h-3" />
+                              Yomber (sin medidas)
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-xs text-gray-400">Estándar</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {item.size || '-'} / {item.color || '-'}
+                        {item.gender && <span className="ml-1">({item.gender})</span>}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                        {item.quantity}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {updatingItemStatus === item.id ? (
+                          <div className="flex items-center justify-center">
+                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                          </div>
+                        ) : canChangeItemStatus(item.item_status) && order.status !== 'cancelled' ? (
+                          <select
+                            value={item.item_status}
+                            onChange={(e) => handleItemStatusChange(item.id, e.target.value as OrderItemStatus)}
+                            className={`text-xs font-medium rounded-full px-2 py-1 border-0 cursor-pointer ${ITEM_STATUS_CONFIG[item.item_status].bgColor} ${ITEM_STATUS_CONFIG[item.item_status].color}`}
+                          >
+                            <option value="pending">🟡 Pendiente</option>
+                            <option value="in_production">🔵 En Producción</option>
+                            <option value="ready">🟢 Listo</option>
+                            <option value="delivered">✅ Entregado</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${ITEM_STATUS_CONFIG[item.item_status].bgColor} ${ITEM_STATUS_CONFIG[item.item_status].color}`}>
+                            {ITEM_STATUS_CONFIG[item.item_status].icon} {ITEM_STATUS_CONFIG[item.item_status].label}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                        {formatCurrency(item.unit_price)}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">
+                        {formatCurrency(item.subtotal)}
+                      </td>
+                    </tr>
+
+                    {/* Expanded measurements row for Yomber items */}
+                    {hasValidMeasurements && isExpanded && (
+                      <tr className="bg-purple-100">
+                        <td colSpan={7} className="px-6 py-4">
+                          <div className="flex items-start gap-2">
+                            <Ruler className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <h4 className="text-sm font-semibold text-purple-800 mb-3">
+                                Medidas Personalizadas (Yomber)
+                              </h4>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+                                {Object.entries(item.custom_measurements!).map(([key, value]) => (
+                                  <div
+                                    key={key}
+                                    className="bg-white rounded-lg px-3 py-2 shadow-sm border border-purple-200"
+                                  >
+                                    <span className="text-xs text-purple-600 block font-medium">
+                                      {measurementLabels[key] || key}
+                                    </span>
+                                    <span className="text-lg font-bold text-purple-800">
+                                      {value} <span className="text-xs font-normal text-purple-500">cm</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {item.size || '-'} / {item.color || '-'}
-                    {item.gender && <span className="ml-1">({item.gender})</span>}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {item.quantity}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatCurrency(item.unit_price)}
-                  </td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">
-                    {formatCurrency(item.subtotal)}
-                  </td>
-                </tr>
-              ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -437,6 +603,109 @@ export default function OrderDetail() {
           </div>
         </div>
       </div>
+
+      {/* Yomber Items Summary - Detailed measurements view */}
+      {order.items.some(item =>
+        item.custom_measurements &&
+        typeof item.custom_measurements === 'object' &&
+        Object.keys(item.custom_measurements).length > 0
+      ) && (
+        <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg shadow-sm overflow-hidden">
+          <div className="p-4 bg-purple-100 border-b border-purple-200">
+            <h2 className="text-lg font-semibold text-purple-800 flex items-center">
+              <Ruler className="w-5 h-5 mr-2" />
+              Resumen de Yombers - Medidas Personalizadas
+            </h2>
+            <p className="text-sm text-purple-600 mt-1">
+              Detalle de medidas para confección de prendas sobre-medida
+            </p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {order.items.filter(item =>
+              item.custom_measurements &&
+              typeof item.custom_measurements === 'object' &&
+              Object.keys(item.custom_measurements).length > 0
+            ).map((item) => (
+              <div key={item.id} className="bg-white rounded-lg p-4 border border-purple-200">
+                {/* Item Header */}
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-purple-100">
+                  <div>
+                    <h3 className="font-semibold text-purple-800">{item.garment_type_name}</h3>
+                    <p className="text-sm text-purple-600">
+                      {item.size && `Talla: ${item.size}`}
+                      {item.color && ` | Color: ${item.color}`}
+                      {item.gender && ` | ${item.gender === 'male' ? 'Hombre' : item.gender === 'female' ? 'Mujer' : 'Unisex'}`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm text-gray-500">Cantidad:</span>
+                    <span className="ml-1 font-bold text-purple-800">{item.quantity}</span>
+                  </div>
+                </div>
+
+                {/* Measurements Grid - 4 obligatorias primero */}
+                <div className="space-y-3">
+                  {/* Required measurements (highlighted) */}
+                  <div>
+                    <p className="text-xs text-purple-500 uppercase font-medium mb-2">Medidas Principales</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {['delantero', 'trasero', 'cintura', 'largo'].map(key => {
+                        const value = item.custom_measurements![key];
+                        if (value === undefined) return null;
+                        return (
+                          <div key={key} className="bg-purple-100 rounded-lg px-3 py-2 text-center">
+                            <span className="text-xs text-purple-600 block font-medium">
+                              {measurementLabels[key]}
+                            </span>
+                            <span className="text-xl font-bold text-purple-800">
+                              {value}
+                            </span>
+                            <span className="text-xs text-purple-500 ml-1">cm</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Optional measurements */}
+                  {Object.entries(item.custom_measurements!).filter(([key]) =>
+                    !['delantero', 'trasero', 'cintura', 'largo'].includes(key)
+                  ).length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase font-medium mb-2">Medidas Adicionales</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                        {Object.entries(item.custom_measurements!)
+                          .filter(([key]) => !['delantero', 'trasero', 'cintura', 'largo'].includes(key))
+                          .map(([key, value]) => (
+                            <div key={key} className="bg-gray-100 rounded-lg px-2 py-1.5 text-center">
+                              <span className="text-xs text-gray-500 block">
+                                {measurementLabels[key] || key}
+                              </span>
+                              <span className="text-sm font-bold text-gray-800">
+                                {value} <span className="text-xs font-normal">cm</span>
+                              </span>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes for this item */}
+                {item.notes && (
+                  <div className="mt-3 pt-2 border-t border-purple-100">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Notas:</span> {item.notes}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Notes */}
       {order.notes && (

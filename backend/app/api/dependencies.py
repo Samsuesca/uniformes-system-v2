@@ -360,3 +360,43 @@ def can_delete_records(role: UserRole | None) -> bool:
     if role is None:
         return False
     return ROLE_HIERARCHY.get(role, 0) >= ROLE_HIERARCHY[UserRole.ADMIN]
+
+
+async def require_any_school_admin(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)]
+) -> User:
+    """
+    Dependency to verify user is ADMIN in at least one school.
+
+    Used for global accounting operations that affect the entire business.
+    Superusers always pass this check.
+
+    Returns:
+        Current user if authorized
+
+    Raises:
+        HTTPException: 403 if user is not admin in any school
+    """
+    # Superusers bypass all role checks
+    if current_user.is_superuser:
+        return current_user
+
+    from app.services.user import UserService
+    user_service = UserService(db)
+
+    user_roles = await user_service.get_user_schools(current_user.id)
+
+    # Check if user has ADMIN or higher in any school
+    has_admin = any(
+        ROLE_HIERARCHY.get(r.role, 0) >= ROLE_HIERARCHY[UserRole.ADMIN]
+        for r in user_roles
+    )
+
+    if not has_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires ADMIN role in at least one school"
+        )
+
+    return current_user

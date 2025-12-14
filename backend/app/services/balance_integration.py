@@ -4,6 +4,11 @@ Balance Integration Service
 Integra transacciones con cuentas del balance general.
 Cuando se crea una transacción, automáticamente actualiza
 la cuenta correspondiente (Caja para efectivo, Banco para transferencias).
+
+ARQUITECTURA GLOBAL:
+- Las cuentas Caja y Banco son GLOBALES (school_id = NULL)
+- El dinero de todas las ventas va a la misma Caja/Banco
+- Las transacciones mantienen school_id para reportes por colegio
 """
 from uuid import UUID
 from decimal import Decimal
@@ -19,21 +24,20 @@ from app.models.accounting import (
     BalanceEntry,
     AccountType
 )
-from app.models.school import School
 
 
-# Códigos estándar de contabilidad para cuentas default
+# Códigos estándar de contabilidad para cuentas default GLOBALES
 DEFAULT_ACCOUNTS = {
     "caja": {
-        "name": "Caja",
+        "name": "Caja General",
         "code": "1101",
-        "description": "Efectivo en caja",
+        "description": "Efectivo en caja (global del negocio)",
         "account_type": AccountType.ASSET_CURRENT
     },
     "banco": {
-        "name": "Banco",
+        "name": "Banco General",
         "code": "1102",
-        "description": "Cuentas bancarias",
+        "description": "Cuentas bancarias (global del negocio)",
         "account_type": AccountType.ASSET_CURRENT
     }
 }
@@ -52,8 +56,12 @@ class BalanceIntegrationService:
     """
     Servicio para integrar transacciones con cuentas del balance.
 
+    IMPORTANTE: Las cuentas Caja y Banco son GLOBALES (school_id = NULL).
+    Esto significa que todas las ventas de todos los colegios van a la misma
+    Caja/Banco del negocio.
+
     Responsabilidades:
-    - Crear cuentas default (Caja, Banco) para cada colegio
+    - Crear cuentas globales (Caja, Banco) si no existen
     - Mapear payment_method a la cuenta correspondiente
     - Actualizar saldos de cuentas al crear transacciones
     - Crear entradas de auditoría (BalanceEntry)
@@ -62,16 +70,16 @@ class BalanceIntegrationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_or_create_default_accounts(
+    async def get_or_create_global_accounts(
         self,
-        school_id: UUID,
         created_by: UUID | None = None
     ) -> dict[str, UUID]:
         """
-        Obtiene o crea las cuentas default (Caja, Banco) para un colegio.
+        Obtiene o crea las cuentas globales (Caja, Banco).
+
+        Estas cuentas tienen school_id = NULL (son del negocio, no de un colegio).
 
         Args:
-            school_id: ID del colegio
             created_by: ID del usuario que crea las cuentas
 
         Returns:
@@ -81,10 +89,10 @@ class BalanceIntegrationService:
         accounts_map = {}
 
         for account_key, account_config in DEFAULT_ACCOUNTS.items():
-            # Buscar cuenta existente por código
+            # Buscar cuenta global existente (school_id IS NULL)
             result = await self.db.execute(
                 select(BalanceAccount).where(
-                    BalanceAccount.school_id == school_id,
+                    BalanceAccount.school_id.is_(None),  # Global account
                     BalanceAccount.code == account_config["code"],
                     BalanceAccount.is_active == True
                 )
@@ -92,9 +100,9 @@ class BalanceIntegrationService:
             account = result.scalar_one_or_none()
 
             if not account:
-                # Crear cuenta si no existe
+                # Crear cuenta global si no existe
                 account = BalanceAccount(
-                    school_id=school_id,
+                    school_id=None,  # Global account
                     account_type=account_config["account_type"],
                     name=account_config["name"],
                     code=account_config["code"],
@@ -108,21 +116,35 @@ class BalanceIntegrationService:
 
             accounts_map[account_key] = account.id
 
-        # Guardar mapping en school.settings para referencia rápida
-        await self._update_school_account_mapping(school_id, accounts_map)
-
         return accounts_map
+
+    async def get_global_account(self, code: str) -> BalanceAccount | None:
+        """
+        Obtiene una cuenta global por su código.
+
+        Args:
+            code: Código de la cuenta (ej: "1101" para Caja)
+
+        Returns:
+            BalanceAccount o None si no existe
+        """
+        result = await self.db.execute(
+            select(BalanceAccount).where(
+                BalanceAccount.code == code,
+                BalanceAccount.school_id.is_(None),  # Global account
+                BalanceAccount.is_active == True
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_account_for_payment_method(
         self,
-        school_id: UUID,
         payment_method: AccPaymentMethod
     ) -> UUID | None:
         """
-        Obtiene el ID de la cuenta de balance para un método de pago.
+        Obtiene el ID de la cuenta global para un método de pago.
 
         Args:
-            school_id: ID del colegio
             payment_method: Método de pago (CASH, TRANSFER, etc.)
 
         Returns:
@@ -133,20 +155,14 @@ class BalanceIntegrationService:
         if account_key is None:
             return None
 
-        # Primero intentar obtener del school.settings (más rápido)
-        result = await self.db.execute(
-            select(School).where(School.id == school_id)
-        )
-        school = result.scalar_one_or_none()
+        account_code = DEFAULT_ACCOUNTS[account_key]["code"]
+        account = await self.get_global_account(account_code)
 
-        if school and school.settings:
-            mapping = school.settings.get("payment_account_mapping", {})
-            account_id = mapping.get(account_key)
-            if account_id:
-                return UUID(account_id) if isinstance(account_id, str) else account_id
+        if account:
+            return account.id
 
-        # Si no hay mapping, crear cuentas default
-        accounts_map = await self.get_or_create_default_accounts(school_id)
+        # Si no existe, crear cuentas globales
+        accounts_map = await self.get_or_create_global_accounts()
         return accounts_map.get(account_key)
 
     async def apply_transaction_to_balance(
@@ -155,12 +171,12 @@ class BalanceIntegrationService:
         created_by: UUID | None = None
     ) -> BalanceEntry | None:
         """
-        Aplica el efecto de una transacción a la cuenta de balance correspondiente.
+        Aplica el efecto de una transacción a la cuenta de balance global.
 
-        - INCOME con CASH -> +amount a Caja
-        - INCOME con TRANSFER -> +amount a Banco
-        - EXPENSE con CASH -> -amount de Caja
-        - EXPENSE con TRANSFER -> -amount de Banco
+        - INCOME con CASH -> +amount a Caja Global
+        - INCOME con TRANSFER -> +amount a Banco Global
+        - EXPENSE con CASH -> -amount de Caja Global
+        - EXPENSE con TRANSFER -> -amount de Banco Global
         - CREDIT -> No afecta cuentas (retorna None)
 
         Args:
@@ -174,9 +190,8 @@ class BalanceIntegrationService:
         if transaction.payment_method == AccPaymentMethod.CREDIT:
             return None
 
-        # Obtener cuenta destino
+        # Obtener cuenta global destino
         account_id = await self.get_account_for_payment_method(
-            transaction.school_id,
             transaction.payment_method
         )
 
@@ -211,14 +226,15 @@ class BalanceIntegrationService:
         transaction.balance_account_id = account_id
 
         # Crear BalanceEntry para auditoría
+        # school_id en entry puede ser NULL (global) o el school_id de la transacción
         entry = BalanceEntry(
             account_id=account_id,
-            school_id=transaction.school_id,  # Required field
+            school_id=transaction.school_id,  # Puede ser NULL o UUID (para reportes)
             entry_date=transaction.transaction_date,
             amount=delta,
             balance_after=new_balance,
             description=f"Auto: {transaction.description}",
-            reference=transaction.reference_code,  # BalanceEntry uses 'reference' not 'reference_code'
+            reference=transaction.reference_code,
             created_by=created_by
         )
         self.db.add(entry)
@@ -267,12 +283,12 @@ class BalanceIntegrationService:
         from_account.balance -= amount
         entry_from = BalanceEntry(
             account_id=from_account_id,
-            school_id=transaction.school_id,  # Required field
+            school_id=None,  # Transferencias son globales
             entry_date=transaction.transaction_date,
             amount=-amount,
             balance_after=from_account.balance,
             description=f"Transferencia a {to_account.name}: {transaction.description}",
-            reference=transaction.reference_code,  # BalanceEntry uses 'reference'
+            reference=transaction.reference_code,
             created_by=created_by
         )
         self.db.add(entry_from)
@@ -281,12 +297,12 @@ class BalanceIntegrationService:
         to_account.balance += amount
         entry_to = BalanceEntry(
             account_id=to_account_id,
-            school_id=transaction.school_id,  # Required field
+            school_id=None,  # Transferencias son globales
             entry_date=transaction.transaction_date,
             amount=amount,
             balance_after=to_account.balance,
             description=f"Transferencia desde {from_account.name}: {transaction.description}",
-            reference=transaction.reference_code,  # BalanceEntry uses 'reference'
+            reference=transaction.reference_code,
             created_by=created_by
         )
         self.db.add(entry_to)
@@ -299,12 +315,9 @@ class BalanceIntegrationService:
 
         return entry_from, entry_to
 
-    async def get_cash_balances(self, school_id: UUID) -> dict:
+    async def get_global_cash_balances(self) -> dict:
         """
-        Obtiene los saldos actuales de Caja y Banco.
-
-        Args:
-            school_id: ID del colegio
+        Obtiene los saldos actuales globales de Caja y Banco.
 
         Returns:
             Dict con información de saldos:
@@ -314,8 +327,8 @@ class BalanceIntegrationService:
                 "total_liquid": Decimal
             }
         """
-        # Obtener cuentas default
-        accounts_map = await self.get_or_create_default_accounts(school_id)
+        # Obtener/crear cuentas globales
+        accounts_map = await self.get_or_create_global_accounts()
 
         result = {
             "caja": None,
@@ -341,49 +354,33 @@ class BalanceIntegrationService:
 
         return result
 
-    async def _update_school_account_mapping(
-        self,
-        school_id: UUID,
-        accounts_map: dict[str, UUID]
-    ) -> None:
+    # Legacy method for backwards compatibility
+    async def get_cash_balances(self, school_id: UUID | None = None) -> dict:
         """
-        Actualiza el mapping de cuentas en school.settings.
+        Obtiene los saldos de Caja y Banco.
+
+        NOTA: school_id se ignora - siempre retorna saldos globales.
+        Este método existe por compatibilidad con código existente.
 
         Args:
-            school_id: ID del colegio
-            accounts_map: Dict {tipo: uuid}
+            school_id: Ignorado (compatibilidad)
+
+        Returns:
+            Dict con saldos globales
         """
-        result = await self.db.execute(
-            select(School).where(School.id == school_id)
-        )
-        school = result.scalar_one_or_none()
+        return await self.get_global_cash_balances()
 
-        if school:
-            settings = school.settings or {}
-
-            # Convertir UUIDs a strings para JSON
-            string_map = {k: str(v) for k, v in accounts_map.items()}
-
-            settings["payment_account_mapping"] = string_map
-            settings["default_cash_account_id"] = string_map.get("caja")
-            settings["default_bank_account_id"] = string_map.get("banco")
-
-            school.settings = settings
-            await self.db.flush()
-
-    async def initialize_default_accounts_for_school(
+    async def initialize_global_accounts(
         self,
-        school_id: UUID,
         caja_initial_balance: Decimal = Decimal("0"),
         banco_initial_balance: Decimal = Decimal("0"),
         created_by: UUID | None = None
     ) -> dict[str, UUID]:
         """
-        Inicializa las cuentas default con saldos iniciales.
+        Inicializa las cuentas globales con saldos iniciales.
         Útil para configuración inicial del sistema.
 
         Args:
-            school_id: ID del colegio
             caja_initial_balance: Saldo inicial de Caja
             banco_initial_balance: Saldo inicial de Banco
             created_by: ID del usuario
@@ -400,10 +397,10 @@ class BalanceIntegrationService:
                 else Decimal("0")
             )
 
-            # Buscar cuenta existente
+            # Buscar cuenta global existente
             result = await self.db.execute(
                 select(BalanceAccount).where(
-                    BalanceAccount.school_id == school_id,
+                    BalanceAccount.school_id.is_(None),  # Global
                     BalanceAccount.code == account_config["code"]
                 )
             )
@@ -413,9 +410,9 @@ class BalanceIntegrationService:
                 # Actualizar balance si ya existe
                 account.balance = initial_balance
             else:
-                # Crear nueva cuenta
+                # Crear nueva cuenta global
                 account = BalanceAccount(
-                    school_id=school_id,
+                    school_id=None,  # Global
                     account_type=account_config["account_type"],
                     name=account_config["name"],
                     code=account_config["code"],
@@ -433,6 +430,7 @@ class BalanceIntegrationService:
             if initial_balance != Decimal("0"):
                 entry = BalanceEntry(
                     account_id=account.id,
+                    school_id=None,  # Global entry
                     entry_date=date.today(),
                     amount=initial_balance,
                     balance_after=initial_balance,
@@ -441,7 +439,156 @@ class BalanceIntegrationService:
                 )
                 self.db.add(entry)
 
-        await self._update_school_account_mapping(school_id, accounts_map)
         await self.db.flush()
 
         return accounts_map
+
+    # Legacy method - redirects to global
+    async def get_or_create_default_accounts(
+        self,
+        school_id: UUID | None = None,
+        created_by: UUID | None = None
+    ) -> dict[str, UUID]:
+        """
+        Legacy method - redirects to get_or_create_global_accounts.
+
+        NOTA: school_id se ignora - siempre usa cuentas globales.
+        """
+        return await self.get_or_create_global_accounts(created_by)
+
+    # Legacy method - redirects to global
+    async def initialize_default_accounts_for_school(
+        self,
+        school_id: UUID | None = None,
+        caja_initial_balance: Decimal = Decimal("0"),
+        banco_initial_balance: Decimal = Decimal("0"),
+        created_by: UUID | None = None
+    ) -> dict[str, UUID]:
+        """
+        Legacy method - redirects to initialize_global_accounts.
+
+        NOTA: school_id se ignora - siempre usa cuentas globales.
+        """
+        return await self.initialize_global_accounts(
+            caja_initial_balance,
+            banco_initial_balance,
+            created_by
+        )
+
+    async def record_expense_payment(
+        self,
+        amount: Decimal,
+        payment_method: AccPaymentMethod,
+        description: str,
+        created_by: UUID | None = None
+    ) -> BalanceEntry | None:
+        """
+        Registra el pago de un gasto (reduce Caja o Banco).
+
+        Args:
+            amount: Monto del pago
+            payment_method: Método de pago (CASH -> Caja, TRANSFER/CARD -> Banco)
+            description: Descripción del pago
+            created_by: ID del usuario
+
+        Returns:
+            BalanceEntry creado, o None si no aplica (ej: CREDIT)
+        """
+        # CREDIT no afecta cuentas
+        if payment_method == AccPaymentMethod.CREDIT:
+            return None
+
+        # Obtener cuenta según método de pago
+        account_id = await self.get_account_for_payment_method(payment_method)
+
+        if not account_id:
+            return None
+
+        # Obtener cuenta
+        result = await self.db.execute(
+            select(BalanceAccount).where(BalanceAccount.id == account_id)
+        )
+        account = result.scalar_one_or_none()
+
+        if not account:
+            return None
+
+        # Restar del balance (gasto = dinero sale)
+        new_balance = account.balance - amount
+        account.balance = new_balance
+
+        # Crear BalanceEntry para auditoría
+        entry = BalanceEntry(
+            account_id=account_id,
+            school_id=None,  # Pagos de gastos son globales
+            entry_date=date.today(),
+            amount=-amount,
+            balance_after=new_balance,
+            description=description,
+            created_by=created_by
+        )
+        self.db.add(entry)
+
+        await self.db.flush()
+
+        return entry
+
+    async def record_income(
+        self,
+        amount: Decimal,
+        payment_method: AccPaymentMethod,
+        description: str,
+        school_id: UUID | None = None,
+        created_by: UUID | None = None
+    ) -> BalanceEntry | None:
+        """
+        Registra un ingreso (aumenta Caja o Banco).
+
+        Args:
+            amount: Monto del ingreso
+            payment_method: Método de pago (CASH -> Caja, TRANSFER/CARD -> Banco)
+            description: Descripción del ingreso
+            school_id: ID del colegio (para reportes, la cuenta es global)
+            created_by: ID del usuario
+
+        Returns:
+            BalanceEntry creado, o None si no aplica (ej: CREDIT)
+        """
+        # CREDIT no afecta cuentas
+        if payment_method == AccPaymentMethod.CREDIT:
+            return None
+
+        # Obtener cuenta según método de pago
+        account_id = await self.get_account_for_payment_method(payment_method)
+
+        if not account_id:
+            return None
+
+        # Obtener cuenta
+        result = await self.db.execute(
+            select(BalanceAccount).where(BalanceAccount.id == account_id)
+        )
+        account = result.scalar_one_or_none()
+
+        if not account:
+            return None
+
+        # Sumar al balance (ingreso = dinero entra)
+        new_balance = account.balance + amount
+        account.balance = new_balance
+
+        # Crear BalanceEntry para auditoría
+        entry = BalanceEntry(
+            account_id=account_id,
+            school_id=school_id,  # Para reportes por colegio
+            entry_date=date.today(),
+            amount=amount,
+            balance_after=new_balance,
+            description=description,
+            created_by=created_by
+        )
+        self.db.add(entry)
+
+        await self.db.flush()
+
+        return entry
