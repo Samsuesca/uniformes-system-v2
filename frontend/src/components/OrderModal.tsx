@@ -5,13 +5,13 @@
  * - Custom: Manual price for special items
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, User, ShoppingBag, Ruler, Settings } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings } from 'lucide-react';
 import DatePicker from './DatePicker';
+import ClientSelector from './ClientSelector';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
-import { clientService } from '../services/clientService';
 import YomberMeasurementsForm, { validateYomberMeasurements } from './YomberMeasurementsForm';
-import type { GarmentType, Client, OrderItemCreate, Product, OrderType, YomberMeasurements } from '../types/api';
+import type { GarmentType, OrderItemCreate, Product, OrderType, YomberMeasurements } from '../types/api';
 
 interface OrderModalProps {
   isOpen: boolean;
@@ -38,7 +38,6 @@ export default function OrderModal({
   const [loadingData, setLoadingData] = useState(true);
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Form state
@@ -96,14 +95,12 @@ export default function OrderModal({
   const loadData = async () => {
     try {
       setLoadingData(true);
-      const [garmentTypesData, productsData, clientsData] = await Promise.all([
+      const [garmentTypesData, productsData] = await Promise.all([
         productService.getGarmentTypes(schoolId),
         productService.getProducts(schoolId),
-        clientService.getClients(schoolId)
       ]);
       setGarmentTypes(garmentTypesData);
       setProducts(productsData);
-      setClients(clientsData);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError('Error al cargar datos');
@@ -378,22 +375,15 @@ export default function OrderModal({
               {/* Client Selection */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <User className="w-4 h-4 inline mr-1" />
                   Cliente *
                 </label>
-                <select
+                <ClientSelector
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                >
-                  <option value="">Selecciona un cliente</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name} {client.student_name ? `(${client.student_name})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => setClientId(id)}
+                  schoolId={schoolId}
+                  allowNoClient={false}
+                  placeholder="Buscar cliente por nombre, teléfono..."
+                />
               </div>
 
               {/* Delivery Date */}

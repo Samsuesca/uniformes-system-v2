@@ -2,14 +2,11 @@
  * Sale Modal - Create New Sale Form
  */
 import { useState, useEffect } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserPlus, UserX, Calendar, History } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
-import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
-import type { Client, Product, GlobalProduct } from '../types/api';
-
-// Special value for "No Client" option
-const NO_CLIENT_ID = '__NO_CLIENT__';
+import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
+import type { Product, GlobalProduct } from '../types/api';
 
 interface SaleModalProps {
   isOpen: boolean;
@@ -26,20 +23,10 @@ interface SaleItemCreateExtended extends SaleItemCreate {
 
 export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: SaleModalProps) {
   const [loading, setLoading] = useState(false);
-  const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [productSource, setProductSource] = useState<'school' | 'global'>('school');
-
-  // Quick client creation
-  const [showQuickClient, setShowQuickClient] = useState(false);
-  const [quickClientLoading, setQuickClientLoading] = useState(false);
-  const [quickClientData, setQuickClientData] = useState({
-    name: '',
-    phone: '',
-    student_name: '',
-  });
 
   const [formData, setFormData] = useState({
     client_id: '',
@@ -63,7 +50,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
 
   useEffect(() => {
     if (isOpen) {
-      loadClientsAndProducts();
+      loadProducts();
       resetForm();
     }
   }, [isOpen]);
@@ -87,54 +74,20 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
       is_global: false,
     });
     setProductSource('school');
-    setShowQuickClient(false);
-    setQuickClientData({ name: '', phone: '', student_name: '' });
     setError(null);
   };
 
-  // Handle quick client creation
-  const handleCreateQuickClient = async () => {
-    if (!quickClientData.name.trim()) {
-      setError('El nombre del cliente es requerido');
-      return;
-    }
-
-    setQuickClientLoading(true);
-    setError(null);
-
+  const loadProducts = async () => {
     try {
-      const newClient = await clientService.createClient(schoolId, {
-        name: quickClientData.name.trim(),
-        phone: quickClientData.phone.trim() || undefined,
-        student_name: quickClientData.student_name.trim() || undefined,
-      });
-
-      // Add new client to the list and select it
-      setClients([newClient, ...clients]);
-      setFormData({ ...formData, client_id: newClient.id });
-      setShowQuickClient(false);
-      setQuickClientData({ name: '', phone: '', student_name: '' });
-    } catch (err: any) {
-      console.error('Error creating client:', err);
-      setError(err.response?.data?.detail || 'Error al crear el cliente');
-    } finally {
-      setQuickClientLoading(false);
-    }
-  };
-
-  const loadClientsAndProducts = async () => {
-    try {
-      const [clientsData, productsData, globalProductsData] = await Promise.all([
-        clientService.getClients(schoolId),
+      const [productsData, globalProductsData] = await Promise.all([
         productService.getProducts(schoolId),
         productService.getGlobalProducts(true),
       ]);
-      setClients(clientsData);
       setProducts(productsData);
       setGlobalProducts(globalProductsData);
     } catch (err: any) {
-      console.error('Error loading data:', err);
-      setError('Error al cargar clientes y productos');
+      console.error('Error loading products:', err);
+      setError('Error al cargar productos');
     }
   };
 
@@ -364,35 +317,13 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Cliente
                 </label>
-                <div className="flex gap-2">
-                  <select
-                    value={formData.client_id}
-                    onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  >
-                    <option value="">Selecciona un cliente</option>
-                    <option value={NO_CLIENT_ID} className="text-gray-500 italic">
-                      ❌ Sin Cliente (Venta Rápida)
-                    </option>
-                    {clients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.name} {client.student_name ? `(${client.student_name})` : ''} - {client.code}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowQuickClient(!showQuickClient)}
-                    className={`px-3 py-2 rounded-lg transition flex items-center ${
-                      showQuickClient
-                        ? 'bg-red-100 text-red-600 hover:bg-red-200'
-                        : 'bg-green-100 text-green-600 hover:bg-green-200'
-                    }`}
-                    title={showQuickClient ? 'Cancelar' : 'Crear cliente nuevo'}
-                  >
-                    {showQuickClient ? <X className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
-                  </button>
-                </div>
+                <ClientSelector
+                  value={formData.client_id}
+                  onChange={(clientId) => setFormData({ ...formData, client_id: clientId })}
+                  schoolId={schoolId}
+                  allowNoClient={true}
+                  placeholder="Buscar cliente por nombre, teléfono..."
+                />
                 {formData.client_id === NO_CLIENT_ID && (
                   <p className="mt-1 text-xs text-orange-600 flex items-center">
                     <UserX className="w-3 h-3 mr-1" />
@@ -517,74 +448,6 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                 </div>
               )}
             </div>
-
-            {/* Quick Client Creation Form */}
-            {showQuickClient && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <h4 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Crear Cliente Rápido
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Nombre del Cliente *
-                    </label>
-                    <input
-                      type="text"
-                      value={quickClientData.name}
-                      onChange={(e) => setQuickClientData({ ...quickClientData, name: e.target.value })}
-                      placeholder="Ej: María García"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Teléfono
-                    </label>
-                    <input
-                      type="text"
-                      value={quickClientData.phone}
-                      onChange={(e) => setQuickClientData({ ...quickClientData, phone: e.target.value })}
-                      placeholder="Ej: 3001234567"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Nombre del Estudiante
-                    </label>
-                    <input
-                      type="text"
-                      value={quickClientData.student_name}
-                      onChange={(e) => setQuickClientData({ ...quickClientData, student_name: e.target.value })}
-                      placeholder="Ej: Juanito García"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleCreateQuickClient}
-                    disabled={quickClientLoading || !quickClientData.name.trim()}
-                    className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-50 flex items-center"
-                  >
-                    {quickClientLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Creando...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Crear y Seleccionar
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Add Product Section */}
             <div className="border-t border-gray-200 pt-6 mb-6">
