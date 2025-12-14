@@ -3,6 +3,7 @@
  *
  * Features:
  * - Real-time search as you type
+ * - Fuzzy search with typo tolerance (María = Maria = maria)
  * - Quick client creation inline
  * - Option for "No client" sales
  * - Shows client info (name, phone, student)
@@ -11,6 +12,119 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, UserPlus, UserX, X, Loader2, User, Phone, GraduationCap, Check } from 'lucide-react';
 import { clientService } from '../services/clientService';
 import type { Client } from '../types/api';
+
+// =============================================================================
+// Fuzzy Search Utilities
+// =============================================================================
+
+/**
+ * Normalize text for comparison:
+ * - Remove accents (María -> Maria)
+ * - Lowercase
+ * - Handle common letter substitutions (v/b, s/c/z, etc.)
+ */
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    // Remove accents
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // Common Spanish substitutions
+    .replace(/v/g, 'b')  // v -> b (berta = verta)
+    .replace(/z/g, 's')  // z -> s (gonzalez = gonsales)
+    .replace(/c(?=[ei])/g, 's')  // ce, ci -> se, si (cecilia = sesilia)
+    .replace(/qu/g, 'k')  // qu -> k
+    .replace(/ll/g, 'y')  // ll -> y
+    .replace(/ñ/g, 'n')  // ñ -> n (already handled by NFD but just in case)
+    .replace(/[^a-z0-9\s]/g, '') // Remove special chars
+    .trim();
+}
+
+/**
+ * Calculate Levenshtein distance between two strings
+ * Returns the minimum number of edits needed to transform s1 into s2
+ */
+function levenshteinDistance(s1: string, s2: string): number {
+  const m = s1.length;
+  const n = s2.length;
+
+  // Create matrix
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  // Initialize first row and column
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  // Fill matrix
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(
+          dp[i - 1][j],     // deletion
+          dp[i][j - 1],     // insertion
+          dp[i - 1][j - 1]  // substitution
+        );
+      }
+    }
+  }
+
+  return dp[m][n];
+}
+
+/**
+ * Calculate similarity score between query and text (0-1)
+ * Higher is better match
+ */
+function calculateSimilarity(query: string, text: string): number {
+  const normalizedQuery = normalizeText(query);
+  const normalizedText = normalizeText(text);
+
+  // Exact match after normalization
+  if (normalizedText.includes(normalizedQuery)) {
+    return 1;
+  }
+
+  // Check if any word starts with query
+  const words = normalizedText.split(/\s+/);
+  for (const word of words) {
+    if (word.startsWith(normalizedQuery)) {
+      return 0.95;
+    }
+  }
+
+  // Calculate Levenshtein-based similarity for each word
+  let bestScore = 0;
+  for (const word of words) {
+    // Only compare if lengths are somewhat similar (avoid comparing "a" with "alejandro")
+    if (Math.abs(word.length - normalizedQuery.length) <= Math.max(3, normalizedQuery.length * 0.5)) {
+      const distance = levenshteinDistance(normalizedQuery, word);
+      const maxLen = Math.max(normalizedQuery.length, word.length);
+      const similarity = 1 - (distance / maxLen);
+
+      // Only accept if similarity is above threshold
+      if (similarity > 0.6) {
+        bestScore = Math.max(bestScore, similarity * 0.9); // Cap at 0.9 for fuzzy matches
+      }
+    }
+  }
+
+  // Also check against full text (for multi-word queries)
+  if (normalizedQuery.length >= 3) {
+    const fullDistance = levenshteinDistance(normalizedQuery, normalizedText.substring(0, normalizedQuery.length + 3));
+    const similarity = 1 - (fullDistance / Math.max(normalizedQuery.length, normalizedText.length));
+    if (similarity > 0.7) {
+      bestScore = Math.max(bestScore, similarity * 0.85);
+    }
+  }
+
+  return bestScore;
+}
+
+interface ClientWithScore extends Client {
+  _searchScore: number;
+}
 
 // Special value for "No Client" option
 export const NO_CLIENT_ID = '__NO_CLIENT__';
@@ -84,7 +198,7 @@ export default function ClientSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter clients when search query changes
+  // Filter clients when search query changes (with fuzzy matching)
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -92,12 +206,33 @@ export default function ClientSelector({
 
     searchTimeoutRef.current = setTimeout(() => {
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const filtered = clients.filter(client =>
-          client.name.toLowerCase().includes(query) ||
-          client.phone?.toLowerCase().includes(query) ||
-          client.student_name?.toLowerCase().includes(query)
-        );
+        const query = searchQuery.trim();
+
+        // Calculate similarity scores for each client
+        const scored: ClientWithScore[] = clients.map(client => {
+          // Check phone first (exact match only for phone)
+          if (client.phone?.includes(query)) {
+            return { ...client, _searchScore: 1 };
+          }
+
+          // Calculate fuzzy similarity for name and student_name
+          const nameScore = calculateSimilarity(query, client.name);
+          const studentScore = client.student_name
+            ? calculateSimilarity(query, client.student_name)
+            : 0;
+
+          return {
+            ...client,
+            _searchScore: Math.max(nameScore, studentScore)
+          };
+        });
+
+        // Filter by minimum score threshold and sort by score
+        const filtered = scored
+          .filter(c => c._searchScore >= 0.5) // Minimum 50% similarity
+          .sort((a, b) => b._searchScore - a._searchScore)
+          .slice(0, 50);
+
         setFilteredClients(filtered);
       } else {
         setFilteredClients(clients.slice(0, 50)); // Show first 50 by default
