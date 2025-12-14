@@ -789,6 +789,7 @@ class AccountsReceivableService(SchoolIsolatedService[AccountsReceivable]):
             school_id=data.school_id,
             client_id=data.client_id,
             sale_id=data.sale_id,
+            order_id=data.order_id,
             amount=data.amount,
             description=data.description,
             invoice_date=data.invoice_date,
@@ -800,6 +801,20 @@ class AccountsReceivableService(SchoolIsolatedService[AccountsReceivable]):
         await self.db.flush()
         await self.db.refresh(receivable)
         return receivable
+
+    async def get_by_order(
+        self,
+        order_id: UUID,
+        school_id: UUID
+    ) -> AccountsReceivable | None:
+        """Get accounts receivable by order_id"""
+        result = await self.db.execute(
+            select(AccountsReceivable).where(
+                AccountsReceivable.order_id == order_id,
+                AccountsReceivable.school_id == school_id
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def record_payment(
         self,

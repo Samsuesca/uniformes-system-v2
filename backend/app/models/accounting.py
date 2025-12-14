@@ -526,6 +526,12 @@ class AccountsReceivable(Base):
         ForeignKey("sales.id", ondelete="SET NULL"),
         nullable=True
     )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
 
     # Receivable details
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
@@ -567,6 +573,7 @@ class AccountsReceivable(Base):
     school: Mapped["School"] = relationship()
     client: Mapped["Client | None"] = relationship()
     sale: Mapped["Sale | None"] = relationship()
+    order: Mapped["Order | None"] = relationship()
 
     @property
     def balance(self) -> Decimal:

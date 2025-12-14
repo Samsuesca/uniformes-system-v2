@@ -410,6 +410,7 @@ class AccountsReceivableCreate(AccountsReceivableBase, SchoolIsolatedSchema):
     """Schema for creating accounts receivable"""
     client_id: UUID | None = None
     sale_id: UUID | None = None
+    order_id: UUID | None = None
 
 
 class AccountsReceivableUpdate(BaseSchema):
@@ -430,6 +431,7 @@ class AccountsReceivableInDB(AccountsReceivableBase, SchoolIsolatedSchema, IDMod
     """Accounts receivable as stored in database"""
     client_id: UUID | None
     sale_id: UUID | None
+    order_id: UUID | None
     amount_paid: Decimal
     is_paid: bool
     is_overdue: bool

@@ -311,13 +311,14 @@ async def add_order_payment(
     school_id: UUID,
     order_id: UUID,
     payment_data: OrderPayment,
-    db: DatabaseSession
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
     """Add payment to order (requires SELLER role)"""
     order_service = OrderService(db)
 
     try:
-        order = await order_service.add_payment(order_id, school_id, payment_data)
+        order = await order_service.add_payment(order_id, school_id, payment_data, current_user.id)
 
         if not order:
             raise HTTPException(

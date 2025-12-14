@@ -1,8 +1,14 @@
 """
 Order Service (Encargos)
+
+Contabilidad de Encargos:
+- Sin IVA (tax = 0, total = subtotal)
+- Al crear con anticipo: registra transacción de ingreso + cuenta por cobrar
+- Al agregar abono: registra transacción de ingreso + actualiza cuenta por cobrar
+- Cuando se cancela totalmente: la cuenta por cobrar queda saldada
 """
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +16,9 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import GarmentType, Product
+from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
 from app.schemas.order import OrderCreate, OrderUpdate, OrderPayment
+from app.schemas.accounting import AccountsReceivableCreate
 from app.services.base import SchoolIsolatedService
 
 # Required measurements for yomber orders
@@ -145,16 +153,16 @@ class OrderService(SchoolIsolatedService[Order]):
 
             subtotal += item_subtotal
 
-        # Calculate tax (19% IVA)
-        tax_rate = Decimal("0.19")
-        tax = subtotal * tax_rate
-        total = subtotal + tax
+        # Sin IVA para encargos (tax = 0)
+        tax = Decimal("0")
+        total = subtotal
 
-        # Determine paid amount
+        # Determine paid amount (anticipo)
         paid_amount = order_data.advance_payment or Decimal("0")
+        payment_method = getattr(order_data, 'payment_method', None) or AccPaymentMethod.CASH
 
         # Create order
-        order_dict = order_data.model_dump(exclude={'items', 'advance_payment'})
+        order_dict = order_data.model_dump(exclude={'items', 'advance_payment', 'payment_method'})
         order_dict.update({
             "code": code,
             "user_id": user_id,
@@ -175,6 +183,40 @@ class OrderService(SchoolIsolatedService[Order]):
             item_dict["order_id"] = order.id
             order_item = OrderItem(**item_dict)
             self.db.add(order_item)
+
+        await self.db.flush()
+
+        # === CONTABILIDAD ===
+        # Si hay anticipo, crear transacción de ingreso
+        if paid_amount > Decimal("0"):
+            transaction = Transaction(
+                school_id=order_data.school_id,
+                type=TransactionType.INCOME,
+                amount=paid_amount,
+                payment_method=payment_method,
+                description=f"Anticipo encargo {order.code}",
+                category="orders",
+                reference_code=order.code,
+                transaction_date=date.today(),
+                order_id=order.id,
+                created_by=user_id
+            )
+            self.db.add(transaction)
+
+        # Crear cuenta por cobrar por el saldo pendiente
+        balance = total - paid_amount
+        if balance > Decimal("0"):
+            receivable = AccountsReceivable(
+                school_id=order_data.school_id,
+                client_id=order_data.client_id,
+                order_id=order.id,
+                amount=balance,
+                description=f"Saldo pendiente encargo {order.code}",
+                invoice_date=date.today(),
+                due_date=order_data.delivery_date,
+                created_by=user_id
+            )
+            self.db.add(receivable)
 
         await self.db.flush()
 
@@ -203,15 +245,17 @@ class OrderService(SchoolIsolatedService[Order]):
         self,
         order_id: UUID,
         school_id: UUID,
-        payment_data: OrderPayment
+        payment_data: OrderPayment,
+        user_id: UUID | None = None
     ) -> Order | None:
         """
-        Add payment to order
+        Add payment (abono) to order
 
         Args:
             order_id: Order UUID
             school_id: School UUID
             payment_data: Payment information
+            user_id: User making the payment
 
         Returns:
             Updated order
@@ -223,13 +267,51 @@ class OrderService(SchoolIsolatedService[Order]):
         new_paid_amount = order.paid_amount + payment_data.amount
 
         if new_paid_amount > order.total:
-            raise ValueError("Payment exceeds order total")
+            raise ValueError("El abono excede el total del encargo")
 
-        return await self.update(
-            order_id,
-            school_id,
-            {"paid_amount": new_paid_amount}
+        # Update order paid amount
+        order.paid_amount = new_paid_amount
+        await self.db.flush()
+
+        # Get payment method (default to CASH if not provided)
+        payment_method = getattr(payment_data, 'payment_method', None) or AccPaymentMethod.CASH
+
+        # === CONTABILIDAD ===
+        # Crear transacción de ingreso por el abono
+        transaction = Transaction(
+            school_id=school_id,
+            type=TransactionType.INCOME,
+            amount=payment_data.amount,
+            payment_method=payment_method,
+            description=f"Abono encargo {order.code}",
+            category="orders",
+            reference_code=order.code,
+            transaction_date=date.today(),
+            order_id=order.id,
+            created_by=user_id
         )
+        self.db.add(transaction)
+
+        # Actualizar cuenta por cobrar si existe
+        result = await self.db.execute(
+            select(AccountsReceivable).where(
+                AccountsReceivable.order_id == order_id,
+                AccountsReceivable.school_id == school_id,
+                AccountsReceivable.is_paid == False
+            )
+        )
+        receivable = result.scalar_one_or_none()
+
+        if receivable:
+            receivable.amount_paid = receivable.amount_paid + payment_data.amount
+            # Marcar como pagada si el monto pagado >= monto total
+            if receivable.amount_paid >= receivable.amount:
+                receivable.is_paid = True
+
+        await self.db.flush()
+        await self.db.refresh(order)
+
+        return order
 
     async def update_status(
         self,
@@ -381,12 +463,11 @@ class OrderService(SchoolIsolatedService[Order]):
 
             subtotal += item_subtotal
 
-        # Calculate tax (19% IVA)
-        tax_rate = Decimal("0.19")
-        tax = subtotal * tax_rate
-        total = subtotal + tax
+        # Sin IVA para encargos (tax = 0)
+        tax = Decimal("0")
+        total = subtotal
 
-        # Determine paid amount
+        # Determine paid amount (anticipo)
         paid_amount = order_data.advance_payment or Decimal("0")
 
         # Create order without user_id (web portal order)
@@ -413,6 +494,41 @@ class OrderService(SchoolIsolatedService[Order]):
             item_dict["order_id"] = order.id
             order_item = OrderItem(**item_dict)
             self.db.add(order_item)
+
+        await self.db.flush()
+
+        # === CONTABILIDAD ===
+        # Para pedidos web, el anticipo es generalmente 0 (pago contra entrega)
+        # Si hay anticipo, crear transacción de ingreso
+        if paid_amount > Decimal("0"):
+            transaction = Transaction(
+                school_id=order_data.school_id,
+                type=TransactionType.INCOME,
+                amount=paid_amount,
+                payment_method=AccPaymentMethod.TRANSFER,  # Web orders typically via transfer
+                description=f"Anticipo encargo web {order.code}",
+                category="orders",
+                reference_code=order.code,
+                transaction_date=date.today(),
+                order_id=order.id,
+                created_by=None
+            )
+            self.db.add(transaction)
+
+        # Crear cuenta por cobrar por el saldo pendiente
+        balance = total - paid_amount
+        if balance > Decimal("0"):
+            receivable = AccountsReceivable(
+                school_id=order_data.school_id,
+                client_id=order_data.client_id,
+                order_id=order.id,
+                amount=balance,
+                description=f"Saldo pendiente encargo web {order.code}",
+                invoice_date=date.today(),
+                due_date=order_data.delivery_date,
+                created_by=None
+            )
+            self.db.add(receivable)
 
         await self.db.flush()
         await self.db.refresh(order)
