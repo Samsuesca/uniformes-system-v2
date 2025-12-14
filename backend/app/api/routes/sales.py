@@ -17,8 +17,10 @@ from app.models.client import Client
 from app.models.school import School
 from app.schemas.sale import (
     SaleCreate, SaleResponse, SaleWithItems, SaleListResponse,
-    SaleChangeCreate, SaleChangeResponse, SaleChangeUpdate, SaleChangeListResponse
+    SaleChangeCreate, SaleChangeResponse, SaleChangeUpdate, SaleChangeListResponse,
+    SaleChangeApprove
 )
+from app.models.sale import PaymentMethod
 from app.services.sale import SaleService
 
 
@@ -474,7 +476,9 @@ async def approve_sale_change(
     school_id: UUID,
     sale_id: UUID,
     change_id: UUID,
-    db: DatabaseSession
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    approve_data: SaleChangeApprove | None = None
 ):
     """
     Approve a sale change request (requires ADMIN role)
@@ -482,15 +486,26 @@ async def approve_sale_change(
     This will:
     1. Return original product to inventory (+1)
     2. Deduct new product from inventory (-1) if applicable
-    3. Update change status to APPROVED
-    4. Record inventory adjustments with notes
+    3. Create accounting transaction if there's a price adjustment:
+       - price_adjustment > 0: INCOME (customer pays more)
+       - price_adjustment < 0: EXPENSE (refund to customer)
+    4. Update balance account (Caja/Banco) based on payment method
+    5. Update change status to APPROVED
 
-    Once approved, inventory changes are permanent.
+    Once approved, inventory and accounting changes are permanent.
     """
     sale_service = SaleService(db)
 
+    # Default to CASH if no approve_data provided
+    payment_method = approve_data.payment_method if approve_data else PaymentMethod.CASH
+
     try:
-        change = await sale_service.approve_sale_change(change_id, school_id)
+        change = await sale_service.approve_sale_change(
+            change_id,
+            school_id,
+            payment_method=payment_method,
+            approved_by=current_user.id
+        )
         await db.commit()
         return SaleChangeResponse.model_validate(change)
 

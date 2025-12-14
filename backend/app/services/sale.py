@@ -433,24 +433,35 @@ class SaleService(SchoolIsolatedService[Sale]):
     async def approve_sale_change(
         self,
         change_id: UUID,
-        school_id: UUID
+        school_id: UUID,
+        payment_method: PaymentMethod = PaymentMethod.CASH,
+        approved_by: UUID | None = None
     ) -> SaleChange:
         """
-        Approve a sale change and execute inventory adjustments
+        Approve a sale change and execute inventory + accounting adjustments
 
         Args:
             change_id: SaleChange UUID
             school_id: School UUID
+            payment_method: Payment method for price adjustment (refund/additional payment)
+            approved_by: User ID who approved the change
 
         Returns:
             Approved SaleChange
 
         Raises:
             ValueError: If change not found or already processed
+
+        Accounting Logic:
+            - price_adjustment > 0: Customer pays more → INCOME transaction
+            - price_adjustment < 0: Refund to customer → EXPENSE transaction
+            - price_adjustment = 0: No financial transaction needed
         """
         from app.services.inventory import InventoryService
+        from app.services.balance_integration import BalanceIntegrationService
 
         inv_service = InventoryService(self.db)
+        balance_service = BalanceIntegrationService(self.db)
 
         # Get change with related data
         result = await self.db.execute(
@@ -500,7 +511,47 @@ class SaleService(SchoolIsolatedService[Sale]):
                 f"Entrega - Cambio #{change.id}"
             )
 
-        # 3. Update change status
+        # 3. Create accounting transaction if there's a price adjustment
+        if change.price_adjustment != 0 and payment_method != PaymentMethod.CREDIT:
+            # Map PaymentMethod to AccPaymentMethod
+            acc_payment_method = AccPaymentMethod(payment_method.value)
+
+            if change.price_adjustment > 0:
+                # Customer pays more → INCOME
+                transaction = Transaction(
+                    school_id=school_id,
+                    type=TransactionType.INCOME,
+                    amount=Decimal(str(abs(change.price_adjustment))),
+                    payment_method=acc_payment_method,
+                    description=f"Diferencia cobrada - Cambio venta {change.sale.code}",
+                    category="sale_changes",
+                    reference_code=f"CHG-{change.sale.code}",
+                    transaction_date=date.today(),
+                    sale_id=change.sale_id,
+                    created_by=approved_by
+                )
+            else:
+                # Refund to customer → EXPENSE
+                transaction = Transaction(
+                    school_id=school_id,
+                    type=TransactionType.EXPENSE,
+                    amount=Decimal(str(abs(change.price_adjustment))),
+                    payment_method=acc_payment_method,
+                    description=f"Reembolso - Cambio venta {change.sale.code}",
+                    category="sale_changes",
+                    reference_code=f"CHG-{change.sale.code}",
+                    transaction_date=date.today(),
+                    sale_id=change.sale_id,
+                    created_by=approved_by
+                )
+
+            self.db.add(transaction)
+            await self.db.flush()
+
+            # Update balance account (Caja/Banco)
+            await balance_service.apply_transaction_to_balance(transaction, approved_by)
+
+        # 4. Update change status
         change.status = ChangeStatus.APPROVED
         await self.db.flush()
         await self.db.refresh(change)

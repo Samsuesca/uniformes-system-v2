@@ -229,6 +229,14 @@ class SaleChangeUpdate(BaseSchema):
         return v
 
 
+class SaleChangeApprove(BaseSchema):
+    """Schema for approving sale change with payment method for price adjustments"""
+    payment_method: PaymentMethod = Field(
+        default=PaymentMethod.CASH,
+        description="Payment method for price adjustment (refund or additional payment)"
+    )
+
+
 class SaleChangeInDB(SaleChangeBase, IDModelSchema, TimestampSchema):
     """SaleChange as stored in database"""
     sale_id: UUID
