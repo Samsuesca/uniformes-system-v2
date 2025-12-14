@@ -6,17 +6,19 @@ export interface CartItem {
   product: Product;
   school: School;
   quantity: number;
+  isOrder?: boolean; // true = producto sin stock (encargo), false/undefined = producto con stock (venta)
 }
 
 interface CartStore {
   items: CartItem[];
-  addItem: (product: Product, school: School) => void;
+  addItem: (product: Product, school: School, isOrder?: boolean) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
   getItemsBySchool: () => Map<string, CartItem[]>;
+  hasOrderItems: () => boolean; // Check if cart has any order items (sin stock)
 }
 
 export const useCartStore = create<CartStore>()(
@@ -24,7 +26,7 @@ export const useCartStore = create<CartStore>()(
     (set, get) => ({
       items: [],
 
-      addItem: (product: Product, school: School) => {
+      addItem: (product: Product, school: School, isOrder?: boolean) => {
         const items = get().items;
         const existingItem = items.find((item) => item.product.id === product.id);
 
@@ -39,7 +41,7 @@ export const useCartStore = create<CartStore>()(
           });
         } else {
           // Si no existe, agregar nuevo item
-          set({ items: [...items, { product, school, quantity: 1 }] });
+          set({ items: [...items, { product, school, quantity: 1, isOrder }] });
         }
       },
 
@@ -94,6 +96,10 @@ export const useCartStore = create<CartStore>()(
         });
 
         return grouped;
+      },
+
+      hasOrderItems: () => {
+        return get().items.some((item) => item.isOrder === true);
       },
     }),
     {

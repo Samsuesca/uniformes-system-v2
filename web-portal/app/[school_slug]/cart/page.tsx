@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Plus, Minus, ShoppingBag, School as SchoolIcon } from 'lucide-react';
+import { ArrowLeft, Trash2, Plus, Minus, ShoppingBag, School as SchoolIcon, Package } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
 import { getProductImage } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
@@ -11,7 +11,7 @@ export default function CartPage() {
   const router = useRouter();
   const schoolSlug = params.school_slug as string;
 
-  const { items, removeItem, updateQuantity, getTotalPrice, getTotalItems, getItemsBySchool } = useCartStore();
+  const { items, removeItem, updateQuantity, getTotalPrice, getTotalItems, getItemsBySchool, hasOrderItems } = useCartStore();
 
   const handleCheckout = () => {
     router.push(`/${schoolSlug}/checkout`);
@@ -108,22 +108,38 @@ export default function CartPage() {
                     {schoolItems.map((item) => (
                       <div
                         key={item.product.id}
-                        className="flex items-center gap-4 p-4 bg-surface-50 rounded-lg"
+                        className={`flex items-center gap-4 p-4 rounded-lg ${
+                          item.isOrder
+                            ? 'bg-orange-50 border border-orange-200'
+                            : 'bg-surface-50'
+                        }`}
                       >
                         {/* Product Image */}
-                        <div className="w-16 h-16 bg-gradient-to-br from-brand-50 to-surface-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          item.isOrder
+                            ? 'bg-gradient-to-br from-orange-100 to-orange-50'
+                            : 'bg-gradient-to-br from-brand-50 to-surface-100'
+                        }`}>
                           <span className="text-3xl">{getProductImage(item.product.name)}</span>
                         </div>
 
                         {/* Product Info */}
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-primary truncate">
-                            {item.product.name}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-primary truncate">
+                              {item.product.name}
+                            </h3>
+                            {item.isOrder && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-500 text-white text-xs font-medium rounded-full">
+                                <Package className="w-3 h-3" />
+                                Encargo
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-slate-500">
                             {item.product.size || 'Talla única'}
                           </p>
-                          <p className="text-lg font-bold text-brand-600 mt-1">
+                          <p className={`text-lg font-bold mt-1 ${item.isOrder ? 'text-orange-600' : 'text-brand-600'}`}>
                             ${formatNumber(item.product.price)}
                           </p>
                         </div>
@@ -141,7 +157,7 @@ export default function CartPage() {
                           </span>
                           <button
                             onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                            disabled={item.quantity >= (item.product.stock ?? item.product.stock_quantity ?? item.product.inventory_quantity ?? 0)}
+                            disabled={!item.isOrder && item.quantity >= (item.product.stock ?? item.product.stock_quantity ?? item.product.inventory_quantity ?? 0)}
                             className="w-8 h-8 rounded-lg bg-white border border-surface-200 hover:bg-surface-100 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Plus className="w-4 h-4 text-slate-600" />
@@ -150,7 +166,7 @@ export default function CartPage() {
 
                         {/* Subtotal & Remove */}
                         <div className="flex flex-col items-end gap-2">
-                          <p className="text-xl font-bold text-primary">
+                          <p className={`text-xl font-bold ${item.isOrder ? 'text-orange-600' : 'text-primary'}`}>
                             ${formatNumber(item.product.price * item.quantity)}
                           </p>
                           <button
@@ -187,10 +203,11 @@ export default function CartPage() {
               <div className="space-y-3 mb-6">
                 {items.map((item) => (
                   <div key={item.product.id} className="flex justify-between text-sm">
-                    <span className="text-slate-600 truncate pr-2">
+                    <span className={`truncate pr-2 flex items-center gap-1 ${item.isOrder ? 'text-orange-600' : 'text-slate-600'}`}>
+                      {item.isOrder && <Package className="w-3 h-3 flex-shrink-0" />}
                       {item.product.name} x{item.quantity}
                     </span>
-                    <span className="font-medium text-primary whitespace-nowrap">
+                    <span className={`font-medium whitespace-nowrap ${item.isOrder ? 'text-orange-600' : 'text-primary'}`}>
                       ${formatNumber(item.product.price * item.quantity)}
                     </span>
                   </div>
@@ -203,6 +220,16 @@ export default function CartPage() {
                   </span>
                 </div>
               </div>
+
+              {/* Order items notice */}
+              {hasOrderItems() && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-orange-700">
+                    <span className="font-semibold">Nota:</span> Tu pedido incluye productos por encargo.
+                    El tiempo de entrega puede variar según disponibilidad.
+                  </p>
+                </div>
+              )}
 
               <button
                 onClick={handleCheckout}

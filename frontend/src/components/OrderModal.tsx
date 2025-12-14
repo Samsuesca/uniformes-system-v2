@@ -55,7 +55,7 @@ export default function OrderModal({
   const [catalogQuantity, setCatalogQuantity] = useState(1);
   const [catalogGarmentFilter, setCatalogGarmentFilter] = useState('');
 
-  // Yomber tab state
+  // Yomber tab state - simplified: just select a yomber product directly
   const [yomberProductId, setYomberProductId] = useState('');
   const [yomberQuantity, setYomberQuantity] = useState(1);
   const [yomberMeasurements, setYomberMeasurements] = useState<Partial<YomberMeasurements>>({});
@@ -71,15 +71,13 @@ export default function OrderModal({
   const [customNotes, setCustomNotes] = useState('');
   const [customEmbroideryText, setCustomEmbroideryText] = useState('');
 
-  // Filter yomber products (garment types with has_custom_measurements)
-  const yomberGarmentTypes = useMemo(() => {
-    return garmentTypes.filter(gt => gt.has_custom_measurements);
-  }, [garmentTypes]);
-
+  // Filter yomber products - only products whose garment type has has_custom_measurements = true
   const yomberProducts = useMemo(() => {
-    const yomberTypeIds = yomberGarmentTypes.map(gt => gt.id);
-    return products.filter(p => yomberTypeIds.includes(p.garment_type_id));
-  }, [products, yomberGarmentTypes]);
+    const yomberGarmentTypeIds = garmentTypes
+      .filter(gt => gt.has_custom_measurements)
+      .map(gt => gt.id);
+    return products.filter(p => yomberGarmentTypeIds.includes(p.garment_type_id));
+  }, [products, garmentTypes]);
 
   // Filter catalog products by garment type
   const filteredCatalogProducts = useMemo(() => {
@@ -551,28 +549,27 @@ export default function OrderModal({
                   {/* YOMBER TAB */}
                   {activeTab === 'yomber' && (
                     <div className="space-y-4">
-                      <p className="text-sm text-gray-600 mb-3">
-                        Encargo de yomber con medidas personalizadas. Requiere: talle delantero, trasero, cintura y largo.
-                      </p>
-
                       {yomberProducts.length === 0 ? (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-                          <p className="text-yellow-800">No hay productos de yomber configurados</p>
+                          <AlertCircle className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                          <p className="text-sm text-yellow-700 font-medium">No hay productos Yomber configurados</p>
                           <p className="text-xs text-yellow-600 mt-1">
-                            Los tipos de prenda deben tener "has_custom_measurements" activado
+                            Configura tipos de prenda con "medidas personalizadas" para habilitar yombers
                           </p>
                         </div>
                       ) : (
                         <>
-                          {/* Yomber Product Selection (for base price) */}
+                          {/* Direct Yomber Product Selection */}
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Producto Yomber (precio base) *</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Selecciona el Yomber *
+                            </label>
                             <select
                               value={yomberProductId}
                               onChange={(e) => setYomberProductId(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                             >
-                              <option value="">Selecciona talla base</option>
+                              <option value="">-- Selecciona un yomber --</option>
                               {yomberProducts.map((product) => {
                                 const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
                                 return (
@@ -584,81 +581,101 @@ export default function OrderModal({
                             </select>
                           </div>
 
-                          {/* Yomber Measurements */}
-                          <YomberMeasurementsForm
-                            measurements={yomberMeasurements}
-                            onChange={setYomberMeasurements}
-                          />
-
-                          {/* Additional Price */}
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Precio Adicional (servicios)</label>
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                              <input
-                                type="number"
-                                min="0"
-                                value={yomberAdditionalPrice || ''}
-                                onChange={(e) => setYomberAdditionalPrice(parseInt(e.target.value) || 0)}
-                                placeholder="0"
-                                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Embroidery Text */}
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Texto Bordado</label>
-                            <input
-                              type="text"
-                              value={yomberEmbroideryText}
-                              onChange={(e) => setYomberEmbroideryText(e.target.value)}
-                              placeholder="Nombre para bordar"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            />
-                          </div>
-
-                          {/* Quantity */}
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={yomberQuantity}
-                              onChange={(e) => setYomberQuantity(parseInt(e.target.value) || 1)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            />
-                          </div>
-
-                          {/* Show total price */}
+                          {/* Show selected yomber info */}
                           {yomberProductId && (
-                            <div className="bg-purple-50 border border-purple-200 rounded p-3">
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                               {(() => {
                                 const product = products.find(p => p.id === yomberProductId);
                                 if (!product) return null;
-                                const basePrice = Number(product.price);
-                                const totalPrice = basePrice + yomberAdditionalPrice;
+                                const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
                                 return (
                                   <div className="text-sm">
-                                    <p className="text-purple-700">Precio base: ${basePrice.toLocaleString()}</p>
-                                    {yomberAdditionalPrice > 0 && (
-                                      <p className="text-purple-700">+ Adicional: ${yomberAdditionalPrice.toLocaleString()}</p>
-                                    )}
-                                    <p className="font-medium text-purple-900">Total por unidad: ${totalPrice.toLocaleString()}</p>
+                                    <p className="font-medium text-purple-900">{garmentType?.name} - Talla {product.size}</p>
+                                    <p className="text-purple-700">Precio base: ${Number(product.price).toLocaleString()}</p>
                                   </div>
                                 );
                               })()}
                             </div>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={handleAddYomberItem}
-                            className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center justify-center"
-                          >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Agregar Yomber
-                          </button>
+                          {/* Yomber Measurements - only show when product selected */}
+                          {yomberProductId && (
+                            <>
+                              <YomberMeasurementsForm
+                                measurements={yomberMeasurements}
+                                onChange={setYomberMeasurements}
+                              />
+
+                              <div className="grid grid-cols-2 gap-4">
+                                {/* Quantity */}
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={yomberQuantity}
+                                    onChange={(e) => setYomberQuantity(parseInt(e.target.value) || 1)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                  />
+                                </div>
+
+                                {/* Additional Price */}
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Adicional (opcional)</label>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={yomberAdditionalPrice || ''}
+                                      onChange={(e) => setYomberAdditionalPrice(parseInt(e.target.value) || 0)}
+                                      placeholder="0"
+                                      className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Embroidery Text */}
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">Texto Bordado</label>
+                                <input
+                                  type="text"
+                                  value={yomberEmbroideryText}
+                                  onChange={(e) => setYomberEmbroideryText(e.target.value)}
+                                  placeholder="Nombre para bordar"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                />
+                              </div>
+
+                              {/* Total Price Summary */}
+                              {(() => {
+                                const product = products.find(p => p.id === yomberProductId);
+                                if (!product) return null;
+                                const basePrice = Number(product.price);
+                                const totalPrice = (basePrice + yomberAdditionalPrice) * yomberQuantity;
+                                return (
+                                  <div className="bg-purple-100 border border-purple-300 rounded-lg p-3 text-center">
+                                    <p className="text-sm text-purple-700">
+                                      {yomberQuantity}x ${(basePrice + yomberAdditionalPrice).toLocaleString()}
+                                    </p>
+                                    <p className="font-bold text-lg text-purple-900">
+                                      Total: ${totalPrice.toLocaleString()}
+                                    </p>
+                                  </div>
+                                );
+                              })()}
+
+                              <button
+                                type="button"
+                                onClick={handleAddYomberItem}
+                                className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center justify-center font-medium"
+                              >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Agregar Yomber
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>

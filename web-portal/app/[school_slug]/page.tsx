@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ShoppingCart, ArrowLeft, Filter } from 'lucide-react';
+import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X } from 'lucide-react';
 import { productsApi, schoolsApi, type Product, type School, getProductImage } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 import { formatNumber } from '@/lib/utils';
@@ -25,10 +25,26 @@ export default function CatalogPage() {
 
     const { addItem, getTotalItems } = useCartStore();
 
+    // Modal state for yomber/custom products info
+    const [showYomberModal, setShowYomberModal] = useState(false);
+    const [selectedYomberProduct, setSelectedYomberProduct] = useState<Product | null>(null);
+
     // Prevent hydration mismatch by only showing cart count after mount
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    // Check if product is a yomber (requires custom measurements - presencial)
+    const isYomberProduct = (product: Product): boolean => {
+        const name = product.name.toLowerCase();
+        return name.includes('yomber');
+    };
+
+    // Handle yomber product click - show info modal
+    const handleYomberClick = (product: Product) => {
+        setSelectedYomberProduct(product);
+        setShowYomberModal(true);
+    };
 
     useEffect(() => {
         loadAllProducts();
@@ -173,9 +189,9 @@ export default function CatalogPage() {
         return categoryMatch && sizeMatch;
     });
 
-    const handleAddToCart = (product: Product) => {
+    const handleAddToCart = (product: Product, isOrder: boolean = false) => {
         if (school) {
-            addItem(product, school);
+            addItem(product, school, isOrder);
         }
     };
 
@@ -301,61 +317,186 @@ export default function CatalogPage() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {filteredProducts.map((product) => (
-                            <div
-                                key={product.id}
-                                className="bg-white rounded-xl border border-surface-200 overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-                            >
-                                <div className="aspect-square bg-gradient-to-br from-brand-50 to-surface-100 flex items-center justify-center">
-                                    <span className="text-6xl">{getProductImage(product.name)}</span>
-                                </div>
-                                <div className="p-4">
-                                    <h3 className="font-semibold text-primary font-display mb-1">
-                                        {product.name}
-                                    </h3>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <p className="text-sm text-slate-600">
-                                            {product.size
-                                                ? (/^\d+$/.test(product.size) ? `Talla ${product.size}` : product.size)
-                                                : 'Talla única'}
-                                        </p>
-                                        {product.color && (
-                                            <>
-                                                <span className="text-slate-300">•</span>
-                                                <p className="text-sm text-slate-600">
-                                                    {product.color}
-                                                </p>
-                                            </>
-                                        )}
+                        {filteredProducts.map((product) => {
+                            const stock = getProductStock(product);
+                            const isYomber = isYomberProduct(product);
+
+                            return (
+                                <div
+                                    key={product.id}
+                                    className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ${
+                                        isYomber ? 'border-purple-200' : 'border-surface-200'
+                                    }`}
+                                >
+                                    {/* Yomber Badge */}
+                                    {isYomber && (
+                                        <div className="bg-purple-600 text-white text-xs font-semibold px-3 py-1 text-center">
+                                            ✂️ Confección Personalizada
+                                        </div>
+                                    )}
+
+                                    <div className="aspect-square bg-gradient-to-br from-brand-50 to-surface-100 flex items-center justify-center">
+                                        <span className="text-6xl">{getProductImage(product.name)}</span>
                                     </div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-2xl font-bold text-brand-600 font-display">
-                                            ${formatNumber(product.price)}
-                                        </span>
-                                        <button
-                                            onClick={() => handleAddToCart(product)}
-                                            disabled={getProductStock(product) <= 0}
-                                            className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {getProductStock(product) > 0 ? 'Agregar' : 'Agotado'}
-                                        </button>
-                                    </div>
-                                    <p className={`text-xs mt-2 ${getProductStock(product) > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                        {getProductStock(product) > 0 ? (
-                                            <>
-                                                <span className="font-semibold">Disponible</span>
-                                                <span className="text-slate-400 ml-1">({getProductStock(product)} unidades)</span>
-                                            </>
+                                    <div className="p-4">
+                                        <h3 className="font-semibold text-primary font-display mb-1">
+                                            {product.name}
+                                        </h3>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <p className="text-sm text-slate-600">
+                                                {product.size
+                                                    ? (/^\d+$/.test(product.size) ? `Talla ${product.size}` : product.size)
+                                                    : 'Talla única'}
+                                            </p>
+                                            {product.color && (
+                                                <>
+                                                    <span className="text-slate-300">•</span>
+                                                    <p className="text-sm text-slate-600">
+                                                        {product.color}
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-2xl font-bold text-brand-600 font-display">
+                                                ${formatNumber(product.price)}
+                                            </span>
+
+                                            {/* Yomber: Show contact button */}
+                                            {isYomber ? (
+                                                <button
+                                                    onClick={() => handleYomberClick(product)}
+                                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                                                >
+                                                    Consultar
+                                                </button>
+                                            ) : stock > 0 ? (
+                                                /* Has stock: Add to cart */
+                                                <button
+                                                    onClick={() => handleAddToCart(product, false)}
+                                                    className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium"
+                                                >
+                                                    Agregar
+                                                </button>
+                                            ) : (
+                                                /* No stock: Add as order */
+                                                <button
+                                                    onClick={() => handleAddToCart(product, true)}
+                                                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium flex items-center gap-1"
+                                                >
+                                                    <Package className="w-4 h-4" />
+                                                    Encargar
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Stock status */}
+                                        {isYomber ? (
+                                            <p className="text-xs text-purple-600 mt-2">
+                                                <span className="font-semibold">Requiere medidas personalizadas</span>
+                                            </p>
                                         ) : (
-                                            <span className="font-semibold">Agotado</span>
+                                            <p className={`text-xs mt-2 ${stock > 0 ? 'text-green-600' : 'text-orange-500'}`}>
+                                                {stock > 0 ? (
+                                                    <>
+                                                        <span className="font-semibold">Disponible</span>
+                                                        <span className="text-slate-400 ml-1">({stock} unidades)</span>
+                                                    </>
+                                                ) : (
+                                                    <span className="font-semibold">📦 Disponible por encargo</span>
+                                                )}
+                                            </p>
                                         )}
-                                    </p>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </main>
+
+            {/* Yomber Info Modal */}
+            {showYomberModal && selectedYomberProduct && (
+                <div className="fixed inset-0 z-50 overflow-y-auto">
+                    <div
+                        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                        onClick={() => setShowYomberModal(false)}
+                    />
+                    <div className="flex min-h-screen items-center justify-center p-4">
+                        <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+                            {/* Close button */}
+                            <button
+                                onClick={() => setShowYomberModal(false)}
+                                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+
+                            {/* Header */}
+                            <div className="text-center mb-6">
+                                <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-3xl">✂️</span>
+                                </div>
+                                <h3 className="text-xl font-bold text-primary font-display">
+                                    {selectedYomberProduct.name}
+                                </h3>
+                                <p className="text-2xl font-bold text-purple-600 mt-2">
+                                    Desde ${formatNumber(selectedYomberProduct.price)}
+                                </p>
+                            </div>
+
+                            {/* Info */}
+                            <div className="bg-purple-50 rounded-xl p-4 mb-6">
+                                <h4 className="font-semibold text-purple-900 mb-2">
+                                    Confección Personalizada
+                                </h4>
+                                <p className="text-sm text-purple-700 mb-3">
+                                    Los yombers se confeccionan a medida para garantizar el mejor ajuste.
+                                    Para este producto necesitamos tomar las siguientes medidas:
+                                </p>
+                                <ul className="text-sm text-purple-700 space-y-1 ml-4">
+                                    <li>• Talle delantero</li>
+                                    <li>• Talle trasero</li>
+                                    <li>• Cintura</li>
+                                    <li>• Largo</li>
+                                </ul>
+                            </div>
+
+                            {/* Contact options */}
+                            <div className="space-y-3">
+                                <p className="text-sm text-slate-600 text-center mb-4">
+                                    Contáctanos para agendar tu cita de medidas:
+                                </p>
+
+                                <a
+                                    href="https://wa.me/573001234567?text=Hola, estoy interesado en un yomber personalizado"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-semibold"
+                                >
+                                    <MessageCircle className="w-5 h-5" />
+                                    WhatsApp
+                                </a>
+
+                                <a
+                                    href="tel:+573001234567"
+                                    className="w-full flex items-center justify-center gap-2 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
+                                >
+                                    <Phone className="w-5 h-5" />
+                                    Llamar
+                                </a>
+
+                                <button
+                                    onClick={() => router.push('/soporte')}
+                                    className="w-full py-3 text-slate-600 hover:text-slate-800 transition-colors text-sm"
+                                >
+                                    Ver más opciones de contacto
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
