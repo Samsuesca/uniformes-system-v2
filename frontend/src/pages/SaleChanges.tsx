@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleChangeModal from '../components/SaleChangeModal';
 import { RefreshCw, CheckCircle, XCircle, Clock, AlertCircle, Loader2, Eye, Search, Plus, ShoppingCart } from 'lucide-react';
+import { formatDateTimeSpanish } from '../components/DatePicker';
 import { saleChangeService } from '../services/saleChangeService';
 import { saleService } from '../services/saleService';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -151,14 +152,7 @@ export default function SaleChanges() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatDateTimeSpanish(dateString);
   };
 
   const getChangeTypeLabel = (type: string) => {

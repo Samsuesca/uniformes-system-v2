@@ -7,6 +7,7 @@ import {
   BarChart3, TrendingUp, Package, Users, AlertTriangle, DollarSign,
   Loader2, AlertCircle, ShoppingBag, RefreshCw, Calendar, Filter
 } from 'lucide-react';
+import DatePicker from '../components/DatePicker';
 import { reportsService, type DashboardSummary, type TopProduct, type LowStockProduct, type TopClient, type SalesSummary, type DateFilters } from '../services/reportsService';
 import { useSchoolStore } from '../stores/schoolStore';
 
@@ -241,18 +242,19 @@ export default function Reports() {
             <div className="flex flex-wrap items-center gap-2 ml-0 lg:ml-4 pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-gray-200 lg:pl-4">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-500" />
-                <input
-                  type="date"
+                <DatePicker
                   value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  onChange={(value) => setCustomStartDate(value)}
+                  placeholder="Desde"
+                  className="w-36"
                 />
                 <span className="text-gray-500">a</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  onChange={(value) => setCustomEndDate(value)}
+                  placeholder="Hasta"
+                  minDate={customStartDate}
+                  className="w-36"
                 />
               </div>
               <button

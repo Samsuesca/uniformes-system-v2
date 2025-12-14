@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X } from 'lucide-react';
+import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import type { OrderWithItems, OrderStatus } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -53,12 +54,7 @@ export default function OrderDetail() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Sin fecha';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    return formatDateSpanish(dateString);
   };
 
   const formatCurrency = (amount: number) => {
@@ -290,11 +286,10 @@ export default function OrderDetail() {
 
             {editingDeliveryDate ? (
               <div className="mt-2 flex items-center gap-2">
-                <input
-                  type="date"
+                <DatePicker
                   value={newDeliveryDate}
-                  onChange={(e) => setNewDeliveryDate(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  onChange={(value) => setNewDeliveryDate(value)}
+                  className="flex-1"
                 />
                 <button
                   onClick={handleSaveDeliveryDate}

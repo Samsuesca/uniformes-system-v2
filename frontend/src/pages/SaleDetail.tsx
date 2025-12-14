@@ -6,6 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleChangeModal from '../components/SaleChangeModal';
 import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock, History } from 'lucide-react';
+import { formatDateTimeSpanish } from '../components/DatePicker';
 import { saleService } from '../services/saleService';
 import { saleChangeService } from '../services/saleChangeService';
 import { clientService } from '../services/clientService';
@@ -131,14 +132,7 @@ export default function SaleDetail() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatDateTimeSpanish(dateString);
   };
 
 

@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OrderModal from '../components/OrderModal';
 import { FileText, Plus, Search, AlertCircle, Loader2, Calendar, Package, Clock, CheckCircle, XCircle, Truck, Eye, Building2 } from 'lucide-react';
+import { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { OrderListItem, OrderStatus } from '../types/api';
@@ -110,12 +111,7 @@ export default function Orders() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Sin fecha';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    return formatDateSpanish(dateString);
   };
 
   const formatCurrency = (amount: number) => {

@@ -22,10 +22,10 @@ import {
   ChevronRight
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import { formatDateSpanish } from '../components/DatePicker';
 import { useSchoolStore } from '../stores/schoolStore';
 import { orderService } from '../services/orderService';
 import type { OrderListItem, OrderStatus, OrderWithItems } from '../types/api';
-import type { School } from '../services/schoolService';
 
 // Status configuration
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
@@ -37,7 +37,7 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: t
 };
 
 export default function WebOrders() {
-  const { currentSchool, availableSchools } = useSchoolStore();
+  const { availableSchools } = useSchoolStore();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,11 +201,7 @@ export default function WebOrders() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('es-CO', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+    return formatDateSpanish(dateStr);
   };
 
   if (availableSchools.length === 0) {

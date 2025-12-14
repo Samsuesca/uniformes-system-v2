@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleModal from '../components/SaleModal';
 import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign, Building2, History } from 'lucide-react';
+import { formatDateTimeSpanish } from '../components/DatePicker';
 import { saleService } from '../services/saleService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { SaleListItem } from '../types/api';
@@ -132,23 +133,8 @@ export default function Sales() {
 
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return 'Fecha no disponible';
-
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        return 'Fecha inválida';
-      }
-      return date.toLocaleDateString('es-CO', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
-      console.error('Error formatting date:', dateString, error);
-      return 'Fecha inválida';
-    }
+    const formatted = formatDateTimeSpanish(dateString);
+    return formatted === '-' ? 'Fecha inválida' : formatted;
   };
 
   return (

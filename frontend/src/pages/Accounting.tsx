@@ -8,6 +8,7 @@ import {
   Loader2, AlertCircle, Receipt, X, Building2, Users, Wallet,
   ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle
 } from 'lucide-react';
+import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import {
   accountingService,
   getExpenseCategoryLabel,
@@ -313,7 +314,7 @@ export default function Accounting() {
   };
 
   const formatCurrency = (amount: number) => `$${Number(amount).toLocaleString('es-CO')}`;
-  const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('es-CO');
+  const formatDate = (dateStr: string) => formatDateSpanish(dateStr);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -1210,11 +1211,9 @@ export default function Accounting() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={expenseForm.expense_date || ''}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(value) => setExpenseForm({ ...expenseForm, expense_date: value })}
                   />
                 </div>
               </div>
@@ -1230,11 +1229,10 @@ export default function Accounting() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha vencimiento</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={expenseForm.due_date || ''}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, due_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(value) => setExpenseForm({ ...expenseForm, due_date: value })}
+                    minDate={expenseForm.expense_date}
                   />
                 </div>
               </div>
@@ -1452,21 +1450,18 @@ export default function Accounting() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha factura *</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={receivableForm.invoice_date || ''}
-                    onChange={(e) => setReceivableForm({ ...receivableForm, invoice_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(value) => setReceivableForm({ ...receivableForm, invoice_date: value })}
                   />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha vencimiento</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={receivableForm.due_date || ''}
-                  onChange={(e) => setReceivableForm({ ...receivableForm, due_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onChange={(value) => setReceivableForm({ ...receivableForm, due_date: value })}
+                  minDate={receivableForm.invoice_date}
                 />
               </div>
               <div>
@@ -1609,20 +1604,17 @@ export default function Accounting() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha factura *</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={payableForm.invoice_date || ''}
-                    onChange={(e) => setPayableForm({ ...payableForm, invoice_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(value) => setPayableForm({ ...payableForm, invoice_date: value })}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha vencimiento</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={payableForm.due_date || ''}
-                    onChange={(e) => setPayableForm({ ...payableForm, due_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(value) => setPayableForm({ ...payableForm, due_date: value })}
+                    minDate={payableForm.invoice_date}
                   />
                 </div>
               </div>

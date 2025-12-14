@@ -646,11 +646,13 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                         const lowStock = stock < 5;
                         const outOfStock = stock === 0;
                         const colorInfo = product.color ? ` [${product.color}]` : '';
+                        // Allow out-of-stock products for historical sales
+                        const isDisabled = outOfStock && !formData.is_historical;
                         return (
                           <option
                             key={product.id}
                             value={product.id}
-                            disabled={outOfStock}
+                            disabled={isDisabled}
                           >
                             🌐 {product.name} - {product.size}{colorInfo} - ${Number(product.price).toLocaleString()}
                             {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
@@ -663,11 +665,13 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                         const lowStock = stock < 5;
                         const outOfStock = stock === 0;
                         const colorInfo = product.color ? ` [${product.color}]` : '';
+                        // Allow out-of-stock products for historical sales
+                        const isDisabled = outOfStock && !formData.is_historical;
                         return (
                           <option
                             key={product.id}
                             value={product.id}
-                            disabled={outOfStock}
+                            disabled={isDisabled}
                           >
                             {product.name} - {product.size}{colorInfo} - ${Number(product.price).toLocaleString()}
                             {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
@@ -680,6 +684,11 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                   {currentItem.product_id && (
                     <p className="mt-1 text-sm">
                       {(() => {
+                        // For historical sales, stock doesn't matter
+                        if (formData.is_historical) {
+                          return <span className="text-amber-600 font-medium">📜 Venta histórica - stock no aplica</span>;
+                        }
+
                         if (productSource === 'global') {
                           const product = globalProducts.find(p => p.id === currentItem.product_id);
                           const stock = product?.inventory_quantity ?? 0;

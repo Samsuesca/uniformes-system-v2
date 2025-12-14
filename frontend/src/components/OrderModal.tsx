@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, User, ShoppingBag, Ruler, Settings } from 'lucide-react';
+import DatePicker from './DatePicker';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
 import { clientService } from '../services/clientService';
@@ -401,12 +402,11 @@ export default function OrderModal({
                   <Calendar className="w-4 h-4 inline mr-1" />
                   Fecha de Entrega
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  onChange={(value) => setDeliveryDate(value)}
+                  minDate={new Date().toISOString().split('T')[0]}
+                  placeholder="Selecciona fecha de entrega"
                 />
               </div>
 
