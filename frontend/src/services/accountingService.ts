@@ -518,7 +518,7 @@ export interface CashBalancesResponse {
 }
 
 export const getCashBalances = async (schoolId: string): Promise<CashBalancesResponse> => {
-  const response = await apiClient.get(`${BASE_URL}/${schoolId}/accounting/cash-balances`);
+  const response = await apiClient.get<CashBalancesResponse>(`${BASE_URL}/${schoolId}/accounting/cash-balances`);
   return response.data;
 };
 
@@ -532,6 +532,162 @@ export const initializeDefaultAccounts = async (
     null,
     { params: { caja_initial_balance: cajaInitialBalance, banco_initial_balance: bancoInitialBalance } }
   );
+  return response.data;
+};
+
+// ============================================
+// Patrimony (Patrimonio del Negocio)
+// ============================================
+
+export interface PatrimonySummary {
+  assets: {
+    cash_and_bank: {
+      caja: CashBalanceInfo | null;
+      banco: CashBalanceInfo | null;
+      total: number;
+    };
+    inventory: {
+      total_units: number;
+      total_value: number;
+      products_estimated: number;
+      cost_margin_used: number;
+    };
+    accounts_receivable: {
+      total: number;
+      count: number;
+      overdue_total: number;
+      overdue_count: number;
+    };
+    fixed_assets: {
+      total_value: number;
+      count: number;
+      breakdown: Array<{
+        id: string;
+        name: string;
+        original_value: number;
+        depreciation: number;
+        net_value: number;
+      }>;
+    };
+    total: number;
+  };
+  liabilities: {
+    accounts_payable: {
+      total: number;
+      count: number;
+      overdue_total: number;
+      overdue_count: number;
+    };
+    debts: {
+      short_term: number;
+      long_term: number;
+      total: number;
+      breakdown: Array<{
+        id: string;
+        name: string;
+        creditor: string;
+        balance: number;
+        interest_rate: number | null;
+        due_date: string | null;
+        is_long_term: boolean;
+      }>;
+    };
+    total: number;
+  };
+  summary: {
+    total_assets: number;
+    total_liabilities: number;
+    net_patrimony: number;
+    is_positive: boolean;
+  };
+  generated_at: string;
+}
+
+export interface InventoryValuation {
+  total_units: number;
+  total_value: number;
+  products_with_cost: number;
+  products_estimated: number;
+  cost_margin_used: number;
+  breakdown: Array<{
+    product_id: string;
+    product_code: string;
+    product_name: string;
+    quantity: number;
+    unit_cost: number;
+    is_estimated: boolean;
+    total_value: number;
+    is_global?: boolean;
+  }>;
+}
+
+export const getPatrimonySummary = async (schoolId: string): Promise<PatrimonySummary> => {
+  const response = await apiClient.get<PatrimonySummary>(`${BASE_URL}/${schoolId}/accounting/patrimony/summary`);
+  return response.data;
+};
+
+export const getInventoryValuation = async (schoolId: string): Promise<InventoryValuation> => {
+  const response = await apiClient.get<InventoryValuation>(`${BASE_URL}/${schoolId}/accounting/patrimony/inventory-valuation`);
+  return response.data;
+};
+
+export const setInitialBalance = async (
+  schoolId: string,
+  accountCode: string,
+  initialBalance: number
+): Promise<{ message: string; account_id: string; account_name: string; new_balance: number }> => {
+  const response = await apiClient.post(
+    `${BASE_URL}/${schoolId}/accounting/patrimony/set-initial-balance`,
+    null,
+    { params: { account_code: accountCode, initial_balance: initialBalance } }
+  );
+  return response.data;
+};
+
+export const createDebt = async (
+  schoolId: string,
+  data: {
+    name: string;
+    amount: number;
+    creditor: string;
+    is_long_term?: boolean;
+    interest_rate?: number;
+    due_date?: string;
+    description?: string;
+  }
+): Promise<{ message: string; debt_id: string; name: string; amount: number; creditor: string; is_long_term: boolean }> => {
+  const response = await apiClient.post(
+    `${BASE_URL}/${schoolId}/accounting/patrimony/debts`,
+    null,
+    { params: data }
+  );
+  return response.data;
+};
+
+export const getDebts = async (schoolId: string) => {
+  const response = await apiClient.get(`${BASE_URL}/${schoolId}/accounting/patrimony/debts`);
+  return response.data;
+};
+
+export const createFixedAsset = async (
+  schoolId: string,
+  data: {
+    name: string;
+    value: number;
+    description?: string;
+    useful_life_years?: number;
+  }
+): Promise<{ message: string; asset_id: string; name: string; value: number }> => {
+  const response = await apiClient.post(
+    `${BASE_URL}/${schoolId}/accounting/patrimony/fixed-assets`,
+    null,
+    { params: data }
+  );
+  return response.data;
+};
+
+export const getFixedAssets = async (schoolId: string) => {
+  const response = await apiClient.get(`${BASE_URL}/${schoolId}/accounting/patrimony/fixed-assets`);
   return response.data;
 };
 
@@ -587,5 +743,13 @@ export const accountingService = {
   getAccountTypeCategory,
   // Cash Balances (Caja/Banco)
   getCashBalances,
-  initializeDefaultAccounts
+  initializeDefaultAccounts,
+  // Patrimony (Patrimonio)
+  getPatrimonySummary,
+  getInventoryValuation,
+  setInitialBalance,
+  createDebt,
+  getDebts,
+  createFixedAsset,
+  getFixedAssets
 };

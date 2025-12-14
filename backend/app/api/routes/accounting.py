@@ -1319,3 +1319,265 @@ async def initialize_default_accounts(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+# ============================================
+# Patrimony - Inventory Valuation & Net Worth
+# ============================================
+
+@router.get(
+    "/patrimony/summary",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_patrimony_summary(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get complete patrimony summary (requires ADMIN role)
+
+    PATRIMONY = ASSETS - LIABILITIES
+
+    Assets:
+    - Cash (Caja) + Bank (Banco)
+    - Inventory (valued at cost or 80% of price)
+    - Accounts Receivable
+    - Fixed Assets (equipment, machinery)
+
+    Liabilities:
+    - Accounts Payable (suppliers)
+    - Debts (loans, credits)
+
+    Returns comprehensive breakdown and net patrimony.
+    """
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+    return await service.get_patrimony_summary(school_id)
+
+
+@router.get(
+    "/patrimony/inventory-valuation",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_inventory_valuation(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get detailed inventory valuation (requires ADMIN role)
+
+    Calculates total inventory value:
+    - Uses product.cost if available
+    - Falls back to price * 0.80 (80% margin) if cost not set
+
+    Returns breakdown by product with quantities and values.
+    """
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+    return await service.get_inventory_valuation(school_id)
+
+
+@router.post(
+    "/patrimony/set-initial-balance",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def set_initial_balance(
+    school_id: UUID,
+    account_code: str,  # "1101" for Caja, "1102" for Banco
+    initial_balance: float,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Set initial balance for Caja or Banco account (requires ADMIN role)
+
+    Use this to set starting balances when migrating to the system.
+    Creates an adjustment entry in the balance history.
+
+    Args:
+        account_code: "1101" for Caja, "1102" for Banco
+        initial_balance: The starting balance amount
+    """
+    from decimal import Decimal
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+
+    try:
+        account = await service.set_initial_balance(
+            school_id,
+            account_code,
+            Decimal(str(initial_balance)),
+            created_by=current_user.id
+        )
+        await db.commit()
+
+        return {
+            "message": f"Balance inicial establecido para {account.name}",
+            "account_id": str(account.id),
+            "account_name": account.name,
+            "new_balance": float(account.balance)
+        }
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post(
+    "/patrimony/debts",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def create_debt(
+    school_id: UUID,
+    name: str,
+    amount: float,
+    creditor: str,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    is_long_term: bool = False,
+    interest_rate: float | None = None,
+    due_date: date | None = None,
+    description: str | None = None
+):
+    """
+    Create a new debt record (requires ADMIN role)
+
+    Use this to register existing debts when migrating to the system.
+
+    Args:
+        name: Name/description of the debt (e.g., "Préstamo Bancolombia")
+        amount: Total debt amount
+        creditor: Who the debt is owed to
+        is_long_term: True if > 1 year, False for short-term
+        interest_rate: Annual interest rate (optional)
+        due_date: When the debt is due (optional)
+        description: Additional notes (optional)
+    """
+    from decimal import Decimal
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+
+    try:
+        debt = await service.create_debt(
+            school_id,
+            name=name,
+            amount=Decimal(str(amount)),
+            creditor=creditor,
+            is_long_term=is_long_term,
+            interest_rate=Decimal(str(interest_rate)) if interest_rate else None,
+            due_date=due_date,
+            description=description,
+            created_by=current_user.id
+        )
+        await db.commit()
+
+        return {
+            "message": f"Deuda '{name}' registrada exitosamente",
+            "debt_id": str(debt.id),
+            "name": debt.name,
+            "amount": float(debt.balance),
+            "creditor": debt.creditor,
+            "is_long_term": is_long_term
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/patrimony/debts",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def list_debts(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    List all debts (requires ADMIN role)
+    """
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+    return await service.get_debts(school_id)
+
+
+@router.post(
+    "/patrimony/fixed-assets",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def create_fixed_asset(
+    school_id: UUID,
+    name: str,
+    value: float,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    description: str | None = None,
+    useful_life_years: int | None = None
+):
+    """
+    Create a fixed asset record (requires ADMIN role)
+
+    Use this to register equipment, machinery, furniture, etc.
+
+    Args:
+        name: Name of the asset (e.g., "Máquina de coser industrial")
+        value: Current value of the asset
+        description: Additional notes (optional)
+        useful_life_years: For depreciation calculation (optional)
+    """
+    from decimal import Decimal
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+
+    try:
+        asset = await service.create_fixed_asset(
+            school_id,
+            name=name,
+            value=Decimal(str(value)),
+            description=description,
+            useful_life_years=useful_life_years,
+            created_by=current_user.id
+        )
+        await db.commit()
+
+        return {
+            "message": f"Activo fijo '{name}' registrado exitosamente",
+            "asset_id": str(asset.id),
+            "name": asset.name,
+            "value": float(asset.balance)
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/patrimony/fixed-assets",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def list_fixed_assets(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    List all fixed assets (requires ADMIN role)
+    """
+    from app.services.patrimony import PatrimonyService
+
+    service = PatrimonyService(db)
+    return await service.get_fixed_assets(school_id)
