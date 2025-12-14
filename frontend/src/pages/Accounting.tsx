@@ -126,14 +126,22 @@ export default function Accounting() {
       setError(null);
 
       if (activeTab === 'dashboard') {
-        const [dashboardData, pendingData, cashData] = await Promise.all([
+        // Load dashboard and pending expenses (required)
+        const [dashboardData, pendingData] = await Promise.all([
           accountingService.getAccountingDashboard(schoolId),
-          accountingService.getPendingExpenses(schoolId),
-          getCashBalances(schoolId)
+          accountingService.getPendingExpenses(schoolId)
         ]);
         setDashboard(dashboardData);
         setPendingExpenses(pendingData);
-        setCashBalances(cashData);
+
+        // Load cash balances separately (optional - may not be deployed yet)
+        try {
+          const cashData = await getCashBalances(schoolId);
+          setCashBalances(cashData);
+        } catch (cashErr) {
+          console.warn('Cash balances not available:', cashErr);
+          setCashBalances(null);
+        }
       } else if (activeTab === 'balance') {
         const [summary, detailed] = await Promise.all([
           accountingService.getBalanceGeneralSummary(schoolId),
