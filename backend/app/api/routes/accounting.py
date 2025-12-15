@@ -927,7 +927,8 @@ async def list_receivables(
     if is_overdue is not None:
         filters["is_overdue"] = is_overdue
 
-    receivables = await service.get_multi(
+    # Use get_multi_with_client to avoid lazy loading issues
+    receivables = await service.get_multi_with_client(
         school_id=school_id,
         skip=skip,
         limit=limit,

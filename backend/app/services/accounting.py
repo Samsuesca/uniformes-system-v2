@@ -898,13 +898,36 @@ class AccountsReceivableService(SchoolIsolatedService[AccountsReceivable]):
         await self.db.refresh(receivable)
         return receivable
 
+    async def get_multi_with_client(
+        self,
+        school_id: UUID,
+        skip: int = 0,
+        limit: int = 100,
+        filters: dict | None = None
+    ) -> list[AccountsReceivable]:
+        """Get multiple receivables with eager loading of client relationship"""
+        query = select(AccountsReceivable).options(
+            selectinload(AccountsReceivable.client)
+        ).where(AccountsReceivable.school_id == school_id)
+
+        if filters:
+            for field, value in filters.items():
+                if hasattr(AccountsReceivable, field):
+                    query = query.where(getattr(AccountsReceivable, field) == value)
+
+        query = query.offset(skip).limit(limit).order_by(AccountsReceivable.id)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
     async def get_pending_receivables(
         self,
         school_id: UUID
     ) -> list[AccountsReceivable]:
-        """Get all unpaid receivables"""
+        """Get all unpaid receivables with client eager loading"""
         result = await self.db.execute(
-            select(AccountsReceivable).where(
+            select(AccountsReceivable).options(
+                selectinload(AccountsReceivable.client)
+            ).where(
                 AccountsReceivable.school_id == school_id,
                 AccountsReceivable.is_paid == False
             ).order_by(AccountsReceivable.due_date.asc().nullslast())
