@@ -2,7 +2,7 @@
  * Order Detail Page - View and manage a single order
  */
 import { useEffect, useState, Fragment } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
@@ -21,6 +21,7 @@ const ITEM_STATUS_CONFIG: Record<OrderItemStatus, { label: string; color: string
 
 export default function OrderDetail() {
   const { orderId } = useParams<{ orderId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentSchool } = useSchoolStore();
   const [order, setOrder] = useState<OrderWithItems | null>(null);
@@ -45,7 +46,8 @@ export default function OrderDetail() {
   // Item status update loading state (by item ID)
   const [updatingItemStatus, setUpdatingItemStatus] = useState<string | null>(null);
 
-  const schoolId = currentSchool?.id || '';
+  // Get school_id from URL query param, fallback to currentSchool
+  const schoolId = searchParams.get('school_id') || currentSchool?.id || '';
 
   // Toggle measurement visibility
   const toggleMeasurements = (itemId: string) => {

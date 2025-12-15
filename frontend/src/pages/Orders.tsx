@@ -405,8 +405,8 @@ export default function Orders() {
     }
   };
 
-  const handleViewOrder = (orderId: string) => {
-    navigate(`/orders/${orderId}`);
+  const handleViewOrder = (orderId: string, schoolId: string) => {
+    navigate(`/orders/${orderId}?school_id=${schoolId}`);
   };
 
   return (
@@ -862,7 +862,7 @@ export default function Orders() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
-                        onClick={() => handleViewOrder(order.id)}
+                        onClick={() => handleViewOrder(order.id, order.school_id || '')}
                         className="text-blue-600 hover:text-blue-800 p-2 rounded hover:bg-blue-50 transition"
                         title="Ver detalle"
                       >
