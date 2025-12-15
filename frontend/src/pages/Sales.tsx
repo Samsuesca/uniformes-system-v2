@@ -352,12 +352,12 @@ export default function Sales() {
         </div>
       )}
 
-      {/* Sale Modal */}
+      {/* Sale Modal - now supports multi-school selection internally */}
       <SaleModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSuccess={handleSuccess}
-        schoolId={schoolIdForCreate}
+        initialSchoolId={schoolIdForCreate}
       />
     </Layout>
   );

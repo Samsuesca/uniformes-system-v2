@@ -3,13 +3,15 @@
  * - Catalog: Select product from catalog (for out of stock items)
  * - Yomber: Custom measurements required
  * - Custom: Manual price for special items
+ * Supports multi-school: allows selecting school when user has multiple schools
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ClientSelector from './ClientSelector';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
+import { useSchoolStore } from '../stores/schoolStore';
 import YomberMeasurementsForm, { validateYomberMeasurements } from './YomberMeasurementsForm';
 import type { GarmentType, OrderItemCreate, Product, OrderType, YomberMeasurements } from '../types/api';
 
@@ -17,7 +19,7 @@ interface OrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  schoolId: string;
+  initialSchoolId?: string;  // Optional - modal can manage school selection internally
 }
 
 interface OrderItemForm extends OrderItemCreate {
@@ -32,8 +34,15 @@ export default function OrderModal({
   isOpen,
   onClose,
   onSuccess,
-  schoolId
+  initialSchoolId
 }: OrderModalProps) {
+  // Multi-school support
+  const { availableSchools, currentSchool } = useSchoolStore();
+  const [selectedSchoolId, setSelectedSchoolId] = useState(
+    initialSchoolId || currentSchool?.id || availableSchools[0]?.id || ''
+  );
+  const showSchoolSelector = availableSchools.length > 1;
+
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
@@ -87,17 +96,41 @@ export default function OrderModal({
 
   useEffect(() => {
     if (isOpen) {
-      loadData();
+      // Reset school selection when opening
+      setSelectedSchoolId(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
+      loadData(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
       resetForm();
     }
   }, [isOpen]);
 
-  const loadData = async () => {
+  // Handler for school change - reload products and garment types when school changes
+  const handleSchoolChange = async (newSchoolId: string) => {
+    if (items.length > 0) {
+      const confirmed = window.confirm(
+        `Tienes ${items.length} item(s) agregado(s). Al cambiar de colegio se eliminarán porque los productos son diferentes.\n\n¿Deseas continuar?`
+      );
+      if (!confirmed) return;
+    }
+
+    setSelectedSchoolId(newSchoolId);
+    setItems([]);
+    setClientId(''); // Reset client as clients are per school
+    resetCatalogForm();
+    resetYomberForm();
+    resetCustomForm();
+    setError(null);
+    await loadData(newSchoolId);
+  };
+
+  const loadData = async (schoolIdToLoad?: string) => {
+    const targetSchoolId = schoolIdToLoad || selectedSchoolId;
+    if (!targetSchoolId) return;
+
     try {
       setLoadingData(true);
       const [garmentTypesData, productsData] = await Promise.all([
-        productService.getGarmentTypes(schoolId),
-        productService.getProducts(schoolId),
+        productService.getGarmentTypes(targetSchoolId),
+        productService.getProducts(targetSchoolId),
       ]);
       setGarmentTypes(garmentTypesData);
       setProducts(productsData);
@@ -283,8 +316,8 @@ export default function OrderModal({
         notes: item.notes,
       }));
 
-      await orderService.createOrder(schoolId, {
-        school_id: schoolId,
+      await orderService.createOrder(selectedSchoolId, {
+        school_id: selectedSchoolId,
         client_id: clientId,
         delivery_date: deliveryDate || undefined,
         notes: notes || undefined,
@@ -372,6 +405,30 @@ export default function OrderModal({
                 </div>
               )}
 
+              {/* School Selector - Only show when multiple schools available */}
+              {showSchoolSelector && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Building2 className="w-4 h-4 inline mr-1" />
+                    Colegio *
+                  </label>
+                  <select
+                    value={selectedSchoolId}
+                    onChange={(e) => handleSchoolChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-blue-50"
+                  >
+                    {availableSchools.map(school => (
+                      <option key={school.id} value={school.id}>
+                        {school.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-blue-600">
+                    Los productos, tipos de prenda y clientes se cargan del colegio seleccionado
+                  </p>
+                </div>
+              )}
+
               {/* Client Selection */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -380,7 +437,7 @@ export default function OrderModal({
                 <ClientSelector
                   value={clientId}
                   onChange={(id) => setClientId(id)}
-                  schoolId={schoolId}
+                  schoolId={selectedSchoolId}
                   allowNoClient={false}
                   placeholder="Buscar cliente por nombre, teléfono..."
                 />

@@ -469,12 +469,12 @@ export default function Orders() {
         </div>
       </div>
 
-      {/* Order Modal */}
+      {/* Order Modal - now supports multi-school selection internally */}
       <OrderModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={handleSuccess}
-        schoolId={schoolIdForCreate}
+        initialSchoolId={schoolIdForCreate}
       />
 
       {/* Stats - Clickable for filtering */}

@@ -1,18 +1,20 @@
 /**
  * Sale Modal - Create New Sale Form
+ * Supports multi-school: allows selecting school when user has multiple schools
  */
 import { useState, useEffect } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2 } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
+import { useSchoolStore } from '../stores/schoolStore';
 import type { Product, GlobalProduct } from '../types/api';
 
 interface SaleModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  schoolId: string;
+  initialSchoolId?: string;  // Optional - modal can manage school selection internally
 }
 
 // Extended type for sale items with global flag
@@ -21,7 +23,14 @@ interface SaleItemCreateExtended extends SaleItemCreate {
   display_name?: string;
 }
 
-export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: SaleModalProps) {
+export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId }: SaleModalProps) {
+  // Multi-school support
+  const { availableSchools, currentSchool } = useSchoolStore();
+  const [selectedSchoolId, setSelectedSchoolId] = useState(
+    initialSchoolId || currentSchool?.id || availableSchools[0]?.id || ''
+  );
+  const showSchoolSelector = availableSchools.length > 1;
+
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
@@ -50,10 +59,29 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
 
   useEffect(() => {
     if (isOpen) {
-      loadProducts();
+      // Reset school selection when opening
+      setSelectedSchoolId(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
+      loadProducts(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
       resetForm();
     }
   }, [isOpen]);
+
+  // Handler for school change - reload products when school changes
+  const handleSchoolChange = async (newSchoolId: string) => {
+    if (items.length > 0) {
+      const confirmed = window.confirm(
+        `Tienes ${items.length} producto(s) agregado(s). Al cambiar de colegio se eliminarán porque los productos son diferentes.\n\n¿Deseas continuar?`
+      );
+      if (!confirmed) return;
+    }
+
+    setSelectedSchoolId(newSchoolId);
+    setItems([]);
+    setCurrentItem({ product_id: '', quantity: 1, unit_price: 0, is_global: false });
+    setFormData({ ...formData, client_id: '' }); // Reset client as clients are per school
+    setError(null);
+    await loadProducts(newSchoolId);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -77,10 +105,13 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
     setError(null);
   };
 
-  const loadProducts = async () => {
+  const loadProducts = async (schoolIdToLoad?: string) => {
+    const targetSchoolId = schoolIdToLoad || selectedSchoolId;
+    if (!targetSchoolId) return;
+
     try {
       const [productsData, globalProductsData] = await Promise.all([
-        productService.getProducts(schoolId),
+        productService.getProducts(targetSchoolId),
         productService.getGlobalProducts(true),
       ]);
       setProducts(productsData);
@@ -239,7 +270,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
 
       // Build sale data - be explicit with historical fields
       const saleData: SaleCreate = {
-        school_id: schoolId,
+        school_id: selectedSchoolId,
         client_id: clientId as string, // Will be null in backend
         items: items,
         payment_method: formData.payment_method,
@@ -255,7 +286,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
         formData_date_fields: { day: formData.sale_day, month: formData.sale_month, year: formData.sale_year }
       });
 
-      await saleService.createSale(schoolId, saleData);
+      await saleService.createSale(selectedSchoolId, saleData);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -312,6 +343,30 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* School Selector - Only show when multiple schools available */}
+              {showSchoolSelector && (
+                <div className="md:col-span-2 mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Building2 className="w-4 h-4 inline mr-1" />
+                    Colegio *
+                  </label>
+                  <select
+                    value={selectedSchoolId}
+                    onChange={(e) => handleSchoolChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-blue-50"
+                  >
+                    {availableSchools.map(school => (
+                      <option key={school.id} value={school.id}>
+                        {school.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-blue-600">
+                    Los productos y clientes se cargan del colegio seleccionado
+                  </p>
+                </div>
+              )}
+
               {/* Client */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -320,7 +375,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, schoolId }: Sale
                 <ClientSelector
                   value={formData.client_id}
                   onChange={(clientId) => setFormData({ ...formData, client_id: clientId })}
-                  schoolId={schoolId}
+                  schoolId={selectedSchoolId}
                   allowNoClient={true}
                   placeholder="Buscar cliente por nombre, teléfono..."
                 />
