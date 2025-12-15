@@ -726,6 +726,16 @@ export default function OrderDetail() {
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Registrar Pago</h2>
 
               <div className="space-y-4">
+                {/* Quick pay full balance button */}
+                {order.balance > 0 && (
+                  <button
+                    onClick={() => setPaymentAmount(String(order.balance))}
+                    className="w-full px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition font-medium"
+                  >
+                    Pagar saldo completo: {formatCurrency(order.balance)}
+                  </button>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Monto

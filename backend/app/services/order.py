@@ -280,7 +280,12 @@ class OrderService(SchoolIsolatedService[Order]):
         await self.db.flush()
 
         # Get payment method (default to CASH if not provided)
-        payment_method = getattr(payment_data, 'payment_method', None) or AccPaymentMethod.CASH
+        # Convert string to enum if needed
+        raw_method = getattr(payment_data, 'payment_method', None) or 'cash'
+        try:
+            payment_method = AccPaymentMethod(raw_method) if isinstance(raw_method, str) else raw_method
+        except ValueError:
+            payment_method = AccPaymentMethod.CASH
 
         # === CONTABILIDAD ===
         # Crear transacción de ingreso por el abono
