@@ -180,7 +180,7 @@ class OrderItem(Base):
 
     # Individual item status - allows independent tracking per item
     item_status: Mapped[OrderItemStatus] = mapped_column(
-        SQLEnum(OrderItemStatus, name="order_item_status_enum", create_type=False),
+        SQLEnum(OrderItemStatus, name="order_item_status_enum", create_type=False, values_callable=lambda x: [e.value for e in x]),
         default=OrderItemStatus.PENDING,
         nullable=False,
         index=True
