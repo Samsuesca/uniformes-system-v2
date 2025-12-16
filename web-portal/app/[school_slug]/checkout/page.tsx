@@ -450,8 +450,8 @@ export default function CheckoutPage() {
       )}
 
       {/* Info */}
-      <div className="bg-blue-50 rounded-lg p-3 mt-4">
-        <p className="text-xs text-blue-800 leading-relaxed">
+      <div className="bg-brand-50 rounded-lg p-3 mt-4">
+        <p className="text-xs text-brand-800 leading-relaxed">
           <span className="font-semibold">Información importante:</span><br />
           • Los uniformes se entregarán directamente en el colegio<br />
           • Te contactaremos para confirmar tallas y coordinar la entrega<br />

@@ -42,7 +42,7 @@ export default function RecuperarPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-primary-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-green-600" />
@@ -54,15 +54,15 @@ export default function RecuperarPasswordPage() {
             Si el correo <span className="font-semibold">{email}</span> está registrado,
             recibirás instrucciones para restablecer tu contraseña.
           </p>
-          <div className="bg-blue-50 rounded-xl p-4 mb-6 text-left">
-            <p className="text-sm text-blue-800">
+          <div className="bg-brand-50 rounded-xl p-4 mb-6 text-left">
+            <p className="text-sm text-brand-800">
               <span className="font-semibold">Nota:</span> El correo puede tardar unos minutos en llegar.
               Revisa también tu carpeta de spam.
             </p>
           </div>
           <button
             onClick={() => router.push('/')}
-            className="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold"
+            className="w-full py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
           >
             Volver al inicio
           </button>
@@ -72,9 +72,9 @@ export default function RecuperarPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-primary-50">
       {/* Header */}
-      <header className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+      <header className="bg-gradient-to-r from-brand-600 to-primary-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <button
             onClick={() => router.push('/')}
@@ -90,8 +90,8 @@ export default function RecuperarPasswordPage() {
       <main className="flex items-center justify-center p-4 mt-12">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Mail className="w-8 h-8 text-blue-600" />
+            <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Mail className="w-8 h-8 text-brand-600" />
             </div>
             <h1 className="text-2xl font-bold text-gray-800 mb-2">
               Recuperar contraseña
@@ -114,7 +114,7 @@ export default function RecuperarPasswordPage() {
                   setEmail(e.target.value);
                   setError('');
                 }}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-brand-500 outline-none transition-all"
                 placeholder="tu@email.com"
               />
             </div>
@@ -129,7 +129,7 @@ export default function RecuperarPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Enviando...' : 'Enviar instrucciones'}
             </button>

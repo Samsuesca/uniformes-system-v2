@@ -177,12 +177,12 @@ export default function SoportePage() {
               </div>
             </div>
 
-            <div className="bg-blue-50 rounded-xl border border-blue-200 p-6">
+            <div className="bg-brand-50 rounded-xl border border-brand-200 p-6">
               <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-blue-900">Horario de Atención</h3>
+                <Clock className="w-5 h-5 text-brand-600" />
+                <h3 className="font-bold text-brand-900">Horario de Atención</h3>
               </div>
-              <div className="text-sm text-blue-800 space-y-1">
+              <div className="text-sm text-brand-800 space-y-1">
                 <p><span className="font-medium">Lunes a Viernes:</span> 8:00 AM - 6:00 PM</p>
                 <p><span className="font-medium">Sábados:</span> 9:00 AM - 2:00 PM</p>
                 <p><span className="font-medium">Domingos:</span> Cerrado</p>

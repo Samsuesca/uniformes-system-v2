@@ -70,7 +70,7 @@ export default function MiCuentaPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+      <header className="bg-primary text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -91,13 +91,13 @@ export default function MiCuentaPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-              <User className="w-8 h-8" />
+            <div className="w-16 h-16 bg-brand-600/20 rounded-full flex items-center justify-center">
+              <User className="w-8 h-8 text-brand-500" />
             </div>
             <div>
               <h1 className="text-2xl font-bold">{client.name}</h1>
-              <p className="text-blue-200">{client.email}</p>
-              {client.phone && <p className="text-blue-200 text-sm">{client.phone}</p>}
+              <p className="text-gray-300">{client.email}</p>
+              {client.phone && <p className="text-gray-300 text-sm">{client.phone}</p>}
             </div>
           </div>
         </div>
@@ -109,8 +109,8 @@ export default function MiCuentaPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Package className="w-6 h-6 text-blue-600" />
+              <div className="w-12 h-12 bg-brand-50 rounded-lg flex items-center justify-center">
+                <Package className="w-6 h-6 text-brand-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold text-gray-800">{orders.length}</p>
@@ -121,8 +121,8 @@ export default function MiCuentaPage() {
 
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-yellow-600" />
+              <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                <Clock className="w-6 h-6 text-amber-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold text-gray-800">
@@ -157,7 +157,7 @@ export default function MiCuentaPage() {
 
           {loading ? (
             <div className="p-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-200 border-t-blue-600"></div>
+              <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-brand-200 border-t-brand-600"></div>
               <p className="mt-4 text-gray-500">Cargando pedidos...</p>
             </div>
           ) : orders.length === 0 ? (
@@ -169,7 +169,7 @@ export default function MiCuentaPage() {
               </p>
               <button
                 onClick={() => router.push('/')}
-                className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold"
+                className="mt-6 px-6 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
               >
                 Explorar Catálogo
               </button>
@@ -250,8 +250,8 @@ export default function MiCuentaPage() {
                       </div>
 
                       {order.delivery_date && (
-                        <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                          <p className="text-sm text-blue-800">
+                        <div className="mt-4 p-4 bg-brand-50 rounded-lg">
+                          <p className="text-sm text-gray-800">
                             <span className="font-semibold">Fecha de entrega estimada:</span>{' '}
                             {new Date(order.delivery_date).toLocaleDateString('es-CO', {
                               weekday: 'long',
@@ -271,14 +271,14 @@ export default function MiCuentaPage() {
         </div>
 
         {/* Help Section */}
-        <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+        <div className="mt-8 bg-brand-50 rounded-xl p-6 border border-brand-200">
           <h3 className="font-bold text-gray-800 mb-2">¿Necesitas ayuda?</h3>
           <p className="text-gray-600 text-sm mb-4">
             Si tienes preguntas sobre tus pedidos o necesitas hacer cambios, contáctanos.
           </p>
           <button
             onClick={() => router.push('/soporte')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold"
+            className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-semibold"
           >
             Ir a Soporte
           </button>
