@@ -212,6 +212,7 @@ class SaleService(SchoolIsolatedService[Sale]):
             # Mapear payment_method de Sale a AccPaymentMethod
             payment_method_map = {
                 PaymentMethod.CASH: AccPaymentMethod.CASH,
+                PaymentMethod.NEQUI: AccPaymentMethod.NEQUI,
                 PaymentMethod.TRANSFER: AccPaymentMethod.TRANSFER,
                 PaymentMethod.CARD: AccPaymentMethod.CARD,
                 PaymentMethod.CREDIT: AccPaymentMethod.CREDIT,

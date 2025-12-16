@@ -159,10 +159,16 @@ class OrderService(SchoolIsolatedService[Order]):
 
         # Determine paid amount (anticipo)
         paid_amount = order_data.advance_payment or Decimal("0")
-        payment_method = getattr(order_data, 'payment_method', None) or AccPaymentMethod.CASH
+
+        # Get payment method for advance payment, convert string to enum if needed
+        raw_method = getattr(order_data, 'advance_payment_method', None) or 'cash'
+        try:
+            payment_method = AccPaymentMethod(raw_method) if isinstance(raw_method, str) else raw_method
+        except ValueError:
+            payment_method = AccPaymentMethod.CASH
 
         # Create order
-        order_dict = order_data.model_dump(exclude={'items', 'advance_payment', 'payment_method'})
+        order_dict = order_data.model_dump(exclude={'items', 'advance_payment', 'advance_payment_method'})
         order_dict.update({
             "code": code,
             "user_id": user_id,

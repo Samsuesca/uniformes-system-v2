@@ -141,6 +141,7 @@ class OrderCreate(OrderBase, SchoolIsolatedSchema):
     """Schema for creating order"""
     items: list[OrderItemCreate] = Field(..., min_length=1)
     advance_payment: Decimal | None = Field(None, ge=0)
+    advance_payment_method: str | None = Field(None, max_length=20)  # cash, nequi, transfer, card
     source: SaleSource = SaleSource.DESKTOP_APP  # Default to desktop app
     # code, status, totals will be auto-generated
 
