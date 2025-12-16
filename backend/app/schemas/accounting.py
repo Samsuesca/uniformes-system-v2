@@ -315,6 +315,42 @@ class BalanceAccountCreate(BalanceAccountBase, SchoolIsolatedSchema):
     pass
 
 
+class GlobalBalanceAccountCreate(BalanceAccountBase):
+    """Schema for creating a global balance account (no school_id required)
+
+    Used for creating:
+    - Fixed assets (Activos Fijos): machinery, vehicles, equipment
+    - Current liabilities (Pasivos Corrientes): short-term debts
+    - Long-term liabilities (Pasivos Largo Plazo): loans, mortgages
+    - Equity accounts (Patrimonio): capital, retained earnings
+    """
+    pass
+
+
+class GlobalBalanceAccountResponse(BaseSchema):
+    """Global balance account for API responses (nullable school_id)"""
+    id: UUID
+    school_id: UUID | None
+    account_type: AccountType
+    name: str
+    description: str | None
+    code: str | None
+    balance: Decimal
+    original_value: Decimal | None
+    accumulated_depreciation: Decimal | None
+    useful_life_years: int | None
+    interest_rate: Decimal | None
+    due_date: date | None
+    creditor: str | None
+    net_value: Decimal
+    is_active: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class BalanceAccountUpdate(BaseSchema):
     """Schema for updating a balance account"""
     name: str | None = Field(None, min_length=1, max_length=255)

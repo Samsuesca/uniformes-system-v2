@@ -129,6 +129,80 @@ export const getGlobalBalanceEntries = async (
   return response.data;
 };
 
+export interface GlobalBalanceAccountCreate {
+  account_type: AccountType;
+  name: string;
+  description?: string | null;
+  code?: string | null;
+  balance?: number;
+  original_value?: number | null;
+  accumulated_depreciation?: number | null;
+  useful_life_years?: number | null;
+  interest_rate?: number | null;
+  due_date?: string | null;
+  creditor?: string | null;
+}
+
+export interface GlobalBalanceAccountResponse {
+  id: string;
+  school_id: string | null;
+  account_type: AccountType;
+  name: string;
+  description: string | null;
+  code: string | null;
+  balance: number;
+  original_value: number | null;
+  accumulated_depreciation: number | null;
+  useful_life_years: number | null;
+  interest_rate: number | null;
+  due_date: string | null;
+  creditor: string | null;
+  net_value: number;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GlobalBalanceAccountUpdate {
+  name?: string;
+  description?: string | null;
+  code?: string | null;
+  balance?: number;
+  original_value?: number | null;
+  accumulated_depreciation?: number | null;
+  useful_life_years?: number | null;
+  interest_rate?: number | null;
+  due_date?: string | null;
+  creditor?: string | null;
+  is_active?: boolean;
+}
+
+export const createGlobalBalanceAccount = async (
+  data: GlobalBalanceAccountCreate
+): Promise<GlobalBalanceAccountResponse> => {
+  const response = await apiClient.post<GlobalBalanceAccountResponse>(
+    `${BASE_URL}/balance-accounts`,
+    data
+  );
+  return response.data;
+};
+
+export const updateGlobalBalanceAccount = async (
+  accountId: string,
+  data: GlobalBalanceAccountUpdate
+): Promise<GlobalBalanceAccountResponse> => {
+  const response = await apiClient.patch<GlobalBalanceAccountResponse>(
+    `${BASE_URL}/balance-accounts/${accountId}`,
+    data
+  );
+  return response.data;
+};
+
+export const deleteGlobalBalanceAccount = async (accountId: string): Promise<void> => {
+  await apiClient.delete(`${BASE_URL}/balance-accounts/${accountId}`);
+};
+
 // ============================================
 // Global Balance General Summary
 // ============================================
@@ -424,6 +498,9 @@ export const globalAccountingService = {
   getGlobalBalanceAccounts,
   getGlobalBalanceAccount,
   getGlobalBalanceEntries,
+  createGlobalBalanceAccount,
+  updateGlobalBalanceAccount,
+  deleteGlobalBalanceAccount,
   // Balance General
   getGlobalBalanceGeneralSummary,
   getGlobalBalanceGeneralDetailed,

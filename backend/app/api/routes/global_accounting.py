@@ -22,7 +22,8 @@ from app.models.accounting import (
 )
 from app.schemas.accounting import (
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
-    BalanceAccountResponse, BalanceAccountListResponse,
+    BalanceAccountResponse, BalanceAccountListResponse, BalanceAccountUpdate,
+    GlobalBalanceAccountCreate, GlobalBalanceAccountResponse,
     GlobalAccountsPayableCreate, GlobalAccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
     GlobalAccountsReceivableCreate, GlobalAccountsReceivableResponse, AccountsReceivableListResponse, AccountsReceivablePayment,
     BalanceGeneralSummary, BalanceGeneralDetailed
@@ -243,7 +244,7 @@ async def list_global_balance_accounts(
 
 @router.get(
     "/balance-accounts/{account_id}",
-    response_model=BalanceAccountResponse,
+    response_model=GlobalBalanceAccountResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def get_global_balance_account(
@@ -265,7 +266,153 @@ async def get_global_balance_account(
             detail="Global balance account not found"
         )
 
-    return BalanceAccountResponse.model_validate(account)
+    return GlobalBalanceAccountResponse.model_validate(account)
+
+
+@router.post(
+    "/balance-accounts",
+    response_model=GlobalBalanceAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def create_global_balance_account(
+    account_data: GlobalBalanceAccountCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Create a global balance account (business-wide)
+
+    Use this to create:
+    - Fixed assets (ASSET_FIXED): machinery, vehicles, equipment
+    - Current liabilities (LIABILITY_CURRENT): short-term debts
+    - Long-term liabilities (LIABILITY_LONG): loans, mortgages
+    - Other account types as needed
+    """
+    # Generate a code if not provided
+    code = account_data.code
+    if not code:
+        # Generate code based on account type
+        type_prefix = {
+            AccountType.ASSET_CURRENT: "11",
+            AccountType.ASSET_FIXED: "12",
+            AccountType.ASSET_OTHER: "19",
+            AccountType.LIABILITY_CURRENT: "21",
+            AccountType.LIABILITY_LONG: "22",
+            AccountType.LIABILITY_OTHER: "29",
+            AccountType.EQUITY_CAPITAL: "31",
+            AccountType.EQUITY_RETAINED: "32",
+            AccountType.EQUITY_OTHER: "39",
+        }
+        prefix = type_prefix.get(account_data.account_type, "90")
+
+        # Count existing accounts of this type
+        result = await db.execute(
+            select(func.count(BalanceAccount.id)).where(
+                BalanceAccount.school_id.is_(None),
+                BalanceAccount.code.like(f"{prefix}%")
+            )
+        )
+        count = result.scalar() or 0
+        code = f"{prefix}{str(count + 1).zfill(2)}"
+
+    account = BalanceAccount(
+        school_id=None,  # Global account
+        account_type=account_data.account_type,
+        name=account_data.name,
+        description=account_data.description,
+        code=code,
+        balance=account_data.balance,
+        original_value=account_data.original_value,
+        accumulated_depreciation=account_data.accumulated_depreciation,
+        useful_life_years=account_data.useful_life_years,
+        interest_rate=account_data.interest_rate,
+        due_date=account_data.due_date,
+        creditor=account_data.creditor,
+        created_by=current_user.id
+    )
+    db.add(account)
+    await db.commit()
+    await db.refresh(account)
+
+    return GlobalBalanceAccountResponse.model_validate(account)
+
+
+@router.patch(
+    "/balance-accounts/{account_id}",
+    response_model=GlobalBalanceAccountResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def update_global_balance_account(
+    account_id: UUID,
+    account_data: BalanceAccountUpdate,
+    db: DatabaseSession
+):
+    """Update a global balance account"""
+    result = await db.execute(
+        select(BalanceAccount).where(
+            BalanceAccount.id == account_id,
+            BalanceAccount.school_id.is_(None)
+        )
+    )
+    account = result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Global balance account not found"
+        )
+
+    # Update fields
+    update_data = account_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(account, field, value)
+
+    await db.commit()
+    await db.refresh(account)
+
+    return GlobalBalanceAccountResponse.model_validate(account)
+
+
+@router.delete(
+    "/balance-accounts/{account_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def delete_global_balance_account(
+    account_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Soft delete a global balance account (mark as inactive)
+
+    Note: Cannot delete Caja (1101) or Banco (1102) accounts.
+    """
+    result = await db.execute(
+        select(BalanceAccount).where(
+            BalanceAccount.id == account_id,
+            BalanceAccount.school_id.is_(None)
+        )
+    )
+    account = result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Global balance account not found"
+        )
+
+    # Prevent deletion of Caja and Banco
+    if account.code in ("1101", "1102"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar la cuenta de Caja o Banco"
+        )
+
+    account.is_active = False
+    await db.commit()
+
+    return None
 
 
 @router.get(

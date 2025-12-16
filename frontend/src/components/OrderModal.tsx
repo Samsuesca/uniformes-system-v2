@@ -70,6 +70,7 @@ export default function OrderModal({
   const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [advancePayment, setAdvancePayment] = useState<number>(0);
+  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'cash' | 'transfer' | 'card'>('cash');
   const [items, setItems] = useState<OrderItemForm[]>([]);
 
   // Tab state
@@ -96,19 +97,42 @@ export default function OrderModal({
   const [customNotes, setCustomNotes] = useState('');
   const [customEmbroideryText, setCustomEmbroideryText] = useState('');
 
-  // Filter yomber products - only products whose garment type has has_custom_measurements = true
-  const yomberProducts = useMemo(() => {
-    const yomberGarmentTypeIds = garmentTypes
+  // Get yomber garment type IDs (those with has_custom_measurements = true)
+  const yomberGarmentTypeIds = useMemo(() => {
+    return garmentTypes
       .filter(gt => gt.has_custom_measurements)
       .map(gt => gt.id);
-    return products.filter(p => yomberGarmentTypeIds.includes(p.garment_type_id));
-  }, [products, garmentTypes]);
+  }, [garmentTypes]);
 
-  // Filter catalog products by garment type
+  // Filter yomber products - only products whose garment type has has_custom_measurements = true
+  const yomberProducts = useMemo(() => {
+    return products.filter(p => yomberGarmentTypeIds.includes(p.garment_type_id));
+  }, [products, yomberGarmentTypeIds]);
+
+  // Non-yomber garment types for catalog filter (exclude yomber types)
+  const catalogGarmentTypes = useMemo(() => {
+    return garmentTypes.filter(gt => !gt.has_custom_measurements);
+  }, [garmentTypes]);
+
+  // Filter catalog products:
+  // 1. Exclude yomber products (they have their own tab)
+  // 2. Only show products with stock = 0 (orders are for out-of-stock items)
+  // 3. Apply garment type filter if selected
   const filteredCatalogProducts = useMemo(() => {
-    if (!catalogGarmentFilter) return products;
-    return products.filter(p => p.garment_type_id === catalogGarmentFilter);
-  }, [products, catalogGarmentFilter]);
+    return products.filter(p => {
+      // Exclude yomber products
+      if (yomberGarmentTypeIds.includes(p.garment_type_id)) return false;
+
+      // Only show products without stock (orders are for out-of-stock items)
+      const stock = p.stock ?? p.inventory_quantity ?? 0;
+      if (stock > 0) return false;
+
+      // Apply garment type filter
+      if (catalogGarmentFilter && p.garment_type_id !== catalogGarmentFilter) return false;
+
+      return true;
+    });
+  }, [products, yomberGarmentTypeIds, catalogGarmentFilter]);
 
   useEffect(() => {
     if (isOpen) {
@@ -177,6 +201,7 @@ export default function OrderModal({
     setDeliveryDate('');
     setNotes('');
     setAdvancePayment(0);
+    setAdvancePaymentMethod('cash');
     setItems([]);
     setError(null);
     setActiveTab('catalog');
@@ -381,6 +406,7 @@ export default function OrderModal({
           notes: notes || undefined,
           items: orderItems,
           advance_payment: schoolAdvance > 0 ? schoolAdvance : undefined,
+          advance_payment_method: schoolAdvance > 0 ? advancePaymentMethod : undefined,
         });
 
         results.push({
@@ -588,7 +614,7 @@ export default function OrderModal({
                         Selecciona un producto del catalogo. Ideal para productos agotados o pedidos web.
                       </p>
 
-                      {/* Garment Type Filter */}
+                      {/* Garment Type Filter - excludes yomber types */}
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">Filtrar por tipo</label>
                         <select
@@ -597,7 +623,7 @@ export default function OrderModal({
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                         >
                           <option value="">Todos los tipos</option>
-                          {garmentTypes.map((gt) => (
+                          {catalogGarmentTypes.map((gt) => (
                             <option key={gt.id} value={gt.id}>
                               {gt.name}
                             </option>
@@ -1068,6 +1094,48 @@ export default function OrderModal({
                         />
                       </div>
                     </div>
+
+                    {/* Payment Method - only show when advance payment > 0 */}
+                    {advancePayment > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <label className="block text-xs text-gray-600 mb-2">Método de Pago del Anticipo:</label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAdvancePaymentMethod('cash')}
+                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
+                              advancePaymentMethod === 'cash'
+                                ? 'bg-green-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            💵 Efectivo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdvancePaymentMethod('transfer')}
+                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
+                              advancePaymentMethod === 'transfer'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            🏦 Transferencia
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdvancePaymentMethod('card')}
+                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
+                              advancePaymentMethod === 'card'
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            💳 Tarjeta
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex justify-between items-center pt-3 border-t border-gray-200">

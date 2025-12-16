@@ -6,7 +6,8 @@ import Layout from '../components/Layout';
 import {
   Calculator, TrendingUp, TrendingDown, DollarSign, Plus,
   Loader2, AlertCircle, Receipt, X, Building2, Users, Wallet,
-  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle, PiggyBank, Pencil
+  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle, PiggyBank, Pencil,
+  Settings, Trash2, Car, Package
 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import {
@@ -19,7 +20,10 @@ import {
 } from '../services/accountingService';
 import {
   globalAccountingService,
-  type GlobalPatrimonySummary
+  type GlobalPatrimonySummary,
+  type GlobalBalanceAccountCreate,
+  type GlobalBalanceAccountResponse,
+  type GlobalBalanceAccountUpdate
 } from '../services/globalAccountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
@@ -99,6 +103,26 @@ export default function Accounting() {
   const [showEditBalanceModal, setShowEditBalanceModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<'caja' | 'banco' | null>(null);
   const [newBalanceValue, setNewBalanceValue] = useState<number>(0);
+
+  // Fixed Assets / Liabilities Management Modal states
+  const [showAssetsModal, setShowAssetsModal] = useState(false);
+  const [assetsModalType, setAssetsModalType] = useState<'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG'>('ASSET_FIXED');
+  const [balanceAccountsList, setBalanceAccountsList] = useState<GlobalBalanceAccountResponse[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [showNewAccountForm, setShowNewAccountForm] = useState(false);
+  const [editingBalanceAccount, setEditingBalanceAccount] = useState<GlobalBalanceAccountResponse | null>(null);
+  const [newAccountForm, setNewAccountForm] = useState<Partial<GlobalBalanceAccountCreate>>({
+    account_type: 'ASSET_FIXED' as any,
+    name: '',
+    description: '',
+    balance: 0,
+    original_value: null,
+    accumulated_depreciation: null,
+    useful_life_years: null,
+    interest_rate: null,
+    due_date: null,
+    creditor: null
+  });
 
   // Form states
   const [expenseForm, setExpenseForm] = useState<Partial<ExpenseCreate>>({
@@ -423,6 +447,134 @@ export default function Accounting() {
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // ============================================
+  // Balance Accounts (Fixed Assets / Liabilities) Management
+  // ============================================
+
+  const getModalTitle = (type: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+    switch (type) {
+      case 'ASSET_FIXED': return 'Activos Fijos';
+      case 'LIABILITY_CURRENT': return 'Pasivos Corrientes';
+      case 'LIABILITY_LONG': return 'Pasivos a Largo Plazo';
+    }
+  };
+
+  const openAssetsModal = async (type: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+    setAssetsModalType(type);
+    setShowAssetsModal(true);
+    setShowNewAccountForm(false);
+    setEditingBalanceAccount(null);
+    await loadBalanceAccounts(type);
+  };
+
+  const loadBalanceAccounts = async (type: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+    try {
+      setLoadingAccounts(true);
+      const accounts = await globalAccountingService.getGlobalBalanceAccounts(type as any, true);
+      setBalanceAccountsList(accounts as any);
+    } catch (err) {
+      console.error('Error loading balance accounts:', err);
+      setError(getErrorMessage(err, 'Error al cargar cuentas'));
+    } finally {
+      setLoadingAccounts(false);
+    }
+  };
+
+  const resetNewAccountForm = (type?: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+    setNewAccountForm({
+      account_type: (type || assetsModalType) as any,
+      name: '',
+      description: '',
+      balance: 0,
+      original_value: null,
+      accumulated_depreciation: null,
+      useful_life_years: null,
+      interest_rate: null,
+      due_date: null,
+      creditor: null
+    });
+  };
+
+  const handleCreateBalanceAccountGlobal = async () => {
+    if (!newAccountForm.name) return;
+    try {
+      setSubmitting(true);
+      await globalAccountingService.createGlobalBalanceAccount({
+        ...newAccountForm,
+        account_type: assetsModalType
+      } as GlobalBalanceAccountCreate);
+      setShowNewAccountForm(false);
+      resetNewAccountForm();
+      await loadBalanceAccounts(assetsModalType);
+      await loadData(); // Refresh patrimony
+    } catch (err: any) {
+      console.error('Error creating balance account:', err);
+      setError(getErrorMessage(err, 'Error al crear cuenta'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateBalanceAccountGlobal = async () => {
+    if (!editingBalanceAccount) return;
+    try {
+      setSubmitting(true);
+      await globalAccountingService.updateGlobalBalanceAccount(editingBalanceAccount.id, {
+        name: newAccountForm.name,
+        description: newAccountForm.description,
+        balance: newAccountForm.balance,
+        original_value: newAccountForm.original_value,
+        accumulated_depreciation: newAccountForm.accumulated_depreciation,
+        useful_life_years: newAccountForm.useful_life_years,
+        interest_rate: newAccountForm.interest_rate,
+        due_date: newAccountForm.due_date,
+        creditor: newAccountForm.creditor
+      });
+      setEditingBalanceAccount(null);
+      setShowNewAccountForm(false);
+      resetNewAccountForm();
+      await loadBalanceAccounts(assetsModalType);
+      await loadData(); // Refresh patrimony
+    } catch (err: any) {
+      console.error('Error updating balance account:', err);
+      setError(getErrorMessage(err, 'Error al actualizar cuenta'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteBalanceAccount = async (accountId: string) => {
+    if (!confirm('¿Está seguro de eliminar esta cuenta? Esta acción no se puede deshacer.')) return;
+    try {
+      setSubmitting(true);
+      await globalAccountingService.deleteGlobalBalanceAccount(accountId);
+      await loadBalanceAccounts(assetsModalType);
+      await loadData(); // Refresh patrimony
+    } catch (err: any) {
+      console.error('Error deleting balance account:', err);
+      setError(getErrorMessage(err, 'Error al eliminar cuenta'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startEditBalanceAccount = (account: GlobalBalanceAccountResponse) => {
+    setEditingBalanceAccount(account);
+    setNewAccountForm({
+      account_type: account.account_type as any,
+      name: account.name,
+      description: account.description || '',
+      balance: account.balance,
+      original_value: account.original_value,
+      accumulated_depreciation: account.accumulated_depreciation,
+      useful_life_years: account.useful_life_years,
+      interest_rate: account.interest_rate,
+      due_date: account.due_date,
+      creditor: account.creditor
+    });
+    setShowNewAccountForm(true);
   };
 
   // Access control
@@ -1038,10 +1190,17 @@ export default function Accounting() {
                   </div>
                   <span className="font-bold text-blue-700">{formatCurrency(patrimony.assets.current_assets || 0)}</span>
                 </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100 group">
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-gray-400" />
+                    <Car className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Activos Fijos</span>
+                    <button
+                      onClick={() => openAssetsModal('ASSET_FIXED')}
+                      className="text-xs text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                    >
+                      <Settings className="w-3 h-3" />
+                      Gestionar
+                    </button>
                   </div>
                   <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.fixed_assets)}</span>
                 </div>
@@ -1081,17 +1240,31 @@ export default function Accounting() {
                   </div>
                   <span className="font-medium text-gray-800">{formatCurrency(patrimony.liabilities.pending_expenses)}</span>
                 </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100 group">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Pasivos Corrientes</span>
+                    <button
+                      onClick={() => openAssetsModal('LIABILITY_CURRENT')}
+                      className="text-xs text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                    >
+                      <Settings className="w-3 h-3" />
+                      Gestionar
+                    </button>
                   </div>
                   <span className="font-medium text-orange-600">{formatCurrency(patrimony.liabilities.current)}</span>
                 </div>
-                <div className="flex justify-between items-center py-2">
+                <div className="flex justify-between items-center py-2 group">
                   <div className="flex items-center gap-2">
                     <CreditCard className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Pasivos Largo Plazo</span>
+                    <button
+                      onClick={() => openAssetsModal('LIABILITY_LONG')}
+                      className="text-xs text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                    >
+                      <Settings className="w-3 h-3" />
+                      Gestionar
+                    </button>
                   </div>
                   <span className="font-medium text-gray-800">{formatCurrency(patrimony.liabilities.long_term)}</span>
                 </div>
@@ -1819,6 +1992,291 @@ export default function Accounting() {
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 Registrar Pago
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Balance Accounts Management Modal (Fixed Assets / Liabilities) */}
+      {showAssetsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                {assetsModalType === 'ASSET_FIXED' && <Car className="w-5 h-5 text-green-600" />}
+                {assetsModalType === 'LIABILITY_CURRENT' && <Clock className="w-5 h-5 text-orange-600" />}
+                {assetsModalType === 'LIABILITY_LONG' && <CreditCard className="w-5 h-5 text-red-600" />}
+                {getModalTitle(assetsModalType)}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAssetsModal(false);
+                  setShowNewAccountForm(false);
+                  setEditingBalanceAccount(null);
+                  resetNewAccountForm();
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {!showNewAccountForm ? (
+                <>
+                  {/* Add Button */}
+                  <div className="mb-4">
+                    <button
+                      onClick={() => {
+                        resetNewAccountForm(assetsModalType);
+                        setShowNewAccountForm(true);
+                        setEditingBalanceAccount(null);
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm ${
+                        assetsModalType === 'ASSET_FIXED'
+                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-red-600 hover:bg-red-700 text-white'
+                      }`}
+                    >
+                      <Plus className="w-4 h-4" />
+                      Agregar {assetsModalType === 'ASSET_FIXED' ? 'Activo Fijo' : 'Pasivo'}
+                    </button>
+                  </div>
+
+                  {/* Accounts List */}
+                  {loadingAccounts ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                      <span className="ml-2 text-gray-600">Cargando...</span>
+                    </div>
+                  ) : balanceAccountsList.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>No hay {assetsModalType === 'ASSET_FIXED' ? 'activos fijos' : 'pasivos'} registrados</p>
+                      <p className="text-sm mt-1">Haz clic en "Agregar" para crear uno nuevo</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {balanceAccountsList.map((account) => (
+                        <div
+                          key={account.id}
+                          className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:border-gray-300 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500 font-mono">{account.code}</span>
+                                <h4 className="font-medium text-gray-800">{account.name}</h4>
+                              </div>
+                              {account.description && (
+                                <p className="text-sm text-gray-500 mt-1">{account.description}</p>
+                              )}
+                              <div className="flex gap-4 mt-2 text-sm">
+                                <span className={`font-semibold ${
+                                  assetsModalType === 'ASSET_FIXED' ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                  {formatCurrency(account.balance)}
+                                </span>
+                                {assetsModalType === 'ASSET_FIXED' && account.original_value && (
+                                  <span className="text-gray-500">
+                                    Valor original: {formatCurrency(account.original_value)}
+                                  </span>
+                                )}
+                                {(assetsModalType === 'LIABILITY_CURRENT' || assetsModalType === 'LIABILITY_LONG') && account.creditor && (
+                                  <span className="text-gray-500">
+                                    Acreedor: {account.creditor}
+                                  </span>
+                                )}
+                                {account.due_date && (
+                                  <span className="text-gray-500">
+                                    Vence: {formatDate(account.due_date)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => startEditBalanceAccount(account)}
+                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Editar"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteBalanceAccount(account.id)}
+                                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* New/Edit Account Form */
+                <div className="space-y-4">
+                  <h4 className="font-medium text-gray-700">
+                    {editingBalanceAccount ? 'Editar' : 'Nuevo'} {getModalTitle(assetsModalType)}
+                  </h4>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                    <input
+                      type="text"
+                      value={newAccountForm.name || ''}
+                      onChange={(e) => setNewAccountForm({ ...newAccountForm, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder={assetsModalType === 'ASSET_FIXED' ? 'Ej: Vehículo, Maquinaria, Equipo de cómputo' : 'Ej: Préstamo bancario, Deuda con proveedor X'}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                    <textarea
+                      value={newAccountForm.description || ''}
+                      onChange={(e) => setNewAccountForm({ ...newAccountForm, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={2}
+                      placeholder="Descripción adicional..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {assetsModalType === 'ASSET_FIXED' ? 'Valor Actual' : 'Monto de la Deuda'} *
+                      </label>
+                      <input
+                        type="number"
+                        value={newAccountForm.balance || ''}
+                        onChange={(e) => setNewAccountForm({ ...newAccountForm, balance: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        min="0"
+                      />
+                    </div>
+
+                    {assetsModalType === 'ASSET_FIXED' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Valor Original</label>
+                        <input
+                          type="number"
+                          value={newAccountForm.original_value || ''}
+                          onChange={(e) => setNewAccountForm({ ...newAccountForm, original_value: parseFloat(e.target.value) || null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="0"
+                          placeholder="Costo de adquisición"
+                        />
+                      </div>
+                    )}
+
+                    {(assetsModalType === 'LIABILITY_CURRENT' || assetsModalType === 'LIABILITY_LONG') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Acreedor</label>
+                        <input
+                          type="text"
+                          value={newAccountForm.creditor || ''}
+                          onChange={(e) => setNewAccountForm({ ...newAccountForm, creditor: e.target.value || null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Ej: Banco X, Proveedor Y"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {assetsModalType === 'ASSET_FIXED' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Depreciación Acumulada</label>
+                        <input
+                          type="number"
+                          value={newAccountForm.accumulated_depreciation || ''}
+                          onChange={(e) => setNewAccountForm({ ...newAccountForm, accumulated_depreciation: parseFloat(e.target.value) || null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Vida Útil (años)</label>
+                        <input
+                          type="number"
+                          value={newAccountForm.useful_life_years || ''}
+                          onChange={(e) => setNewAccountForm({ ...newAccountForm, useful_life_years: parseInt(e.target.value) || null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="1"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {(assetsModalType === 'LIABILITY_CURRENT' || assetsModalType === 'LIABILITY_LONG') && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tasa de Interés (%)</label>
+                        <input
+                          type="number"
+                          value={newAccountForm.interest_rate || ''}
+                          onChange={(e) => setNewAccountForm({ ...newAccountForm, interest_rate: parseFloat(e.target.value) || null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Vencimiento</label>
+                        <DatePicker
+                          value={newAccountForm.due_date || ''}
+                          onChange={(value) => setNewAccountForm({ ...newAccountForm, due_date: value || null })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              {showNewAccountForm ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowNewAccountForm(false);
+                      setEditingBalanceAccount(null);
+                      resetNewAccountForm();
+                    }}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={editingBalanceAccount ? handleUpdateBalanceAccountGlobal : handleCreateBalanceAccountGlobal}
+                    disabled={submitting || !newAccountForm.name}
+                    className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
+                      assetsModalType === 'ASSET_FIXED'
+                        ? 'bg-green-600 hover:bg-green-700'
+                        : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                  >
+                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {editingBalanceAccount ? 'Guardar Cambios' : 'Crear'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowAssetsModal(false);
+                    resetNewAccountForm();
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                >
+                  Cerrar
+                </button>
+              )}
             </div>
           </div>
         </div>

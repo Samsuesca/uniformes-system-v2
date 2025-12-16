@@ -416,6 +416,7 @@ export interface OrderCreate {
   notes?: string;
   items: OrderItemCreate[];
   advance_payment?: number;
+  advance_payment_method?: 'cash' | 'transfer' | 'card';
 }
 
 export interface OrderPayment {
