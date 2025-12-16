@@ -968,9 +968,7 @@ async def get_global_patrimony_summary(
     - Debts
     """
     from app.services.balance_integration import BalanceIntegrationService
-    from app.models.inventory import Inventory
-    from app.models.product import Product
-    from app.models.accounting import AccountsReceivable
+    from app.models.product import Product, Inventory
 
     balance_service = BalanceIntegrationService(db)
     cash_balances = await balance_service.get_global_cash_balances()

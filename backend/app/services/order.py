@@ -701,6 +701,9 @@ class OrderService(SchoolIsolatedService[Order]):
         For each item, tries to find a matching product in inventory
         based on garment_type, size, and color.
 
+        IMPORTANT: Tracks "virtual consumption" of stock so that if multiple
+        items need the same product, the available stock is correctly reduced.
+
         Returns:
             Dictionary with stock verification results
         """
@@ -709,6 +712,24 @@ class OrderService(SchoolIsolatedService[Order]):
         order = await self.get_order_with_items(order_id, school_id)
         if not order:
             raise ValueError("Pedido no encontrado")
+
+        # First, load all products with their stock for this school
+        all_products_query = (
+            select(Product, Inventory.quantity)
+            .outerjoin(Inventory, Product.id == Inventory.product_id)
+            .where(
+                Product.school_id == school_id,
+                Product.is_active == True
+            )
+        )
+        result = await self.db.execute(all_products_query)
+        all_products = result.all()
+
+        # Build a map of product_id -> (product, available_stock)
+        # This will track "virtual" stock as we assign items
+        product_stock_map: dict[UUID, tuple[Product, int]] = {}
+        for product, inv_qty in all_products:
+            product_stock_map[product.id] = (product, inv_qty or 0)
 
         items_info = []
         items_in_stock = 0
@@ -720,58 +741,61 @@ class OrderService(SchoolIsolatedService[Order]):
             if item.item_status == OrderItemStatus.CANCELLED:
                 continue
 
-            # Try to find matching product
-            product_query = (
-                select(Product, Inventory.quantity)
-                .outerjoin(Inventory, Product.id == Inventory.product_id)
-                .where(
-                    Product.school_id == school_id,
-                    Product.garment_type_id == item.garment_type_id,
-                    Product.is_active == True
-                )
-            )
+            # Has custom measurements? Always produce (yomber)
+            if item.custom_measurements:
+                items_to_produce += 1
+                items_info.append({
+                    "item_id": str(item.id),
+                    "garment_type_id": str(item.garment_type_id),
+                    "garment_type_name": item.garment_type.name if item.garment_type else "Unknown",
+                    "size": item.size,
+                    "color": item.color,
+                    "quantity_requested": item.quantity,
+                    "product_id": None,
+                    "product_code": None,
+                    "stock_available": 0,
+                    "can_fulfill_from_stock": False,
+                    "quantity_from_stock": 0,
+                    "quantity_to_produce": item.quantity,
+                    "suggested_action": "produce",
+                    "has_custom_measurements": True,
+                    "item_status": item.item_status.value
+                })
+                continue
 
-            # Match by size if specified
-            if item.size:
-                product_query = product_query.where(Product.size == item.size)
+            # Find matching products by garment_type, size, color
+            matching_products = []
+            for product_id, (product, stock) in product_stock_map.items():
+                if product.garment_type_id != item.garment_type_id:
+                    continue
+                # Match size if specified
+                if item.size and product.size != item.size:
+                    continue
+                # Match color if specified
+                if item.color and product.color != item.color:
+                    continue
+                matching_products.append((product, stock))
 
-            # Match by color if specified
-            if item.color:
-                product_query = product_query.where(Product.color == item.color)
+            # Sort by available stock descending to pick best match
+            matching_products.sort(key=lambda x: x[1], reverse=True)
 
-            result = await self.db.execute(product_query)
-            matches = result.all()
-
-            # Find best match (with stock if possible)
+            # Pick the best match (most stock available)
             best_match = None
             best_stock = 0
+            if matching_products:
+                best_match, best_stock = matching_products[0]
 
-            for product, inv_qty in matches:
-                stock = inv_qty or 0
-                if stock > best_stock:
-                    best_match = product
-                    best_stock = stock
-
-            # If no exact match found, try to find any product of same garment type
+            # If no exact match, try any product of same garment type (fallback)
             if not best_match:
-                fallback_query = (
-                    select(Product, Inventory.quantity)
-                    .outerjoin(Inventory, Product.id == Inventory.product_id)
-                    .where(
-                        Product.school_id == school_id,
-                        Product.garment_type_id == item.garment_type_id,
-                        Product.is_active == True
-                    )
-                    .order_by(Inventory.quantity.desc().nullslast())
-                    .limit(1)
-                )
-                result = await self.db.execute(fallback_query)
-                row = result.first()
-                if row:
-                    best_match, best_stock = row
-                    best_stock = best_stock or 0
+                fallback_products = [
+                    (p, s) for pid, (p, s) in product_stock_map.items()
+                    if p.garment_type_id == item.garment_type_id
+                ]
+                fallback_products.sort(key=lambda x: x[1], reverse=True)
+                if fallback_products:
+                    best_match, best_stock = fallback_products[0]
 
-            # Determine fulfillment
+            # Determine fulfillment based on CURRENT virtual stock
             can_fulfill = best_stock >= item.quantity
             quantity_from_stock = min(best_stock, item.quantity)
             quantity_to_produce = item.quantity - quantity_from_stock
@@ -787,15 +811,11 @@ class OrderService(SchoolIsolatedService[Order]):
                 suggested_action = "produce"
                 items_to_produce += 1
 
-            # Has custom measurements? Always produce
-            if item.custom_measurements:
-                suggested_action = "produce"
-                quantity_from_stock = 0
-                quantity_to_produce = item.quantity
-                items_to_produce += 1
-                if can_fulfill or items_partial > 0:
-                    items_in_stock = max(0, items_in_stock - 1)
-                    items_partial = max(0, items_partial - 1)
+            # IMPORTANT: Virtually consume the stock for this item
+            # so next items see the reduced availability
+            if best_match and quantity_from_stock > 0:
+                current_product, current_stock = product_stock_map[best_match.id]
+                product_stock_map[best_match.id] = (current_product, current_stock - quantity_from_stock)
 
             items_info.append({
                 "item_id": str(item.id),
@@ -806,12 +826,12 @@ class OrderService(SchoolIsolatedService[Order]):
                 "quantity_requested": item.quantity,
                 "product_id": str(best_match.id) if best_match else None,
                 "product_code": best_match.code if best_match else None,
-                "stock_available": best_stock,
-                "can_fulfill_from_stock": can_fulfill and not item.custom_measurements,
-                "quantity_from_stock": quantity_from_stock if not item.custom_measurements else 0,
-                "quantity_to_produce": quantity_to_produce if not item.custom_measurements else item.quantity,
+                "stock_available": best_stock,  # Stock BEFORE this item's consumption
+                "can_fulfill_from_stock": can_fulfill,
+                "quantity_from_stock": quantity_from_stock,
+                "quantity_to_produce": quantity_to_produce,
                 "suggested_action": suggested_action,
-                "has_custom_measurements": bool(item.custom_measurements),
+                "has_custom_measurements": False,
                 "item_status": item.item_status.value
             })
 
