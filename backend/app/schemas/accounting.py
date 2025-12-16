@@ -454,6 +454,23 @@ class AccountsReceivableResponse(AccountsReceivableInDB):
     model_config = {"from_attributes": True}
 
 
+class GlobalAccountsReceivableResponse(AccountsReceivableBase, IDModelSchema):
+    """Global accounts receivable response (school_id is nullable)"""
+    school_id: UUID | None = None
+    client_id: UUID | None
+    sale_id: UUID | None
+    order_id: UUID | None
+    amount_paid: Decimal
+    is_paid: bool
+    is_overdue: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    balance: Decimal = Field(..., description="Remaining balance to collect")
+
+    model_config = {"from_attributes": True}
+
+
 class AccountsReceivableWithDetails(AccountsReceivableResponse):
     """Accounts receivable with related entity details"""
     client_name: str | None = None
@@ -530,6 +547,20 @@ class AccountsPayableInDB(AccountsPayableBase, SchoolIsolatedSchema, IDModelSche
 
 class AccountsPayableResponse(AccountsPayableInDB):
     """Accounts payable for API responses"""
+    balance: Decimal = Field(..., description="Remaining balance to pay")
+
+    model_config = {"from_attributes": True}
+
+
+class GlobalAccountsPayableResponse(AccountsPayableBase, IDModelSchema):
+    """Global accounts payable response (school_id is nullable)"""
+    school_id: UUID | None = None
+    amount_paid: Decimal
+    is_paid: bool
+    is_overdue: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
     balance: Decimal = Field(..., description="Remaining balance to pay")
 
     model_config = {"from_attributes": True}

@@ -23,8 +23,8 @@ from app.models.accounting import (
 from app.schemas.accounting import (
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
     BalanceAccountResponse, BalanceAccountListResponse,
-    GlobalAccountsPayableCreate, AccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
-    GlobalAccountsReceivableCreate, AccountsReceivableResponse, AccountsReceivableListResponse, AccountsReceivablePayment,
+    GlobalAccountsPayableCreate, GlobalAccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
+    GlobalAccountsReceivableCreate, GlobalAccountsReceivableResponse, AccountsReceivableListResponse, AccountsReceivablePayment,
     BalanceGeneralSummary, BalanceGeneralDetailed
 )
 from sqlalchemy import select, func
@@ -729,7 +729,7 @@ async def pay_global_expense(
 
 @router.post(
     "/payables",
-    response_model=AccountsPayableResponse,
+    response_model=GlobalAccountsPayableResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_any_school_admin)]
 )
@@ -759,7 +759,7 @@ async def create_global_payable(
     await db.commit()
     await db.refresh(payable)
 
-    return AccountsPayableResponse.model_validate(payable)
+    return GlobalAccountsPayableResponse.model_validate(payable)
 
 
 @router.get(
@@ -851,7 +851,7 @@ async def get_pending_global_payables(
 
 @router.get(
     "/payables/{payable_id}",
-    response_model=AccountsPayableResponse,
+    response_model=GlobalAccountsPayableResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def get_global_payable(
@@ -873,12 +873,12 @@ async def get_global_payable(
             detail="Global payable not found"
         )
 
-    return AccountsPayableResponse.model_validate(payable)
+    return GlobalAccountsPayableResponse.model_validate(payable)
 
 
 @router.post(
     "/payables/{payable_id}/pay",
-    response_model=AccountsPayableResponse,
+    response_model=GlobalAccountsPayableResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def pay_global_payable(
@@ -939,7 +939,7 @@ async def pay_global_payable(
     await db.commit()
     await db.refresh(payable)
 
-    return AccountsPayableResponse.model_validate(payable)
+    return GlobalAccountsPayableResponse.model_validate(payable)
 
 
 # ============================================
@@ -1077,7 +1077,7 @@ async def get_global_patrimony_summary(
 
 @router.post(
     "/receivables",
-    response_model=AccountsReceivableResponse,
+    response_model=GlobalAccountsReceivableResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_any_school_admin)]
 )
@@ -1107,7 +1107,7 @@ async def create_global_receivable(
     await db.commit()
     await db.refresh(receivable)
 
-    return AccountsReceivableResponse.model_validate(receivable)
+    return GlobalAccountsReceivableResponse.model_validate(receivable)
 
 
 @router.get(
@@ -1197,7 +1197,7 @@ async def get_pending_global_receivables(
 
 @router.get(
     "/receivables/{receivable_id}",
-    response_model=AccountsReceivableResponse,
+    response_model=GlobalAccountsReceivableResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def get_global_receivable(
@@ -1219,12 +1219,12 @@ async def get_global_receivable(
             detail="Global receivable not found"
         )
 
-    return AccountsReceivableResponse.model_validate(receivable)
+    return GlobalAccountsReceivableResponse.model_validate(receivable)
 
 
 @router.post(
     "/receivables/{receivable_id}/pay",
-    response_model=AccountsReceivableResponse,
+    response_model=GlobalAccountsReceivableResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def pay_global_receivable(
@@ -1285,4 +1285,4 @@ async def pay_global_receivable(
     await db.commit()
     await db.refresh(receivable)
 
-    return AccountsReceivableResponse.model_validate(receivable)
+    return GlobalAccountsReceivableResponse.model_validate(receivable)
