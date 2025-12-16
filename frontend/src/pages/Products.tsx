@@ -6,17 +6,20 @@
 import { useEffect, useState, useMemo } from 'react';
 import Layout from '../components/Layout';
 import ProductModal from '../components/ProductModal';
+import GlobalProductModal from '../components/GlobalProductModal';
+import GarmentTypeModal from '../components/GarmentTypeModal';
 import SaleModal from '../components/SaleModal';
+import OrderModal from '../components/OrderModal';
 import {
   Package, Plus, Search, AlertCircle, Loader2, Edit2, PackagePlus, X, Save,
   Globe, Building2, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingCart,
-  AlertTriangle, PackageX, TrendingUp, BarChart3, ChevronDown
+  AlertTriangle, PackageX, TrendingUp, BarChart3, ChevronDown, Tag
 } from 'lucide-react';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useAuthStore } from '../stores/authStore';
 import apiClient from '../utils/api-client';
-import type { Product, GlobalProduct, GarmentType } from '../types/api';
+import type { Product, GlobalProduct, GarmentType, GlobalGarmentType } from '../types/api';
 
 interface InventoryAdjustment {
   productId: string;
@@ -27,7 +30,7 @@ interface InventoryAdjustment {
   schoolId?: string;
 }
 
-type TabType = 'school' | 'global';
+type TabType = 'school' | 'global' | 'garment-types';
 type StockFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'with_orders';
 type SortField = 'code' | 'name' | 'size' | 'price' | 'stock' | 'pending_orders';
 type SortDirection = 'asc' | 'desc';
@@ -54,6 +57,7 @@ export default function Products() {
 
   // Garment types for filtering
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+  const [globalGarmentTypes, setGlobalGarmentTypes] = useState<GlobalGarmentType[]>([]);
 
   // Common state
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +84,26 @@ export default function Products() {
   const [saleModalOpen, setSaleModalOpen] = useState(false);
   const [initialProduct, setInitialProduct] = useState<Product | null>(null);
 
+  // Order modal state
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+
+  // Global Product Modal state
+  const [globalProductModalOpen, setGlobalProductModalOpen] = useState(false);
+  const [selectedGlobalProduct, setSelectedGlobalProduct] = useState<GlobalProduct | null>(null);
+
+  // Garment Type Modal state
+  const [garmentTypeModalOpen, setGarmentTypeModalOpen] = useState(false);
+  const [selectedGarmentType, setSelectedGarmentType] = useState<GarmentType | GlobalGarmentType | null>(null);
+  const [isGlobalGarmentType, setIsGlobalGarmentType] = useState(false);
+
+  // Garment types tab state
+  const [showGlobalTypes, setShowGlobalTypes] = useState(false);
+
   // For creating new products, use school filter or current school
   const schoolIdForCreate = schoolFilter || currentSchool?.id || availableSchools[0]?.id || '';
   const isSuperuser = user?.is_superuser || false;
+  // Check if user has admin/owner role in any school
+  const isAdmin = isSuperuser || user?.school_roles?.some(sr => sr.role === 'admin' || sr.role === 'owner') || false;
 
   useEffect(() => {
     if (availableSchools.length === 0) {
@@ -91,6 +112,7 @@ export default function Products() {
     loadProducts();
     loadGlobalProducts();
     loadGarmentTypes();
+    loadGlobalGarmentTypes();
   }, []);
 
   useEffect(() => {
@@ -139,6 +161,15 @@ export default function Products() {
     }
   };
 
+  const loadGlobalGarmentTypes = async () => {
+    try {
+      const data = await productService.getGlobalGarmentTypes();
+      setGlobalGarmentTypes(data);
+    } catch (err: any) {
+      console.error('Error loading global garment types:', err);
+    }
+  };
+
   const handleOpenModal = (product?: Product) => {
     setSelectedProduct(product || null);
     setIsModalOpen(true);
@@ -168,8 +199,17 @@ export default function Products() {
   };
 
   const handleStartSale = (product: Product) => {
-    setInitialProduct(product);
-    setSaleModalOpen(true);
+    const stock = product.stock ?? product.inventory_quantity ?? 0;
+
+    if (stock > 0) {
+      // Has stock: open SaleModal with pre-loaded product
+      setInitialProduct(product);
+      setSaleModalOpen(true);
+    } else {
+      // No stock: open OrderModal for creating an order
+      setInitialProduct(product);
+      setOrderModalOpen(true);
+    }
   };
 
   const handleOpenGlobalInventoryModal = (product: GlobalProduct) => {
@@ -239,6 +279,41 @@ export default function Products() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Global Product handlers
+  const handleOpenGlobalProductModal = (product?: GlobalProduct) => {
+    setSelectedGlobalProduct(product || null);
+    setGlobalProductModalOpen(true);
+  };
+
+  const handleCloseGlobalProductModal = () => {
+    setGlobalProductModalOpen(false);
+    setSelectedGlobalProduct(null);
+  };
+
+  const handleGlobalProductSuccess = () => {
+    loadGlobalProducts();
+    handleCloseGlobalProductModal();
+  };
+
+  // Garment Type handlers
+  const handleOpenGarmentTypeModal = (garmentType?: GarmentType | GlobalGarmentType, isGlobal: boolean = false) => {
+    setSelectedGarmentType(garmentType || null);
+    setIsGlobalGarmentType(isGlobal);
+    setGarmentTypeModalOpen(true);
+  };
+
+  const handleCloseGarmentTypeModal = () => {
+    setGarmentTypeModalOpen(false);
+    setSelectedGarmentType(null);
+    setIsGlobalGarmentType(false);
+  };
+
+  const handleGarmentTypeSuccess = () => {
+    loadGarmentTypes();
+    loadGlobalGarmentTypes();
+    handleCloseGarmentTypeModal();
   };
 
   // Sorting function
@@ -399,7 +474,11 @@ export default function Products() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Productos</h1>
           <p className="text-gray-600 mt-1">
-            {isLoading ? 'Cargando...' : `${currentProducts.length} productos encontrados`}
+            {isLoading ? 'Cargando...' :
+              activeTab === 'garment-types'
+                ? `${(showGlobalTypes ? globalGarmentTypes : garmentTypes).length} tipos de prenda`
+                : `${currentProducts.length} productos encontrados`
+            }
             {activeTab === 'school' && schoolFilter && availableSchools.length > 1 && (
               <span className="ml-2 text-blue-600">
                 - Filtrado por colegio
@@ -407,15 +486,48 @@ export default function Products() {
             )}
           </p>
         </div>
-        {activeTab === 'school' && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Nuevo Producto
-          </button>
-        )}
+        <div className="flex gap-3">
+          {activeTab === 'school' && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Nuevo Producto
+            </button>
+          )}
+          {activeTab === 'global' && isSuperuser && (
+            <button
+              onClick={() => handleOpenGlobalProductModal()}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Nuevo Producto Global
+            </button>
+          )}
+          {activeTab === 'garment-types' && (
+            <>
+              {!showGlobalTypes && isAdmin && (
+                <button
+                  onClick={() => handleOpenGarmentTypeModal(undefined, false)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Nuevo Tipo del Colegio
+                </button>
+              )}
+              {showGlobalTypes && isSuperuser && (
+                <button
+                  onClick={() => handleOpenGarmentTypeModal(undefined, true)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Nuevo Tipo Global
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -516,6 +628,20 @@ export default function Products() {
               {globalProducts.length}
             </span>
           </button>
+          <button
+            onClick={() => { setActiveTab('garment-types'); setSizeFilter(''); setStockFilter('all'); }}
+            className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition ${
+              activeTab === 'garment-types'
+                ? 'border-purple-600 text-purple-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Tag className="w-5 h-5 mr-2" />
+            Tipos de Prenda
+            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-100">
+              {garmentTypes.length + globalGarmentTypes.length}
+            </span>
+          </button>
         </div>
 
         {/* Tab description */}
@@ -524,9 +650,13 @@ export default function Products() {
             <p className="text-sm text-gray-600">
               Uniformes especificos de <strong>{currentSchool?.name || 'este colegio'}</strong> (camisetas, pantalones, etc.)
             </p>
-          ) : (
+          ) : activeTab === 'global' ? (
             <p className="text-sm text-gray-600">
               Productos compartidos entre todos los colegios: <strong>Tennis, Zapatos, Medias, Jean, Blusa</strong>
+            </p>
+          ) : (
+            <p className="text-sm text-gray-600">
+              Gestiona los <strong>tipos de prenda</strong> (Camisa, Pantalón, Zapatos, etc.) que se pueden usar para crear productos
             </p>
           )}
         </div>
@@ -718,7 +848,7 @@ export default function Products() {
       )}
 
       {/* Products Table */}
-      {!isLoading && !error && currentProducts.length > 0 && (
+      {!isLoading && !error && activeTab !== 'garment-types' && currentProducts.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <thead className={activeTab === 'global' ? 'bg-green-50' : 'bg-gray-50'}>
@@ -884,7 +1014,7 @@ export default function Products() {
                           <button
                             onClick={() => handleStartSale(product)}
                             className="text-purple-600 hover:text-purple-800 p-1 rounded hover:bg-purple-50"
-                            title="Iniciar venta con este producto"
+                            title={(product.stock ?? product.inventory_quantity ?? 0) > 0 ? "Iniciar venta con este producto" : "Crear encargo (sin stock)"}
                           >
                             <ShoppingCart className="w-4 h-4" />
                           </button>
@@ -965,13 +1095,22 @@ export default function Products() {
                       <td className="w-20 px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-1">
                           {isSuperuser && (
-                            <button
-                              onClick={() => handleOpenGlobalInventoryModal(product)}
-                              className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
-                              title="Ajustar inventario global"
-                            >
-                              <PackagePlus className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleOpenGlobalProductModal(product)}
+                                className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
+                                title="Editar producto global"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleOpenGlobalInventoryModal(product)}
+                                className="text-green-600 hover:text-green-800 p-1 rounded hover:bg-green-50"
+                                title="Ajustar inventario global"
+                              >
+                                <PackagePlus className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -984,8 +1123,187 @@ export default function Products() {
         </div>
       )}
 
+      {/* Garment Types Table */}
+      {activeTab === 'garment-types' && !isLoading && !error && (
+        <div className="bg-white rounded-lg shadow-sm mb-6">
+          {/* Toggle between School and Global Types */}
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setShowGlobalTypes(false)}
+              className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition ${
+                !showGlobalTypes
+                  ? 'border-blue-600 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Building2 className="w-4 h-4 inline mr-2" />
+              Tipos del Colegio ({garmentTypes.length})
+            </button>
+            <button
+              onClick={() => setShowGlobalTypes(true)}
+              className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition ${
+                showGlobalTypes
+                  ? 'border-purple-600 text-purple-600 bg-purple-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Globe className="w-4 h-4 inline mr-2" />
+              Tipos Globales ({globalGarmentTypes.length})
+            </button>
+          </div>
+
+          {/* Garment Types Table */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className={showGlobalTypes ? 'bg-purple-50' : 'bg-blue-50'}>
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nombre
+                  </th>
+                  {!showGlobalTypes && availableSchools.length > 1 && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Colegio
+                    </th>
+                  )}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Descripción
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Categoría
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Req. Bordado
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Medidas Custom
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estado
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {(showGlobalTypes ? globalGarmentTypes : garmentTypes).map((type) => {
+                  // Get school name for school-specific types
+                  const schoolName = !showGlobalTypes && 'school_id' in type
+                    ? availableSchools.find(s => s.id === (type as GarmentType).school_id)?.name
+                    : null;
+
+                  return (
+                    <tr key={type.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          {showGlobalTypes && <Globe className="w-4 h-4 text-purple-600 mr-2" />}
+                          <span className="text-sm font-medium text-gray-900">{type.name}</span>
+                        </div>
+                      </td>
+                      {!showGlobalTypes && availableSchools.length > 1 && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <Building2 className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+                            <span className="text-sm text-gray-900">{schoolName || 'Sin colegio'}</span>
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-gray-600">{type.description || '-'}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {type.category ? (
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            type.category === 'uniforme_diario'
+                              ? 'bg-blue-100 text-blue-800'
+                              : type.category === 'uniforme_deportivo'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {type.category === 'uniforme_diario'
+                              ? 'Diario'
+                              : type.category === 'uniforme_deportivo'
+                              ? 'Deportivo'
+                              : 'Accesorios'}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {type.requires_embroidery ? (
+                          <span className="text-green-600">✓</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {type.has_custom_measurements ? (
+                          <span className="text-green-600">✓</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          type.is_active
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {type.is_active ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        {(showGlobalTypes ? isSuperuser : isAdmin) && (
+                          <button
+                            onClick={() => handleOpenGarmentTypeModal(type, showGlobalTypes)}
+                            className={`${
+                              showGlobalTypes
+                                ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50'
+                                : 'text-blue-600 hover:text-blue-800 hover:bg-blue-50'
+                            } p-1 rounded transition`}
+                            title="Editar tipo de prenda"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Empty state for garment types */}
+          {(showGlobalTypes ? globalGarmentTypes : garmentTypes).length === 0 && (
+            <div className="text-center py-12">
+              <Tag className={`w-12 h-12 mx-auto mb-3 ${showGlobalTypes ? 'text-purple-400' : 'text-blue-400'}`} />
+              <p className="text-gray-600">
+                {showGlobalTypes
+                  ? 'No hay tipos de prenda globales'
+                  : 'No hay tipos de prenda para este colegio'}
+              </p>
+              {(showGlobalTypes ? isSuperuser : isAdmin) && (
+                <button
+                  onClick={() => handleOpenGarmentTypeModal(undefined, showGlobalTypes)}
+                  className={`mt-4 ${
+                    showGlobalTypes
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  } text-white px-4 py-2 rounded-lg inline-flex items-center transition`}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Primer Tipo
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Empty State */}
-      {!isLoading && !error && currentProducts.length === 0 && (
+      {!isLoading && !error && activeTab !== 'garment-types' && currentProducts.length === 0 && (
         <div className={`border rounded-lg p-12 text-center ${
           activeTab === 'global' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'
         }`}>
@@ -1205,6 +1523,40 @@ export default function Products() {
         }}
         initialProduct={initialProduct || undefined}
         initialQuantity={1}
+      />
+
+      {/* Order Modal */}
+      <OrderModal
+        isOpen={orderModalOpen}
+        onClose={() => {
+          setOrderModalOpen(false);
+          setInitialProduct(null);
+        }}
+        onSuccess={() => {
+          setOrderModalOpen(false);
+          setInitialProduct(null);
+          loadProducts(); // Refresh after order
+        }}
+        initialSchoolId={initialProduct?.school_id}
+        initialProduct={initialProduct || undefined}
+      />
+
+      {/* Global Product Modal */}
+      <GlobalProductModal
+        isOpen={globalProductModalOpen}
+        onClose={handleCloseGlobalProductModal}
+        onSuccess={handleGlobalProductSuccess}
+        product={selectedGlobalProduct}
+      />
+
+      {/* Garment Type Modal */}
+      <GarmentTypeModal
+        isOpen={garmentTypeModalOpen}
+        onClose={handleCloseGarmentTypeModal}
+        onSuccess={handleGarmentTypeSuccess}
+        garmentType={selectedGarmentType}
+        isGlobal={isGlobalGarmentType}
+        schoolId={schoolIdForCreate}
       />
     </Layout>
   );
