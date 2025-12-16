@@ -9,7 +9,7 @@
  * - Shows client info (name, phone, student)
  */
 import { useState, useEffect, useRef } from 'react';
-import { Search, UserPlus, UserX, X, Loader2, User, Phone, GraduationCap, Check } from 'lucide-react';
+import { Search, UserPlus, UserX, X, Loader2, User, Phone, Mail, GraduationCap, Check } from 'lucide-react';
 import { clientService } from '../services/clientService';
 import type { Client } from '../types/api';
 
@@ -164,6 +164,7 @@ export default function ClientSelector({
   const [quickClientData, setQuickClientData] = useState({
     name: '',
     phone: '',
+    email: '',
     student_name: '',
   });
 
@@ -292,6 +293,7 @@ export default function ClientSelector({
       const newClient = await clientService.createClient(schoolId, {
         name: quickClientData.name.trim(),
         phone: quickClientData.phone.trim() || undefined,
+        email: quickClientData.email.trim() || undefined,
         student_name: quickClientData.student_name.trim() || undefined,
       });
 
@@ -302,7 +304,7 @@ export default function ClientSelector({
 
       // Reset form
       setShowQuickCreate(false);
-      setQuickClientData({ name: '', phone: '', student_name: '' });
+      setQuickClientData({ name: '', phone: '', email: '', student_name: '' });
       setIsOpen(false);
     } catch (err: any) {
       console.error('Error creating client:', err);
@@ -449,6 +451,17 @@ export default function ClientSelector({
                 </div>
 
                 <div className="relative">
+                  <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    value={quickClientData.email}
+                    onChange={(e) => setQuickClientData({...quickClientData, email: e.target.value})}
+                    placeholder="Email (opcional - para portal web)"
+                    className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="relative">
                   <GraduationCap className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
@@ -465,7 +478,7 @@ export default function ClientSelector({
                   type="button"
                   onClick={() => {
                     setShowQuickCreate(false);
-                    setQuickClientData({ name: '', phone: '', student_name: '' });
+                    setQuickClientData({ name: '', phone: '', email: '', student_name: '' });
                     setQuickCreateError(null);
                   }}
                   className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"

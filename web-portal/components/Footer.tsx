@@ -87,11 +87,11 @@ export default function Footer() {
                 Llamar
               </a>
               <a
-                href="mailto:uniformesconsuelo@gmail.com"
+                href="mailto:uniformesconsuelorios@gmail.com"
                 className="flex items-center gap-2 text-slate-600 hover:text-brand-600 transition-colors"
               >
                 <Mail className="w-4 h-4" />
-                uniformesconsuelo@gmail.com
+                uniformesconsuelorios@gmail.com
               </a>
             </div>
           </div>
