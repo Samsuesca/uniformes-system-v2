@@ -74,13 +74,13 @@ class Contact(Base):
     phone = Column(String(20), nullable=True)
 
     # Mensaje
-    contact_type = Column(SQLEnum(ContactType), nullable=False)
+    contact_type = Column(SQLEnum(ContactType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     subject = Column(String(200), nullable=False)
     message = Column(Text, nullable=False)
 
     # Estado y seguimiento
     status = Column(
-        SQLEnum(ContactStatus),
+        SQLEnum(ContactStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=ContactStatus.PENDING
     )
