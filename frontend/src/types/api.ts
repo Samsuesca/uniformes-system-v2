@@ -879,6 +879,8 @@ export interface GlobalGarmentType {
   name: string;
   description: string | null;
   category: string | null;
+  has_custom_measurements: boolean;
+  requires_embroidery: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;

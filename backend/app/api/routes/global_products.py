@@ -297,7 +297,8 @@ async def update_global_inventory(
 
 @router.post(
     "/products/{product_id}/inventory/adjust",
-    response_model=GlobalInventoryResponse
+    response_model=GlobalInventoryResponse,
+    dependencies=[Depends(require_superuser)]
 )
 async def adjust_global_inventory(
     product_id: UUID,
@@ -305,7 +306,7 @@ async def adjust_global_inventory(
     db: DatabaseSession,
     current_user: CurrentUser
 ):
-    """Adjust global inventory quantity (add or subtract)"""
+    """Adjust global inventory quantity (requires SUPERUSER role)"""
     service = GlobalInventoryService(db)
 
     try:

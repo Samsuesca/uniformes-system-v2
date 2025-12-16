@@ -85,6 +85,10 @@ class School(Base):
         back_populates="school",
         cascade="all, delete-orphan"
     )
+    contacts: Mapped[list["Contact"]] = relationship(
+        back_populates="school",
+        cascade="all, delete-orphan"
+    )
 
     # Accounting relationships
     transactions: Mapped[list["Transaction"]] = relationship(

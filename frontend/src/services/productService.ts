@@ -175,4 +175,56 @@ export const productService = {
       reason: reason || `Ajuste manual: ${adjustment > 0 ? 'Agregar' : 'Remover'} ${Math.abs(adjustment)} unidades`
     });
   },
+
+  // ==========================================
+  // GLOBAL PRODUCTS - CRUD
+  // ==========================================
+
+  /**
+   * Create global product (superuser only)
+   */
+  async createGlobalProduct(data: Partial<GlobalProduct>): Promise<GlobalProduct> {
+    const response = await apiClient.post('/global/products', data);
+    return response.data;
+  },
+
+  /**
+   * Update global product (superuser only)
+   */
+  async updateGlobalProduct(productId: string, data: Partial<GlobalProduct>): Promise<GlobalProduct> {
+    const response = await apiClient.put(`/global/products/${productId}`, data);
+    return response.data;
+  },
+
+  // ==========================================
+  // GLOBAL GARMENT TYPES - CRUD
+  // ==========================================
+
+  /**
+   * Create global garment type (superuser only)
+   */
+  async createGlobalGarmentType(data: Partial<GlobalGarmentType>): Promise<GlobalGarmentType> {
+    const response = await apiClient.post('/global/garment-types', data);
+    return response.data;
+  },
+
+  /**
+   * Update global garment type (superuser only)
+   */
+  async updateGlobalGarmentType(typeId: string, data: Partial<GlobalGarmentType>): Promise<GlobalGarmentType> {
+    const response = await apiClient.put(`/global/garment-types/${typeId}`, data);
+    return response.data;
+  },
+
+  // ==========================================
+  // SCHOOL GARMENT TYPES - UPDATE (missing)
+  // ==========================================
+
+  /**
+   * Update garment type for school (admin only)
+   */
+  async updateGarmentType(schoolId: string, typeId: string, data: Partial<GarmentType>): Promise<GarmentType> {
+    const response = await apiClient.put(`/schools/${schoolId}/garment-types/${typeId}`, data);
+    return response.data;
+  },
 };

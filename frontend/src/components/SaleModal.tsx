@@ -25,6 +25,7 @@ interface SaleModalProps {
 interface SaleItemCreateExtended extends SaleItemCreate {
   is_global: boolean;
   display_name?: string;
+  size?: string;          // Product size for display
   school_id: string;      // School this item belongs to
   school_name: string;    // For display in UI
 }
@@ -105,6 +106,7 @@ export default function SaleModal({
         unit_price: Number(initialProduct.price),
         is_global: false,
         display_name: initialProduct.name || '',
+        size: initialProduct.size,
         school_id: initialProduct.school_id,
         school_name: schoolName,
       };
@@ -220,6 +222,7 @@ export default function SaleModal({
       unit_price: Number(product.price),
       is_global: isGlobal,
       display_name: product.name || '',
+      size: product.size,
       school_id: schoolId,
       school_name: schoolName,
     };
@@ -302,10 +305,21 @@ export default function SaleModal({
       updatedItems[existingIndex].quantity += currentItem.quantity;
       setItems(updatedItems);
     } else {
+      // Get product size
+      let productSize = '';
+      if (currentItem.is_global) {
+        const globalProduct = globalProducts.find(p => p.id === currentItem.product_id);
+        productSize = globalProduct?.size || '';
+      } else {
+        const product = products.find(p => p.id === currentItem.product_id);
+        productSize = product?.size || '';
+      }
+
       // Add new item with school info
       const newItem: SaleItemCreateExtended = {
         ...currentItem,
         display_name: displayName,
+        size: productSize,
         school_id: selectedSchoolId,
         school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
       };
@@ -810,6 +824,7 @@ export default function SaleModal({
                                     )}
                                   </p>
                                   <p className="text-sm text-gray-600">
+                                    {item.size && <span className="font-medium">Talla: {item.size} | </span>}
                                     Cantidad: {item.quantity} × ${item.unit_price.toLocaleString()} = ${(item.quantity * item.unit_price).toLocaleString()}
                                   </p>
                                 </div>

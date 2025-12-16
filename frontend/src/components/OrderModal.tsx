@@ -22,6 +22,7 @@ interface OrderModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialSchoolId?: string;  // Optional - modal can manage school selection internally
+  initialProduct?: Product;  // Optional - pre-load a product (catalog tab)
 }
 
 // Extended item form with school info for multi-school support
@@ -47,7 +48,8 @@ export default function OrderModal({
   isOpen,
   onClose,
   onSuccess,
-  initialSchoolId
+  initialSchoolId,
+  initialProduct
 }: OrderModalProps) {
   // Multi-school support
   const { availableSchools, currentSchool } = useSchoolStore();
@@ -147,6 +149,20 @@ export default function OrderModal({
       resetForm();
     }
   }, [isOpen]);
+
+  // Pre-load product when initialProduct is provided
+  useEffect(() => {
+    if (isOpen && initialProduct && products.length > 0) {
+      // Set to catalog tab
+      setActiveTab('catalog');
+
+      // Pre-select the product
+      setCatalogProductId(initialProduct.id);
+
+      // Auto-add to items with quantity 1
+      handleCatalogProductSelect(initialProduct, 1);
+    }
+  }, [isOpen, initialProduct, products]);
 
   // Handler for school change - reload products but KEEP existing items from other schools
   // This enables multi-school orders: items from different schools stay in the cart
@@ -1161,6 +1177,7 @@ export default function OrderModal({
           schoolId={selectedSchoolId}
           filterByStock="all"
           allowGlobalProducts={false}
+          includeProductIds={yomberProducts.map(p => p.id)}
           excludeProductIds={yomberProductId ? [yomberProductId, ...items.map(i => i.product_id || '')] : items.map(i => i.product_id || '')}
           title="Seleccionar Producto Yomber"
           emptyMessage="No hay productos Yomber configurados"

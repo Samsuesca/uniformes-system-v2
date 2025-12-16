@@ -97,6 +97,7 @@ class Client(Base):
         back_populates="client",
         cascade="all, delete-orphan"
     )
+    contacts: Mapped[list["Contact"]] = relationship(back_populates="client")
 
     def __repr__(self) -> str:
         return f"<Client(code='{self.code}', name='{self.name}', type='{self.client_type}')>"

@@ -29,6 +29,7 @@ interface ProductSelectorModalProps {
   filterByStock?: 'with_stock' | 'without_stock' | 'all';
   allowGlobalProducts?: boolean;
   excludeProductIds?: string[];
+  includeProductIds?: string[]; // If provided, only show these products
 
   // UI customization
   title?: string;
@@ -43,6 +44,7 @@ export default function ProductSelectorModal({
   filterByStock = 'all',
   allowGlobalProducts = false,
   excludeProductIds = [],
+  includeProductIds,
   title = 'Seleccionar Producto',
   emptyMessage = 'No se encontraron productos',
 }: ProductSelectorModalProps) {
@@ -115,6 +117,11 @@ export default function ProductSelectorModal({
     let filtered: (Product | GlobalProduct)[] =
       productSource === 'school' ? products : globalProducts;
 
+    // Include only specific products (if provided) - takes precedence
+    if (includeProductIds && includeProductIds.length > 0) {
+      filtered = filtered.filter(p => includeProductIds.includes(p.id));
+    }
+
     // Stock filter (based on prop)
     if (filterByStock === 'with_stock') {
       filtered = filtered.filter(p => (p.stock ?? p.inventory_quantity ?? 0) > 0);
@@ -162,6 +169,7 @@ export default function ProductSelectorModal({
     productSource,
     filterByStock,
     excludeProductIds,
+    includeProductIds,
     searchQuery,
     garmentTypeFilter,
     sizeFilter,
