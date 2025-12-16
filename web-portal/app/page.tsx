@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, School as SchoolIcon, ArrowRight, User, LogOut, Package, Eye, EyeOff, HelpCircle, MessageCircle } from 'lucide-react';
+import { Search, School as SchoolIcon, ArrowRight, User, LogOut, Package, Eye, EyeOff, HelpCircle, MessageCircle, CreditCard } from 'lucide-react';
 import Footer from '@/components/Footer';
 import { schoolsApi, type School } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
@@ -175,6 +175,64 @@ export default function Home() {
               <ArrowRight className="ml-2 w-5 h-5" />
             </span>
           </button>
+        </div>
+
+        {/* Payment Methods Section */}
+        <div className="mb-12 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border-2 border-green-200 p-8">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+              <CreditCard className="w-8 h-8 text-green-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-800 font-display mb-2">
+              ¿Cómo pagar?
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Conoce nuestros métodos de pago disponibles
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-xl p-4 border border-green-200">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <span className="text-xl">🏦</span>
+                </div>
+                <span className="font-semibold text-gray-800">Transferencia</span>
+              </div>
+              <p className="text-sm text-gray-600">Bancaria o cuenta de ahorros</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 border border-green-200">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <span className="text-xl">📱</span>
+                </div>
+                <span className="font-semibold text-gray-800">Nequi</span>
+              </div>
+              <p className="text-sm text-gray-600">Pago rápido por celular</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 border border-green-200">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <span className="text-xl">💵</span>
+                </div>
+                <span className="font-semibold text-gray-800">Efectivo</span>
+              </div>
+              <p className="text-sm text-gray-600">Pago en nuestro local</p>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <button
+              onClick={() => window.open('/pago', '_blank')}
+              className="inline-flex items-center gap-2 px-8 py-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all duration-300 hover:shadow-lg font-semibold"
+            >
+              <CreditCard className="w-5 h-5" />
+              Ver Todas las Cuentas de Pago
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Schools Grid */}
