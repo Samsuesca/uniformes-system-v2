@@ -382,7 +382,7 @@ async def get_global_balance_general_summary(
         },
         "liabilities": {
             "current": totals.get(AccountType.LIABILITY_CURRENT, 0),
-            "long_term": totals.get(AccountType.LIABILITY_LONG_TERM, 0),
+            "long_term": totals.get(AccountType.LIABILITY_LONG, 0),
             "other": totals.get(AccountType.LIABILITY_OTHER, 0),
             "total": total_liabilities
         },
