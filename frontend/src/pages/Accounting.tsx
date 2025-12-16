@@ -39,6 +39,9 @@ import type {
 // Tabs
 type TabType = 'dashboard' | 'receivables' | 'payables' | 'patrimony';
 
+// Balance Account Modal Type - uses lowercase values to match backend enum (asset_fixed, liability_current, liability_long)
+type BalanceAccountModalType = 'asset_fixed' | 'liability_current' | 'liability_long';
+
 // Expense categories and payment methods
 // Helper to extract error message from API response
 const getErrorMessage = (err: any, defaultMsg: string): string => {
@@ -106,13 +109,13 @@ export default function Accounting() {
 
   // Fixed Assets / Liabilities Management Modal states
   const [showAssetsModal, setShowAssetsModal] = useState(false);
-  const [assetsModalType, setAssetsModalType] = useState<'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG'>('ASSET_FIXED');
+  const [assetsModalType, setAssetsModalType] = useState<BalanceAccountModalType>('asset_fixed');
   const [balanceAccountsList, setBalanceAccountsList] = useState<GlobalBalanceAccountResponse[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [showNewAccountForm, setShowNewAccountForm] = useState(false);
   const [editingBalanceAccount, setEditingBalanceAccount] = useState<GlobalBalanceAccountResponse | null>(null);
   const [newAccountForm, setNewAccountForm] = useState<Partial<GlobalBalanceAccountCreate>>({
-    account_type: 'ASSET_FIXED' as any,
+    account_type: 'asset_fixed' as AccountType,
     name: '',
     description: '',
     balance: 0,
@@ -453,15 +456,15 @@ export default function Accounting() {
   // Balance Accounts (Fixed Assets / Liabilities) Management
   // ============================================
 
-  const getModalTitle = (type: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+  const getModalTitle = (type: BalanceAccountModalType) => {
     switch (type) {
-      case 'ASSET_FIXED': return 'Activos Fijos';
-      case 'LIABILITY_CURRENT': return 'Pasivos Corrientes';
-      case 'LIABILITY_LONG': return 'Pasivos a Largo Plazo';
+      case 'asset_fixed': return 'Activos Fijos';
+      case 'liability_current': return 'Pasivos Corrientes';
+      case 'liability_long': return 'Pasivos a Largo Plazo';
     }
   };
 
-  const openAssetsModal = async (type: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+  const openAssetsModal = async (type: BalanceAccountModalType) => {
     setAssetsModalType(type);
     setShowAssetsModal(true);
     setShowNewAccountForm(false);
@@ -469,10 +472,10 @@ export default function Accounting() {
     await loadBalanceAccounts(type);
   };
 
-  const loadBalanceAccounts = async (type: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+  const loadBalanceAccounts = async (type: BalanceAccountModalType) => {
     try {
       setLoadingAccounts(true);
-      const accounts = await globalAccountingService.getGlobalBalanceAccounts(type as any, true);
+      const accounts = await globalAccountingService.getGlobalBalanceAccounts(type as AccountType, true);
       setBalanceAccountsList(accounts as any);
     } catch (err) {
       console.error('Error loading balance accounts:', err);
@@ -482,9 +485,9 @@ export default function Accounting() {
     }
   };
 
-  const resetNewAccountForm = (type?: 'ASSET_FIXED' | 'LIABILITY_CURRENT' | 'LIABILITY_LONG') => {
+  const resetNewAccountForm = (type?: BalanceAccountModalType) => {
     setNewAccountForm({
-      account_type: (type || assetsModalType) as any,
+      account_type: (type || assetsModalType) as AccountType,
       name: '',
       description: '',
       balance: 0,
@@ -1195,7 +1198,7 @@ export default function Accounting() {
                     <Car className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Activos Fijos</span>
                     <button
-                      onClick={() => openAssetsModal('ASSET_FIXED')}
+                      onClick={() => openAssetsModal('asset_fixed')}
                       className="text-xs text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
                     >
                       <Settings className="w-3 h-3" />
@@ -1245,7 +1248,7 @@ export default function Accounting() {
                     <Clock className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Pasivos Corrientes</span>
                     <button
-                      onClick={() => openAssetsModal('LIABILITY_CURRENT')}
+                      onClick={() => openAssetsModal('liability_current')}
                       className="text-xs text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
                     >
                       <Settings className="w-3 h-3" />
@@ -1259,7 +1262,7 @@ export default function Accounting() {
                     <CreditCard className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Pasivos Largo Plazo</span>
                     <button
-                      onClick={() => openAssetsModal('LIABILITY_LONG')}
+                      onClick={() => openAssetsModal('liability_long')}
                       className="text-xs text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
                     >
                       <Settings className="w-3 h-3" />
@@ -2003,9 +2006,9 @@ export default function Accounting() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h3 className="text-lg font-semibold flex items-center gap-2">
-                {assetsModalType === 'ASSET_FIXED' && <Car className="w-5 h-5 text-green-600" />}
-                {assetsModalType === 'LIABILITY_CURRENT' && <Clock className="w-5 h-5 text-orange-600" />}
-                {assetsModalType === 'LIABILITY_LONG' && <CreditCard className="w-5 h-5 text-red-600" />}
+                {assetsModalType === 'asset_fixed' && <Car className="w-5 h-5 text-green-600" />}
+                {assetsModalType === 'liability_current' && <Clock className="w-5 h-5 text-orange-600" />}
+                {assetsModalType === 'liability_long' && <CreditCard className="w-5 h-5 text-red-600" />}
                 {getModalTitle(assetsModalType)}
               </h3>
               <button
@@ -2033,13 +2036,13 @@ export default function Accounting() {
                         setEditingBalanceAccount(null);
                       }}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm ${
-                        assetsModalType === 'ASSET_FIXED'
+                        assetsModalType === 'asset_fixed'
                           ? 'bg-green-600 hover:bg-green-700 text-white'
                           : 'bg-red-600 hover:bg-red-700 text-white'
                       }`}
                     >
                       <Plus className="w-4 h-4" />
-                      Agregar {assetsModalType === 'ASSET_FIXED' ? 'Activo Fijo' : 'Pasivo'}
+                      Agregar {assetsModalType === 'asset_fixed' ? 'Activo Fijo' : 'Pasivo'}
                     </button>
                   </div>
 
@@ -2052,7 +2055,7 @@ export default function Accounting() {
                   ) : balanceAccountsList.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                      <p>No hay {assetsModalType === 'ASSET_FIXED' ? 'activos fijos' : 'pasivos'} registrados</p>
+                      <p>No hay {assetsModalType === 'asset_fixed' ? 'activos fijos' : 'pasivos'} registrados</p>
                       <p className="text-sm mt-1">Haz clic en "Agregar" para crear uno nuevo</p>
                     </div>
                   ) : (
@@ -2073,16 +2076,16 @@ export default function Accounting() {
                               )}
                               <div className="flex gap-4 mt-2 text-sm">
                                 <span className={`font-semibold ${
-                                  assetsModalType === 'ASSET_FIXED' ? 'text-green-600' : 'text-red-600'
+                                  assetsModalType === 'asset_fixed' ? 'text-green-600' : 'text-red-600'
                                 }`}>
                                   {formatCurrency(account.balance)}
                                 </span>
-                                {assetsModalType === 'ASSET_FIXED' && account.original_value && (
+                                {assetsModalType === 'asset_fixed' && account.original_value && (
                                   <span className="text-gray-500">
                                     Valor original: {formatCurrency(account.original_value)}
                                   </span>
                                 )}
-                                {(assetsModalType === 'LIABILITY_CURRENT' || assetsModalType === 'LIABILITY_LONG') && account.creditor && (
+                                {(assetsModalType === 'liability_current' || assetsModalType === 'liability_long') && account.creditor && (
                                   <span className="text-gray-500">
                                     Acreedor: {account.creditor}
                                   </span>
@@ -2130,7 +2133,7 @@ export default function Accounting() {
                       value={newAccountForm.name || ''}
                       onChange={(e) => setNewAccountForm({ ...newAccountForm, name: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder={assetsModalType === 'ASSET_FIXED' ? 'Ej: Vehículo, Maquinaria, Equipo de cómputo' : 'Ej: Préstamo bancario, Deuda con proveedor X'}
+                      placeholder={assetsModalType === 'asset_fixed' ? 'Ej: Vehículo, Maquinaria, Equipo de cómputo' : 'Ej: Préstamo bancario, Deuda con proveedor X'}
                     />
                   </div>
 
@@ -2148,7 +2151,7 @@ export default function Accounting() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {assetsModalType === 'ASSET_FIXED' ? 'Valor Actual' : 'Monto de la Deuda'} *
+                        {assetsModalType === 'asset_fixed' ? 'Valor Actual' : 'Monto de la Deuda'} *
                       </label>
                       <input
                         type="number"
@@ -2159,7 +2162,7 @@ export default function Accounting() {
                       />
                     </div>
 
-                    {assetsModalType === 'ASSET_FIXED' && (
+                    {assetsModalType === 'asset_fixed' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Valor Original</label>
                         <input
@@ -2173,7 +2176,7 @@ export default function Accounting() {
                       </div>
                     )}
 
-                    {(assetsModalType === 'LIABILITY_CURRENT' || assetsModalType === 'LIABILITY_LONG') && (
+                    {(assetsModalType === 'liability_current' || assetsModalType === 'liability_long') && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Acreedor</label>
                         <input
@@ -2187,7 +2190,7 @@ export default function Accounting() {
                     )}
                   </div>
 
-                  {assetsModalType === 'ASSET_FIXED' && (
+                  {assetsModalType === 'asset_fixed' && (
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Depreciación Acumulada</label>
@@ -2212,7 +2215,7 @@ export default function Accounting() {
                     </div>
                   )}
 
-                  {(assetsModalType === 'LIABILITY_CURRENT' || assetsModalType === 'LIABILITY_LONG') && (
+                  {(assetsModalType === 'liability_current' || assetsModalType === 'liability_long') && (
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Tasa de Interés (%)</label>
@@ -2257,7 +2260,7 @@ export default function Accounting() {
                     onClick={editingBalanceAccount ? handleUpdateBalanceAccountGlobal : handleCreateBalanceAccountGlobal}
                     disabled={submitting || !newAccountForm.name}
                     className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
-                      assetsModalType === 'ASSET_FIXED'
+                      assetsModalType === 'asset_fixed'
                         ? 'bg-green-600 hover:bg-green-700'
                         : 'bg-red-600 hover:bg-red-700'
                     }`}
