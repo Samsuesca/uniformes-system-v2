@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OrderModal from '../components/OrderModal';
-import { FileText, Plus, Search, AlertCircle, Loader2, Calendar, Package, Clock, CheckCircle, XCircle, Truck, Eye, Building2, RefreshCw, Ruler, BarChart3, TrendingUp, X, Wrench } from 'lucide-react';
+import PaymentVerificationModal from '../components/PaymentVerificationModal';
+import { FileText, Plus, Search, AlertCircle, Loader2, Calendar, Package, Clock, CheckCircle, XCircle, Truck, Eye, Building2, RefreshCw, Ruler, BarChart3, TrendingUp, X, Wrench, Receipt } from 'lucide-react';
 import { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -59,6 +60,7 @@ export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<OrderListItem | null>(null);
 
   // Stats
   const [stats, setStats] = useState({
@@ -407,6 +409,30 @@ export default function Orders() {
 
   const handleViewOrder = (orderId: string, schoolId: string) => {
     navigate(`/orders/${orderId}?school_id=${schoolId}`);
+  };
+
+  const handleApprovePayment = async (orderId: string) => {
+    if (!selectedOrderForPayment) return;
+    try {
+      await orderService.approvePayment(selectedOrderForPayment.school_id || '', orderId);
+      setSelectedOrderForPayment(null);
+      loadOrders();
+    } catch (err: any) {
+      console.error('Error approving payment:', err);
+      alert(err.response?.data?.detail || 'Error al aprobar pago');
+    }
+  };
+
+  const handleRejectPayment = async (orderId: string, rejectionNotes: string) => {
+    if (!selectedOrderForPayment) return;
+    try {
+      await orderService.rejectPayment(selectedOrderForPayment.school_id || '', orderId, rejectionNotes);
+      setSelectedOrderForPayment(null);
+      loadOrders();
+    } catch (err: any) {
+      console.error('Error rejecting payment:', err);
+      alert(err.response?.data?.detail || 'Error al rechazar pago');
+    }
   };
 
   return (
@@ -790,6 +816,9 @@ export default function Orders() {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Items
                 </th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Comprobante
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Acciones
                 </th>
@@ -860,6 +889,20 @@ export default function Orders() {
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <span className="text-sm text-gray-600">{order.items_count}</span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {order.payment_proof_url ? (
+                        <button
+                          onClick={() => setSelectedOrderForPayment(order)}
+                          className="text-green-600 hover:text-green-800 p-2 rounded hover:bg-green-50 transition inline-flex items-center gap-1"
+                          title="Ver comprobante de pago"
+                        >
+                          <Receipt className="w-5 h-5" />
+                          <span className="text-xs">Ver</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">Sin comprobante</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
                         onClick={() => handleViewOrder(order.id, order.school_id || '')}
@@ -900,6 +943,16 @@ export default function Orders() {
             </button>
           )}
         </div>
+      )}
+
+      {/* Payment Verification Modal */}
+      {selectedOrderForPayment && (
+        <PaymentVerificationModal
+          order={selectedOrderForPayment}
+          onClose={() => setSelectedOrderForPayment(null)}
+          onApprove={handleApprovePayment}
+          onReject={handleRejectPayment}
+        />
       )}
 
       {/* Yombers Modal - Confeccionista View */}
