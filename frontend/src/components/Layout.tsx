@@ -27,7 +27,8 @@ import {
   Clock,
   Wifi,
   WifiOff,
-  Globe
+  Globe,
+  MessageSquare
 } from 'lucide-react';
 import { useConfigStore } from '../stores/configStore';
 
@@ -50,6 +51,7 @@ const navigation: NavItem[] = [
   { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw },
   { name: 'Encargos', path: '/orders', icon: FileText },
   { name: 'Pedidos Web', path: '/web-orders', icon: Globe },
+  { name: 'PQRS', path: '/contacts', icon: MessageSquare },
   { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true },
   { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true },
   { name: 'Configuración', path: '/settings', icon: Settings },
