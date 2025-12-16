@@ -35,6 +35,8 @@ class Settings(BaseSettings):
         "http://localhost:8080",
         "http://127.0.0.1:3000",
         "http://localhost:5173",  # Vite dev server
+        "https://uniformesconsuelo.com",  # Production web portal
+        "https://api.uniformesconsuelorios.com",  # Production API
         # For LAN testing (will be overridden in .env for specific IPs)
     ]
 

@@ -36,8 +36,8 @@ export default function SoportePage() {
     setError(null);
 
     try {
-      // Call backend API to submit contact message
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/contacts/submit`;
+      // Call Next.js API proxy to avoid CORS issues
+      const apiUrl = '/api/contacts/submit';
 
       const response = await fetch(apiUrl, {
         method: 'POST',
