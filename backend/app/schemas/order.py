@@ -143,6 +143,9 @@ class OrderCreate(OrderBase, SchoolIsolatedSchema):
     advance_payment: Decimal | None = Field(None, ge=0)
     advance_payment_method: str | None = Field(None, max_length=20)  # cash, nequi, transfer, card
     source: SaleSource = SaleSource.DESKTOP_APP  # Default to desktop app
+    # Payment proof (for web orders)
+    payment_proof_url: str | None = Field(None, max_length=500)
+    payment_notes: str | None = None
     # code, status, totals will be auto-generated
 
 
@@ -172,6 +175,8 @@ class OrderInDB(OrderBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema)
     paid_amount: Decimal
     balance: Decimal  # Computed column
     user_id: UUID | None = None  # Who created the order (None for web portal)
+    payment_proof_url: str | None = None
+    payment_notes: str | None = None
 
 
 class OrderResponse(OrderInDB):
@@ -268,6 +273,8 @@ class WebOrderResponse(BaseSchema):
     status: OrderStatus
     total: Decimal
     created_at: datetime | None = None
+    payment_proof_url: str | None = None
+    payment_notes: str | None = None
     message: str = "Pedido creado exitosamente"
 
 

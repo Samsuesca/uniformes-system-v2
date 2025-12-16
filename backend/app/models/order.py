@@ -103,6 +103,11 @@ class Order(Base):
     # }
 
     notes: Mapped[str | None] = mapped_column(Text)
+
+    # Payment proof for web orders (manual verification)
+    payment_proof_url: Mapped[str | None] = mapped_column(String(500))
+    payment_notes: Mapped[str | None] = mapped_column(Text)  # Client notes about payment
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
