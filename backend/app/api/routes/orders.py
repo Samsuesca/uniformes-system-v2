@@ -806,9 +806,9 @@ async def approve_payment(
 async def reject_payment(
     school_id: UUID,
     order_id: UUID,
-    rejection_notes: str = Query(..., description="Reason for rejection"),
     db: DatabaseSession,
-    current_user: CurrentUser
+    current_user: CurrentUser,
+    rejection_notes: str = Query(..., description="Reason for rejection")
 ):
     """
     Reject payment proof for an order.
