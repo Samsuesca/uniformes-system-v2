@@ -16,28 +16,69 @@ export default function SoportePage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Map form types to backend ContactType enum
+  const mapTypeToBackend = (type: string): string => {
+    const typeMap: Record<string, string> = {
+      'consulta': 'inquiry',
+      'peticion': 'request',
+      'queja': 'complaint',
+      'reclamo': 'claim',
+      'sugerencia': 'suggestion'
+    };
+    return typeMap[type] || 'inquiry';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setError(null);
 
-    // Simular envío (TODO: integrar con backend o servicio de email)
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    setSuccess(true);
-    setSubmitting(false);
-
-    setTimeout(() => {
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        type: 'consulta',
-        subject: '',
-        message: '',
+    try {
+      // Call backend API to submit contact message
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/contacts/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || null,
+          contact_type: mapTypeToBackend(formData.type),
+          subject: formData.subject,
+          message: formData.message,
+          school_id: null,
+          client_id: null
+        })
       });
-      setSuccess(false);
-    }, 3000);
+
+      if (!response.ok) {
+        throw new Error('Error al enviar el mensaje');
+      }
+
+      setSuccess(true);
+
+      // Reset form after 3 seconds
+      setTimeout(() => {
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          type: 'consulta',
+          subject: '',
+          message: '',
+        });
+        setSuccess(false);
+      }, 3000);
+
+    } catch (err: any) {
+      console.error('Error submitting contact:', err);
+      setError(err.message || 'Error al enviar el mensaje. Por favor intenta de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const pqrsTypes = [
@@ -157,8 +198,8 @@ export default function SoportePage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-slate-700 mb-1">Email</h3>
-                    <a href="mailto:uniformesconsuelo@gmail.com" className="text-brand-600 hover:underline text-sm">
-                      uniformesconsuelo@gmail.com
+                    <a href="mailto:uniformesconsuelorios@gmail.com" className="text-brand-600 hover:underline text-sm">
+                      uniformesconsuelorios@gmail.com
                     </a>
                   </div>
                 </div>
@@ -215,8 +256,18 @@ export default function SoportePage() {
                     <span className="font-semibold">¡Mensaje enviado exitosamente!</span>
                   </div>
                   <p className="text-sm text-green-700 mt-1">
-                    Nos pondremos en contacto contigo pronto.
+                    Nos pondremos en contacto contigo pronto a tu correo electrónico.
                   </p>
+                </div>
+              )}
+
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-red-800">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-semibold">Error al enviar mensaje</span>
+                  </div>
+                  <p className="text-sm text-red-700 mt-1">{error}</p>
                 </div>
               )}
 
