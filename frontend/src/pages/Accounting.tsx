@@ -106,7 +106,7 @@ export default function Accounting() {
   const [selectedReceivable, setSelectedReceivable] = useState<AccountsReceivableListItem | null>(null);
   const [selectedPayable, setSelectedPayable] = useState<AccountsPayableListItem | null>(null);
   const [showEditBalanceModal, setShowEditBalanceModal] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<'caja' | 'banco' | null>(null);
+  const [editingAccount, setEditingAccount] = useState<'caja_menor' | 'caja_mayor' | 'nequi' | 'banco' | null>(null);
   const [newBalanceValue, setNewBalanceValue] = useState<number>(0);
 
   // Fixed Assets / Liabilities Management Modal states
@@ -409,24 +409,56 @@ export default function Accounting() {
     }
   };
 
-  const handleEditBalance = (account: 'caja' | 'banco') => {
+  const handleEditBalance = (account: 'caja_menor' | 'caja_mayor' | 'nequi' | 'banco') => {
     setEditingAccount(account);
-    const currentBalance = account === 'caja'
-      ? (cashBalances?.caja?.balance || 0)
-      : (cashBalances?.banco?.balance || 0);
+    let currentBalance = 0;
+    switch (account) {
+      case 'caja_menor':
+        currentBalance = cashBalances?.caja_menor?.balance || 0;
+        break;
+      case 'caja_mayor':
+        currentBalance = cashBalances?.caja_mayor?.balance || 0;
+        break;
+      case 'nequi':
+        currentBalance = cashBalances?.nequi?.balance || 0;
+        break;
+      case 'banco':
+        currentBalance = cashBalances?.banco?.balance || 0;
+        break;
+    }
     setNewBalanceValue(currentBalance);
     setShowEditBalanceModal(true);
+  };
+
+  const getAccountCode = (account: 'caja_menor' | 'caja_mayor' | 'nequi' | 'banco'): string => {
+    const codes: Record<string, string> = {
+      caja_menor: '1101',
+      caja_mayor: '1102',
+      nequi: '1103',
+      banco: '1104'
+    };
+    return codes[account] || '1101';
+  };
+
+  const getAccountLabel = (account: 'caja_menor' | 'caja_mayor' | 'nequi' | 'banco'): string => {
+    const labels: Record<string, string> = {
+      caja_menor: 'Caja Menor',
+      caja_mayor: 'Caja Mayor',
+      nequi: 'Nequi',
+      banco: 'Banco'
+    };
+    return labels[account] || account;
   };
 
   const handleSaveBalance = async () => {
     if (!editingAccount) return;
     try {
       setSubmitting(true);
-      const accountCode = editingAccount === 'caja' ? '1101' : '1102';
+      const accountCode = getAccountCode(editingAccount);
       await globalAccountingService.setGlobalAccountBalance(
         accountCode,
         newBalanceValue,
-        `Ajuste manual de ${editingAccount === 'caja' ? 'Caja' : 'Banco'}`
+        `Ajuste manual de ${getAccountLabel(editingAccount)}`
       );
       setShowEditBalanceModal(false);
       setEditingAccount(null);
@@ -716,116 +748,141 @@ export default function Accounting() {
         </div>
       )}
 
-      {/* Cash Balances (4 Accounts + Total) */}
+      {/* Cash Balances - 3 Cards: Cash (Efectivo), Banco (Digital), Total */}
       {cashBalances && (
         <div className="mb-8">
           <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-blue-600" />
             Saldos Actuales
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {/* Caja Menor */}
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4">
-              <div className="flex items-center justify-between">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* CASH (Efectivo) = Caja Menor + Caja Mayor */}
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-5">
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-xs font-medium text-emerald-700 flex items-center gap-1">
-                    <Wallet className="w-3 h-3" />
-                    Caja Menor
+                  <p className="text-sm font-semibold text-emerald-700 flex items-center gap-2">
+                    <Wallet className="w-4 h-4" />
+                    Efectivo (Cash)
                   </p>
-                  <p className="text-xl font-bold text-emerald-800 mt-1">
-                    {cashBalances.caja_menor ? formatCurrency(cashBalances.caja_menor.balance) : '$0'}
+                  <p className="text-2xl font-bold text-emerald-800 mt-1">
+                    {formatCurrency((cashBalances.caja_menor?.balance || 0) + (cashBalances.caja_mayor?.balance || 0))}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleEditBalance('caja')}
-                  className="text-emerald-600 hover:text-emerald-800 p-1"
-                  title="Editar balance"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
+                <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-emerald-700" />
+                </div>
+              </div>
+              {/* Subcuentas */}
+              <div className="border-t border-emerald-200 pt-3 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-emerald-600">Caja Menor</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-emerald-700">
+                      {formatCurrency(cashBalances.caja_menor?.balance || 0)}
+                    </span>
+                    <button
+                      onClick={() => handleEditBalance('caja_menor')}
+                      className="text-emerald-500 hover:text-emerald-700 p-1"
+                      title="Editar Caja Menor"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-emerald-600">Caja Mayor</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-emerald-700">
+                      {formatCurrency(cashBalances.caja_mayor?.balance || 0)}
+                    </span>
+                    <button
+                      onClick={() => handleEditBalance('caja_mayor')}
+                      className="text-emerald-500 hover:text-emerald-700 p-1"
+                      title="Editar Caja Mayor"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Caja Mayor */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 p-4">
-              <div className="flex items-center justify-between">
+            {/* BANCO (Digital) = Nequi + Banco */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-xs font-medium text-green-700 flex items-center gap-1">
-                    <PiggyBank className="w-3 h-3" />
-                    Caja Mayor
+                  <p className="text-sm font-semibold text-blue-700 flex items-center gap-2">
+                    <Landmark className="w-4 h-4" />
+                    Banco (Digital)
                   </p>
-                  <p className="text-xl font-bold text-green-800 mt-1">
-                    {cashBalances.caja_mayor ? formatCurrency(cashBalances.caja_mayor.balance) : '$0'}
+                  <p className="text-2xl font-bold text-blue-800 mt-1">
+                    {formatCurrency((cashBalances.nequi?.balance || 0) + (cashBalances.banco?.balance || 0))}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleEditBalance('caja')}
-                  className="text-green-600 hover:text-green-800 p-1"
-                  title="Editar balance"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
+                <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-blue-700" />
+                </div>
               </div>
-            </div>
-
-            {/* Nequi */}
-            <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-xl border border-pink-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-pink-700 flex items-center gap-1">
-                    <CreditCard className="w-3 h-3" />
-                    Nequi
-                  </p>
-                  <p className="text-xl font-bold text-pink-800 mt-1">
-                    {cashBalances.nequi ? formatCurrency(cashBalances.nequi.balance) : '$0'}
-                  </p>
+              {/* Subcuentas */}
+              <div className="border-t border-blue-200 pt-3 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-blue-600">Nequi</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-blue-700">
+                      {formatCurrency(cashBalances.nequi?.balance || 0)}
+                    </span>
+                    <button
+                      onClick={() => handleEditBalance('nequi')}
+                      className="text-blue-500 hover:text-blue-700 p-1"
+                      title="Editar Nequi"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleEditBalance('banco')}
-                  className="text-pink-600 hover:text-pink-800 p-1"
-                  title="Editar balance"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-
-            {/* Banco */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-blue-700 flex items-center gap-1">
-                    <Landmark className="w-3 h-3" />
-                    Banco
-                  </p>
-                  <p className="text-xl font-bold text-blue-800 mt-1">
-                    {cashBalances.banco ? formatCurrency(cashBalances.banco.balance) : '$0'}
-                  </p>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-blue-600">Cuenta Bancaria</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-blue-700">
+                      {formatCurrency(cashBalances.banco?.balance || 0)}
+                    </span>
+                    <button
+                      onClick={() => handleEditBalance('banco')}
+                      className="text-blue-500 hover:text-blue-700 p-1"
+                      title="Editar Banco"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleEditBalance('banco')}
-                  className="text-blue-600 hover:text-blue-800 p-1"
-                  title="Editar balance"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
               </div>
             </div>
 
             {/* Total Líquido */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4">
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-purple-700 flex items-center gap-1">
-                    <Calculator className="w-3 h-3" />
+                  <p className="text-sm font-semibold text-purple-700 flex items-center gap-2">
+                    <Calculator className="w-4 h-4" />
                     Total Líquido
                   </p>
-                  <p className="text-xl font-bold text-purple-800 mt-1">
+                  <p className="text-2xl font-bold text-purple-800 mt-1">
                     {formatCurrency(cashBalances.total_liquid)}
                   </p>
                 </div>
-                <div className="w-8 h-8 bg-purple-200 rounded-full flex items-center justify-center">
-                  <DollarSign className="w-4 h-4 text-purple-700" />
+                <div className="w-10 h-10 bg-purple-200 rounded-full flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-purple-700" />
+                </div>
+              </div>
+              {/* Desglose */}
+              <div className="border-t border-purple-200 pt-3 mt-3 space-y-1 text-sm">
+                <div className="flex justify-between text-purple-600">
+                  <span>Efectivo</span>
+                  <span>{formatCurrency((cashBalances.caja_menor?.balance || 0) + (cashBalances.caja_mayor?.balance || 0))}</span>
+                </div>
+                <div className="flex justify-between text-purple-600">
+                  <span>Digital</span>
+                  <span>{formatCurrency((cashBalances.nequi?.balance || 0) + (cashBalances.banco?.balance || 0))}</span>
                 </div>
               </div>
             </div>
@@ -1412,13 +1469,13 @@ export default function Accounting() {
 
       {/* ===================== MODALS ===================== */}
 
-      {/* Edit Balance Modal (Caja/Banco) */}
+      {/* Edit Balance Modal */}
       {showEditBalanceModal && editingAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h3 className="text-lg font-semibold">
-                Editar Balance de {editingAccount === 'caja' ? 'Caja' : 'Banco'}
+                Editar Balance de {getAccountLabel(editingAccount)}
               </h3>
               <button
                 onClick={() => {
@@ -1436,9 +1493,12 @@ export default function Accounting() {
                   Balance Actual
                 </label>
                 <p className="text-lg font-semibold text-gray-800">
-                  {editingAccount === 'caja'
-                    ? formatCurrency(cashBalances?.caja?.balance || 0)
-                    : formatCurrency(cashBalances?.banco?.balance || 0)}
+                  {formatCurrency(
+                    editingAccount === 'caja_menor' ? (cashBalances?.caja_menor?.balance || 0) :
+                    editingAccount === 'caja_mayor' ? (cashBalances?.caja_mayor?.balance || 0) :
+                    editingAccount === 'nequi' ? (cashBalances?.nequi?.balance || 0) :
+                    (cashBalances?.banco?.balance || 0)
+                  )}
                 </p>
               </div>
               <div>
