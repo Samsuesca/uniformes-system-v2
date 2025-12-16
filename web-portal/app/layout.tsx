@@ -15,7 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Uniformes System - Portal de Clientes",
+  title: "Uniformes Consuelo Rios - Portal de Clientes",
   description: "Catálogo de uniformes escolares y pedidos online",
 };
 

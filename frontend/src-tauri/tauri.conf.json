@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
-  "productName": "Uniformes System",
+  "productName": "Uniformes Consuelo Rios",
   "version": "2.0.0",
   "identifier": "com.uniformes.system",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Uniformes System",
+        "title": "Uniformes Consuelo Rios",
         "width": 1400,
         "height": 900,
         "resizable": true,

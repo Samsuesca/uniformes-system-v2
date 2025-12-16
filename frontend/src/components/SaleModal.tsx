@@ -4,10 +4,11 @@
  * Creates separate sales (one per school) when items span multiple schools.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Package } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
+import ProductSelectorModal from './ProductSelectorModal';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { Product, GlobalProduct } from '../types/api';
 
@@ -16,6 +17,8 @@ interface SaleModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialSchoolId?: string;  // Optional - modal can manage school selection internally
+  initialProduct?: Product;  // Pre-load product (for "Start Sale" from Products page)
+  initialQuantity?: number;  // Initial quantity for pre-loaded product
 }
 
 // Extended type for sale items with global flag AND school info for multi-school support
@@ -34,7 +37,14 @@ interface SaleResult {
   saleId: string;
 }
 
-export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId }: SaleModalProps) {
+export default function SaleModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialSchoolId,
+  initialProduct,
+  initialQuantity = 1,
+}: SaleModalProps) {
   // Multi-school support
   const { availableSchools, currentSchool } = useSchoolStore();
   const [selectedSchoolId, setSelectedSchoolId] = useState(
@@ -47,6 +57,9 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [productSource, setProductSource] = useState<'school' | 'global'>('school');
+
+  // Product selector modal state
+  const [productSelectorOpen, setProductSelectorOpen] = useState(false);
 
   // Multi-school success modal state
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -80,6 +93,24 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
       resetForm();
     }
   }, [isOpen]);
+
+  // Pre-load product if initialProduct is provided (for "Start Sale" from Products page)
+  useEffect(() => {
+    if (isOpen && initialProduct) {
+      // Auto-add the initial product to the cart
+      const schoolName = getSchoolName(initialProduct.school_id);
+      const newItem: SaleItemCreateExtended = {
+        product_id: initialProduct.id,
+        quantity: initialQuantity,
+        unit_price: Number(initialProduct.price),
+        is_global: false,
+        display_name: initialProduct.name || '',
+        school_id: initialProduct.school_id,
+        school_name: schoolName,
+      };
+      setItems([newItem]);
+    }
+  }, [isOpen, initialProduct]);
 
   // Handler for school change - reload products but KEEP existing items from other schools
   // This enables multi-school sales: items from different schools stay in the cart
@@ -175,6 +206,42 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
         });
       }
     }
+  };
+
+  // Handler for ProductSelectorModal selection
+  const handleProductSelectorSelect = (product: Product | GlobalProduct, quantity?: number) => {
+    const isGlobal = 'inventory_quantity' in product && !('school_id' in product);
+    const schoolId = isGlobal ? selectedSchoolId : (product as Product).school_id;
+    const schoolName = getSchoolName(schoolId);
+
+    const newItem: SaleItemCreateExtended = {
+      product_id: product.id,
+      quantity: quantity || 1,
+      unit_price: Number(product.price),
+      is_global: isGlobal,
+      display_name: product.name || '',
+      school_id: schoolId,
+      school_name: schoolName,
+    };
+
+    // Check if item already exists, if so, update quantity
+    const existingIndex = items.findIndex(
+      item => item.product_id === product.id && item.is_global === isGlobal
+    );
+
+    if (existingIndex !== -1) {
+      const updatedItems = [...items];
+      updatedItems[existingIndex] = {
+        ...updatedItems[existingIndex],
+        quantity: updatedItems[existingIndex].quantity + (quantity || 1),
+      };
+      setItems(updatedItems);
+    } else {
+      setItems([...items, newItem]);
+    }
+
+    // Close modal
+    setProductSelectorOpen(false);
   };
 
   const handleAddItem = () => {
@@ -616,102 +683,30 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                {/* Product Select */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {productSource === 'global' ? 'Producto Global' : 'Producto'}
-                  </label>
-                  <select
-                    value={currentItem.product_id}
-                    onChange={(e) => handleProductSelect(e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent outline-none ${
-                      productSource === 'global'
-                        ? 'border-purple-300 focus:ring-purple-500'
-                        : 'border-gray-300 focus:ring-blue-500'
-                    }`}
-                  >
-                    <option value="">Selecciona un producto</option>
-                    {productSource === 'global' ? (
-                      globalProducts.map((product) => {
-                        const stock = product.inventory_quantity ?? 0;
-                        const lowStock = stock < 5;
-                        const outOfStock = stock === 0;
-                        const colorInfo = product.color ? ` [${product.color}]` : '';
-                        // Allow out-of-stock products for historical sales
-                        const isDisabled = outOfStock && !formData.is_historical;
-                        return (
-                          <option
-                            key={product.id}
-                            value={product.id}
-                            disabled={isDisabled}
-                          >
-                            🌐 {product.name} - {product.size}{colorInfo} - ${Number(product.price).toLocaleString()}
-                            {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
-                          </option>
-                        );
-                      })
-                    ) : (
-                      products.map((product) => {
-                        const stock = product.inventory_quantity ?? product.stock ?? 0;
-                        const lowStock = stock < 5;
-                        const outOfStock = stock === 0;
-                        const colorInfo = product.color ? ` [${product.color}]` : '';
-                        // Allow out-of-stock products for historical sales
-                        const isDisabled = outOfStock && !formData.is_historical;
-                        return (
-                          <option
-                            key={product.id}
-                            value={product.id}
-                            disabled={isDisabled}
-                          >
-                            {product.name} - {product.size}{colorInfo} - ${Number(product.price).toLocaleString()}
-                            {outOfStock ? ' [SIN STOCK]' : lowStock ? ` [Stock: ${stock} ⚠️]` : ` [Stock: ${stock}]`}
-                          </option>
-                        );
-                      })
-                    )}
-                  </select>
-                  {/* Stock indicator for selected product */}
-                  {currentItem.product_id && (
-                    <p className="mt-1 text-sm">
-                      {(() => {
-                        // For historical sales, stock doesn't matter
-                        if (formData.is_historical) {
-                          return <span className="text-amber-600 font-medium">📜 Venta histórica - stock no aplica</span>;
-                        }
+              {/* Product Selector Button */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Agregar Productos
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setProductSelectorOpen(true)}
+                  className="w-full px-6 py-4 border-2 border-dashed border-blue-400 rounded-lg hover:border-blue-600 hover:bg-blue-50 transition flex flex-col items-center gap-2 group"
+                >
+                  <Package className="w-8 h-8 text-blue-500 group-hover:text-blue-600" />
+                  <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700">
+                    Buscar y agregar productos
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    Click para abrir el catálogo
+                  </span>
+                </button>
+              </div>
 
-                        if (productSource === 'global') {
-                          const product = globalProducts.find(p => p.id === currentItem.product_id);
-                          const stock = product?.inventory_quantity ?? 0;
-                          const alreadySelected = items.find(i => i.product_id === currentItem.product_id && i.is_global)?.quantity || 0;
-                          const available = stock - alreadySelected;
-
-                          if (available === 0) {
-                            return <span className="text-red-600 font-medium">⚠️ Sin stock disponible</span>;
-                          } else if (available < 5) {
-                            return <span className="text-orange-600 font-medium">⚠️ Stock bajo: {available} unidades disponibles</span>;
-                          } else {
-                            return <span className="text-purple-600">✓ {available} unidades disponibles (global)</span>;
-                          }
-                        } else {
-                          const product = products.find(p => p.id === currentItem.product_id);
-                          const stock = product?.inventory_quantity ?? product?.stock ?? 0;
-                          const alreadySelected = items.find(i => i.product_id === currentItem.product_id && !i.is_global)?.quantity || 0;
-                          const available = stock - alreadySelected;
-
-                          if (available === 0) {
-                            return <span className="text-red-600 font-medium">⚠️ Sin stock disponible</span>;
-                          } else if (available < 5) {
-                            return <span className="text-orange-600 font-medium">⚠️ Stock bajo: {available} unidades disponibles</span>;
-                          } else {
-                            return <span className="text-green-600">✓ {available} unidades disponibles</span>;
-                          }
-                        }
-                      })()}
-                    </p>
-                  )}
-                </div>
+              {/* Legacy product add section - keeping old flow temporarily */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4" style={{ display: 'none' }}>
+                {/* Hidden old selector for backwards compatibility */}
+                <div className="md:col-span-2"></div>
 
                 {/* Quantity */}
                 <div>
@@ -963,6 +958,19 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
           </div>
         </div>
       )}
+
+      {/* Product Selector Modal */}
+      <ProductSelectorModal
+        isOpen={productSelectorOpen}
+        onClose={() => setProductSelectorOpen(false)}
+        onSelect={handleProductSelectorSelect}
+        schoolId={selectedSchoolId}
+        filterByStock={formData.is_historical ? 'all' : 'with_stock'}
+        allowGlobalProducts={true}
+        excludeProductIds={items.map(i => i.product_id)}
+        title="Buscar y Agregar Producto"
+        emptyMessage="No se encontraron productos disponibles"
+      />
     </div>
   );
 }

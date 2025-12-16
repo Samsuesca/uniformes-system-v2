@@ -10,11 +10,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2, CheckCircle } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ClientSelector from './ClientSelector';
+import ProductSelectorModal from './ProductSelectorModal';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
 import YomberMeasurementsForm, { validateYomberMeasurements } from './YomberMeasurementsForm';
-import type { GarmentType, OrderItemCreate, Product, OrderType, YomberMeasurements } from '../types/api';
+import type { GarmentType, OrderItemCreate, Product, GlobalProduct, OrderType, YomberMeasurements } from '../types/api';
 
 interface OrderModalProps {
   isOpen: boolean;
@@ -75,6 +76,10 @@ export default function OrderModal({
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('catalog');
+
+  // Product selector modal states
+  const [catalogProductSelectorOpen, setCatalogProductSelectorOpen] = useState(false);
+  const [yomberProductSelectorOpen, setYomberProductSelectorOpen] = useState(false);
 
   // Catalog tab state
   const [catalogProductId, setCatalogProductId] = useState('');
@@ -236,6 +241,28 @@ export default function OrderModal({
     setCustomEmbroideryText('');
   };
 
+  const handleCatalogProductSelect = (product: Product | GlobalProduct, quantity?: number) => {
+    const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
+
+    const item: OrderItemForm = {
+      tempId: Date.now().toString(),
+      order_type: 'catalog',
+      garment_type_id: product.garment_type_id,
+      product_id: product.id,
+      quantity: quantity || 1,
+      size: product.size,
+      color: product.color || undefined,
+      displayName: `${garmentType?.name || 'Producto'} - ${product.size}${product.color ? ` (${product.color})` : ''}`,
+      unitPrice: Number(product.price),
+      school_id: selectedSchoolId,
+      school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
+    };
+
+    setItems([...items, item]);
+    setCatalogProductSelectorOpen(false);
+    setError(null);
+  };
+
   const handleAddCatalogItem = () => {
     if (!catalogProductId) {
       setError('Selecciona un producto');
@@ -263,6 +290,14 @@ export default function OrderModal({
 
     setItems([...items, item]);
     resetCatalogForm();
+    setError(null);
+  };
+
+  const handleYomberProductSelect = (product: Product | GlobalProduct, quantity?: number) => {
+    // Set the selected yomber product - measurements will be filled afterwards
+    setYomberProductId(product.id);
+    setYomberQuantity(quantity || 1);
+    setYomberProductSelectorOpen(false);
     setError(null);
   };
 
@@ -614,84 +649,29 @@ export default function OrderModal({
                         Selecciona un producto del catalogo. Ideal para productos agotados o pedidos web.
                       </p>
 
-                      {/* Garment Type Filter - excludes yomber types */}
+                      {/* Product Selector Button */}
                       <div>
-                        <label className="block text-xs text-gray-600 mb-1">Filtrar por tipo</label>
-                        <select
-                          value={catalogGarmentFilter}
-                          onChange={(e) => setCatalogGarmentFilter(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        <label className="block text-xs text-gray-600 mb-2">
+                          Producto del Catálogo *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setCatalogProductSelectorOpen(true)}
+                          className="w-full px-6 py-4 border-2 border-dashed border-blue-400 rounded-lg hover:border-blue-600 hover:bg-blue-50 transition flex flex-col items-center gap-2 group"
                         >
-                          <option value="">Todos los tipos</option>
-                          {catalogGarmentTypes.map((gt) => (
-                            <option key={gt.id} value={gt.id}>
-                              {gt.name}
-                            </option>
-                          ))}
-                        </select>
+                          <Package className="w-8 h-8 text-blue-500 group-hover:text-blue-600" />
+                          <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700">
+                            Buscar producto del catálogo
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            Click para abrir el selector
+                          </span>
+                        </button>
                       </div>
 
-                      {/* Product Selection */}
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Producto *</label>
-                        <select
-                          value={catalogProductId}
-                          onChange={(e) => setCatalogProductId(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        >
-                          <option value="">Selecciona un producto</option>
-                          {filteredCatalogProducts.map((product) => {
-                            const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
-                            const stock = product.inventory_quantity ?? product.stock ?? 0;
-                            return (
-                              <option key={product.id} value={product.id}>
-                                {garmentType?.name} - {product.size}
-                                {product.color ? ` (${product.color})` : ''} -
-                                ${Number(product.price).toLocaleString()}
-                                {stock === 0 ? ' [SIN STOCK]' : ` [Stock: ${stock}]`}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-
-                      {/* Show selected product info */}
-                      {catalogProductId && (
-                        <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                          {(() => {
-                            const product = products.find(p => p.id === catalogProductId);
-                            if (!product) return null;
-                            const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
-                            return (
-                              <div className="text-sm">
-                                <p className="font-medium text-blue-900">{garmentType?.name} - {product.size}</p>
-                                <p className="text-blue-700">Precio: ${Number(product.price).toLocaleString()}</p>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
-
-                      {/* Quantity */}
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Cantidad *</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={catalogQuantity}
-                          onChange={(e) => setCatalogQuantity(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleAddCatalogItem}
-                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Agregar al Encargo
-                      </button>
+                      <p className="text-xs text-gray-500 text-center">
+                        Los productos se agregan directamente desde el selector
+                      </p>
                     </div>
                   )}
 
@@ -713,21 +693,14 @@ export default function OrderModal({
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Selecciona el Yomber *
                             </label>
-                            <select
-                              value={yomberProductId}
-                              onChange={(e) => setYomberProductId(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            <button
+                              type="button"
+                              onClick={() => setYomberProductSelectorOpen(true)}
+                              className="w-full px-4 py-2 border-2 border-dashed border-purple-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center justify-center gap-2"
                             >
-                              <option value="">-- Selecciona un yomber --</option>
-                              {yomberProducts.map((product) => {
-                                const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
-                                return (
-                                  <option key={product.id} value={product.id}>
-                                    {garmentType?.name} - Talla {product.size} - ${Number(product.price).toLocaleString()}
-                                  </option>
-                                );
-                              })}
-                            </select>
+                              <Ruler className="w-4 h-4" />
+                              {yomberProductId ? 'Cambiar producto' : 'Seleccionar producto yomber'}
+                            </button>
                           </div>
 
                           {/* Show selected yomber info */}
@@ -1165,6 +1138,34 @@ export default function OrderModal({
           )}
         </div>
       </div>
+
+      {/* Product Selector Modal for Catalog Tab */}
+      <ProductSelectorModal
+        isOpen={catalogProductSelectorOpen}
+        onClose={() => setCatalogProductSelectorOpen(false)}
+        onSelect={handleCatalogProductSelect}
+        schoolId={selectedSchoolId}
+        filterByStock="without_stock"
+        allowGlobalProducts={false}
+        excludeProductIds={items.map(i => i.product_id || '')}
+        title="Seleccionar Producto del Catálogo"
+        emptyMessage="No hay productos sin stock disponibles"
+      />
+
+      {/* Product Selector Modal for Yomber Tab - Filter to only show yomber products */}
+      {yomberProductSelectorOpen && (
+        <ProductSelectorModal
+          isOpen={yomberProductSelectorOpen}
+          onClose={() => setYomberProductSelectorOpen(false)}
+          onSelect={handleYomberProductSelect}
+          schoolId={selectedSchoolId}
+          filterByStock="all"
+          allowGlobalProducts={false}
+          excludeProductIds={yomberProductId ? [yomberProductId, ...items.map(i => i.product_id || '')] : items.map(i => i.product_id || '')}
+          title="Seleccionar Producto Yomber"
+          emptyMessage="No hay productos Yomber configurados"
+        />
+      )}
 
       {/* Success Modal for Multi-School Orders */}
       {showSuccessModal && orderResults.length > 0 && (

@@ -6,6 +6,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Layout from '../components/Layout';
 import ProductModal from '../components/ProductModal';
+import SaleModal from '../components/SaleModal';
 import {
   Package, Plus, Search, AlertCircle, Loader2, Edit2, PackagePlus, X, Save,
   Globe, Building2, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingCart,
@@ -74,6 +75,10 @@ export default function Products() {
   const [adjustmentReason, setAdjustmentReason] = useState<string>('');
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove' | 'set'>('add');
   const [submitting, setSubmitting] = useState(false);
+
+  // Sale modal state
+  const [saleModalOpen, setSaleModalOpen] = useState(false);
+  const [initialProduct, setInitialProduct] = useState<Product | null>(null);
 
   // For creating new products, use school filter or current school
   const schoolIdForCreate = schoolFilter || currentSchool?.id || availableSchools[0]?.id || '';
@@ -160,6 +165,11 @@ export default function Products() {
     setAdjustmentAmount('');
     setAdjustmentReason('');
     setAdjustmentType('add');
+  };
+
+  const handleStartSale = (product: Product) => {
+    setInitialProduct(product);
+    setSaleModalOpen(true);
   };
 
   const handleOpenGlobalInventoryModal = (product: GlobalProduct) => {
@@ -872,6 +882,13 @@ export default function Products() {
                       <td className="w-20 px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-1">
                           <button
+                            onClick={() => handleStartSale(product)}
+                            className="text-purple-600 hover:text-purple-800 p-1 rounded hover:bg-purple-50"
+                            title="Iniciar venta con este producto"
+                          >
+                            <ShoppingCart className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleOpenModal(product)}
                             className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
                             title="Editar producto"
@@ -1173,6 +1190,22 @@ export default function Products() {
           </div>
         </div>
       )}
+
+      {/* Sale Modal */}
+      <SaleModal
+        isOpen={saleModalOpen}
+        onClose={() => {
+          setSaleModalOpen(false);
+          setInitialProduct(null);
+        }}
+        onSuccess={() => {
+          setSaleModalOpen(false);
+          setInitialProduct(null);
+          loadProducts(); // Refresh stock after sale
+        }}
+        initialProduct={initialProduct || undefined}
+        initialQuantity={1}
+      />
     </Layout>
   );
 }
