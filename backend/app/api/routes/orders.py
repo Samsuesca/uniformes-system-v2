@@ -730,3 +730,134 @@ async def upload_payment_proof(
         "file_url": file_url,
         "order_code": order.code
     }
+
+
+# =============================================================================
+# Payment Verification Endpoints (Admin - for desktop app)
+# =============================================================================
+
+@school_router.post(
+    "/{order_id}/approve-payment",
+    response_model=OrderResponse,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))],
+    summary="Approve payment proof"
+)
+async def approve_payment(
+    school_id: UUID,
+    order_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Approve payment proof for an order.
+
+    Changes order status to 'in_production' after payment approval.
+    Requires SELLER role.
+
+    Args:
+        school_id: School ID
+        order_id: Order ID
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        OrderResponse: Updated order with new status
+
+    Raises:
+        HTTPException: 404 if order not found
+        HTTPException: 400 if no payment proof uploaded
+    """
+    # Find the order
+    query = select(Order).where(
+        Order.id == order_id,
+        Order.school_id == school_id
+    )
+    result = await db.execute(query)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pedido no encontrado"
+        )
+
+    if not order.payment_proof_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay comprobante de pago para aprobar"
+        )
+
+    # Update order status to in_production (payment approved)
+    order.status = OrderStatus.IN_PRODUCTION
+    order.payment_notes = (order.payment_notes or "") + f"\n[Pago aprobado por {current_user.full_name}]"
+
+    await db.commit()
+    await db.refresh(order)
+
+    return OrderResponse.model_validate(order)
+
+
+@school_router.post(
+    "/{order_id}/reject-payment",
+    response_model=OrderResponse,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))],
+    summary="Reject payment proof"
+)
+async def reject_payment(
+    school_id: UUID,
+    order_id: UUID,
+    rejection_notes: str = Query(..., description="Reason for rejection"),
+    db: DatabaseSession = Depends(),
+    current_user: CurrentUser = Depends()
+):
+    """
+    Reject payment proof for an order.
+
+    Adds rejection notes and keeps order in pending status.
+    Requires SELLER role.
+
+    Args:
+        school_id: School ID
+        order_id: Order ID
+        rejection_notes: Reason for rejecting the payment proof
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        OrderResponse: Updated order with rejection notes
+
+    Raises:
+        HTTPException: 404 if order not found
+        HTTPException: 400 if no payment proof uploaded
+    """
+    # Find the order
+    query = select(Order).where(
+        Order.id == order_id,
+        Order.school_id == school_id
+    )
+    result = await db.execute(query)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pedido no encontrado"
+        )
+
+    if not order.payment_proof_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay comprobante de pago para rechazar"
+        )
+
+    # Add rejection notes
+    rejection_msg = f"\n[Pago rechazado por {current_user.full_name}]: {rejection_notes}"
+    order.payment_notes = (order.payment_notes or "") + rejection_msg
+
+    # Clear payment proof URL so client can upload a new one
+    order.payment_proof_url = None
+
+    await db.commit()
+    await db.refresh(order)
+
+    return OrderResponse.model_validate(order)
