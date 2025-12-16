@@ -40,26 +40,27 @@ def upgrade():
         END $$;
     """)
 
-    # Create contacts table
-    op.create_table(
-        'contacts',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column('client_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('clients.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('school_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('schools.id', ondelete='CASCADE'), nullable=True),
-        sa.Column('name', sa.String(150), nullable=False),
-        sa.Column('email', sa.String(150), nullable=False),
-        sa.Column('phone', sa.String(20), nullable=True),
-        sa.Column('contact_type', sa.Enum(name='contacttype', create_type=False), nullable=False),
-        sa.Column('subject', sa.String(200), nullable=False),
-        sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('status', sa.Enum(name='contactstatus', create_type=False), nullable=False, server_default='pending'),
-        sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('admin_response', sa.Text(), nullable=True),
-        sa.Column('admin_response_date', sa.DateTime(), nullable=True),
-        sa.Column('responded_by_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('now()'))
-    )
+    # Create contacts table using raw SQL to avoid enum recreation issues
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS contacts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+            school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
+            name VARCHAR(150) NOT NULL,
+            email VARCHAR(150) NOT NULL,
+            phone VARCHAR(20),
+            contact_type contacttype NOT NULL,
+            subject VARCHAR(200) NOT NULL,
+            message TEXT NOT NULL,
+            status contactstatus NOT NULL DEFAULT 'pending',
+            is_read BOOLEAN NOT NULL DEFAULT false,
+            admin_response TEXT,
+            admin_response_date TIMESTAMP,
+            responded_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT now(),
+            updated_at TIMESTAMP NOT NULL DEFAULT now()
+        )
+    """)
 
     # Create indexes
     op.create_index('idx_contacts_status', 'contacts', ['status'])
