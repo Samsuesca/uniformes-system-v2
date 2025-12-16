@@ -3,10 +3,11 @@
  * - Catalog: Select product from catalog (for out of stock items)
  * - Yomber: Custom measurements required
  * - Custom: Manual price for special items
- * Supports multi-school: allows selecting school when user has multiple schools
+ * Supports multi-school: allows adding items from different schools in a single transaction.
+ * Creates separate orders (one per school) when items span multiple schools.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2 } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2, CheckCircle } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ClientSelector from './ClientSelector';
 import { orderService } from '../services/orderService';
@@ -22,10 +23,21 @@ interface OrderModalProps {
   initialSchoolId?: string;  // Optional - modal can manage school selection internally
 }
 
+// Extended item form with school info for multi-school support
 interface OrderItemForm extends OrderItemCreate {
   tempId: string;
   displayName?: string;
   unitPrice: number;
+  school_id: string;      // School this item belongs to
+  school_name: string;    // For display in UI
+}
+
+// Result of creating an order (for multi-school success modal)
+interface OrderResult {
+  schoolName: string;
+  orderCode: string;
+  total: number;
+  orderId: string;
 }
 
 type TabType = 'catalog' | 'yomber' | 'custom';
@@ -48,6 +60,10 @@ export default function OrderModal({
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Multi-school success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [orderResults, setOrderResults] = useState<OrderResult[]>([]);
 
   // Form state
   const [clientId, setClientId] = useState('');
@@ -103,24 +119,38 @@ export default function OrderModal({
     }
   }, [isOpen]);
 
-  // Handler for school change - reload products and garment types when school changes
+  // Handler for school change - reload products but KEEP existing items from other schools
+  // This enables multi-school orders: items from different schools stay in the cart
   const handleSchoolChange = async (newSchoolId: string) => {
-    if (items.length > 0) {
-      const confirmed = window.confirm(
-        `Tienes ${items.length} item(s) agregado(s). Al cambiar de colegio se eliminarán porque los productos son diferentes.\n\n¿Deseas continuar?`
-      );
-      if (!confirmed) return;
-    }
-
     setSelectedSchoolId(newSchoolId);
-    setItems([]);
-    setClientId(''); // Reset client as clients are per school
+    // DON'T clear items - they belong to their respective schools
+    // DON'T reset client - clients are global
     resetCatalogForm();
     resetYomberForm();
     resetCustomForm();
     setError(null);
     await loadData(newSchoolId);
   };
+
+  // Group items by school for display and submission
+  const itemsBySchool = useMemo(() => {
+    const grouped = new Map<string, OrderItemForm[]>();
+    items.forEach(item => {
+      if (!grouped.has(item.school_id)) {
+        grouped.set(item.school_id, []);
+      }
+      grouped.get(item.school_id)!.push(item);
+    });
+    return grouped;
+  }, [items]);
+
+  // Get school name by id
+  const getSchoolName = (schoolId: string) => {
+    return availableSchools.find(s => s.id === schoolId)?.name || 'Colegio';
+  };
+
+  // Get selected school object
+  const selectedSchool = availableSchools.find(s => s.id === selectedSchoolId);
 
   const loadData = async (schoolIdToLoad?: string) => {
     const targetSchoolId = schoolIdToLoad || selectedSchoolId;
@@ -153,6 +183,8 @@ export default function OrderModal({
     resetCatalogForm();
     resetYomberForm();
     resetCustomForm();
+    setShowSuccessModal(false);
+    setOrderResults([]);
   };
 
   const resetCatalogForm = () => {
@@ -200,6 +232,8 @@ export default function OrderModal({
       color: product.color || undefined,
       displayName: `${garmentType?.name || 'Producto'} - ${product.size}${product.color ? ` (${product.color})` : ''}`,
       unitPrice: Number(product.price),
+      school_id: selectedSchoolId,
+      school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
     };
 
     setItems([...items, item]);
@@ -237,6 +271,8 @@ export default function OrderModal({
       embroidery_text: yomberEmbroideryText || undefined,
       displayName: `Yomber ${product.size} (sobre-medida)`,
       unitPrice: totalPrice,
+      school_id: selectedSchoolId,
+      school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
     };
 
     setItems([...items, item]);
@@ -269,6 +305,8 @@ export default function OrderModal({
       notes: customNotes || undefined,
       displayName: `${garmentType?.name || 'Personalizado'}${customSize ? ` - ${customSize}` : ''}${customColor ? ` (${customColor})` : ''}`,
       unitPrice: customPrice,
+      school_id: selectedSchoolId,
+      school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
     };
 
     setItems([...items, item]);
@@ -301,32 +339,62 @@ export default function OrderModal({
     setError(null);
 
     try {
-      const orderItems: OrderItemCreate[] = items.map(item => ({
-        garment_type_id: item.garment_type_id,
-        quantity: item.quantity,
-        order_type: item.order_type,
-        product_id: item.product_id,
-        unit_price: item.unit_price,
-        additional_price: item.additional_price,
-        size: item.size,
-        color: item.color,
-        gender: item.gender,
-        custom_measurements: item.custom_measurements,
-        embroidery_text: item.embroidery_text,
-        notes: item.notes,
-      }));
+      // Multi-school: Create separate orders for each school
+      const results: OrderResult[] = [];
 
-      await orderService.createOrder(selectedSchoolId, {
-        school_id: selectedSchoolId,
-        client_id: clientId,
-        delivery_date: deliveryDate || undefined,
-        notes: notes || undefined,
-        items: orderItems,
-        advance_payment: advancePayment > 0 ? advancePayment : undefined,
-      });
+      // Calculate advance payment per school (proportional to school total)
+      const grandTotal = calculateTotal();
 
-      onSuccess();
-      onClose();
+      for (const [schoolId, schoolItems] of itemsBySchool.entries()) {
+        const schoolTotal = schoolItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+
+        // Proportional advance payment
+        const schoolAdvance = grandTotal > 0
+          ? Math.round((schoolTotal / grandTotal) * advancePayment)
+          : 0;
+
+        const orderItems: OrderItemCreate[] = schoolItems.map(item => ({
+          garment_type_id: item.garment_type_id,
+          quantity: item.quantity,
+          order_type: item.order_type,
+          product_id: item.product_id,
+          unit_price: item.unit_price,
+          additional_price: item.additional_price,
+          size: item.size,
+          color: item.color,
+          gender: item.gender,
+          custom_measurements: item.custom_measurements,
+          embroidery_text: item.embroidery_text,
+          notes: item.notes,
+        }));
+
+        console.log(`Creating order for school ${schoolId}:`, {
+          items_count: orderItems.length,
+          total: schoolTotal,
+          advance: schoolAdvance,
+        });
+
+        const response = await orderService.createOrder(schoolId, {
+          school_id: schoolId,
+          client_id: clientId,
+          delivery_date: deliveryDate || undefined,
+          notes: notes || undefined,
+          items: orderItems,
+          advance_payment: schoolAdvance > 0 ? schoolAdvance : undefined,
+        });
+
+        results.push({
+          schoolName: schoolItems[0].school_name,
+          orderCode: response.code,
+          total: schoolTotal,
+          orderId: response.id,
+        });
+      }
+
+      // Show success modal with results
+      setOrderResults(results);
+      setShowSuccessModal(true);
+
     } catch (err: any) {
       console.error('Error creating order:', err);
       let errorMessage = 'Error al crear el encargo';
@@ -341,6 +409,14 @@ export default function OrderModal({
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle closing success modal
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false);
+    setOrderResults([]);
+    onSuccess();
+    onClose();
   };
 
   const getOrderTypeBadge = (orderType: OrderType | undefined) => {
@@ -843,60 +919,100 @@ export default function OrderModal({
                 </div>
               </div>
 
-              {/* Items List */}
+              {/* Items List - Grouped by School for multi-school support */}
               {items.length > 0 && (
                 <div className="mb-6">
                   <h4 className="text-sm font-medium text-gray-700 mb-3">
                     Items del Encargo ({items.length})
+                    {itemsBySchool.size > 1 && (
+                      <span className="ml-2 text-sm font-normal text-blue-600">
+                        ({itemsBySchool.size} colegios)
+                      </span>
+                    )}
                   </h4>
-                  <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
-                    <table className="w-full min-w-[500px]">
-                      <thead>
-                        <tr className="text-xs text-gray-500 uppercase">
-                          <th className="text-left pb-2">Item</th>
-                          <th className="text-center pb-2">Tipo</th>
-                          <th className="text-center pb-2">Cant.</th>
-                          <th className="text-right pb-2">Precio</th>
-                          <th className="text-right pb-2">Subtotal</th>
-                          <th className="pb-2"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {items.map((item) => (
-                          <tr key={item.tempId} className="text-sm">
-                            <td className="py-2">
-                              <div>
-                                <p className="font-medium">{item.displayName}</p>
-                                {item.embroidery_text && (
-                                  <p className="text-xs text-gray-500">Bordado: {item.embroidery_text}</p>
-                                )}
-                                {item.custom_measurements && (
-                                  <p className="text-xs text-purple-600">Con medidas personalizadas</p>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-2 text-center">
-                              {getOrderTypeBadge(item.order_type)}
-                            </td>
-                            <td className="py-2 text-center">{item.quantity}</td>
-                            <td className="py-2 text-right">${item.unitPrice.toLocaleString()}</td>
-                            <td className="py-2 text-right font-medium">
-                              ${(item.unitPrice * item.quantity).toLocaleString()}
-                            </td>
-                            <td className="py-2 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(item.tempId)}
-                                className="text-red-500 hover:text-red-700 p-1"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+
+                  {/* Items grouped by school */}
+                  <div className="space-y-4">
+                    {Array.from(itemsBySchool.entries()).map(([schoolId, schoolItems]) => {
+                      const schoolTotal = schoolItems.reduce(
+                        (sum, item) => sum + (item.unitPrice * item.quantity),
+                        0
+                      );
+                      return (
+                        <div key={schoolId} className="border border-gray-200 rounded-lg overflow-hidden">
+                          {/* School header - only show if multiple schools */}
+                          {itemsBySchool.size > 1 && (
+                            <div className="bg-blue-50 px-4 py-2 flex items-center justify-between border-b border-blue-200">
+                              <span className="font-medium text-blue-800 flex items-center">
+                                <Building2 className="w-4 h-4 mr-2" />
+                                {schoolItems[0].school_name}
+                              </span>
+                              <span className="text-sm text-blue-600 font-medium">
+                                Subtotal: ${schoolTotal.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Items table for this school */}
+                          <div className="bg-gray-50 p-4 overflow-x-auto">
+                            <table className="w-full min-w-[500px]">
+                              <thead>
+                                <tr className="text-xs text-gray-500 uppercase">
+                                  <th className="text-left pb-2">Item</th>
+                                  <th className="text-center pb-2">Tipo</th>
+                                  <th className="text-center pb-2">Cant.</th>
+                                  <th className="text-right pb-2">Precio</th>
+                                  <th className="text-right pb-2">Subtotal</th>
+                                  <th className="pb-2"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {schoolItems.map((item) => (
+                                  <tr key={item.tempId} className="text-sm">
+                                    <td className="py-2">
+                                      <div>
+                                        <p className="font-medium">{item.displayName}</p>
+                                        {item.embroidery_text && (
+                                          <p className="text-xs text-gray-500">Bordado: {item.embroidery_text}</p>
+                                        )}
+                                        {item.custom_measurements && (
+                                          <p className="text-xs text-purple-600">Con medidas personalizadas</p>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-2 text-center">
+                                      {getOrderTypeBadge(item.order_type)}
+                                    </td>
+                                    <td className="py-2 text-center">{item.quantity}</td>
+                                    <td className="py-2 text-right">${item.unitPrice.toLocaleString()}</td>
+                                    <td className="py-2 text-right font-medium">
+                                      ${(item.unitPrice * item.quantity).toLocaleString()}
+                                    </td>
+                                    <td className="py-2 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveItem(item.tempId)}
+                                        className="text-red-500 hover:text-red-700 p-1"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
+
+                  {/* Multi-school note */}
+                  {itemsBySchool.size > 1 && (
+                    <p className="text-sm text-gray-500 mt-3">
+                      Se crearán {itemsBySchool.size} encargos separados (uno por colegio)
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -998,7 +1114,7 @@ export default function OrderModal({
                       Creando...
                     </>
                   ) : (
-                    'Crear Encargo'
+                    itemsBySchool.size > 1 ? `Crear ${itemsBySchool.size} Encargos` : 'Crear Encargo'
                   )}
                 </button>
               </div>
@@ -1006,6 +1122,74 @@ export default function OrderModal({
           )}
         </div>
       </div>
+
+      {/* Success Modal for Multi-School Orders */}
+      {showSuccessModal && orderResults.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={handleCloseSuccessModal} />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            {/* Success Header */}
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle className="w-10 h-10 text-green-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">
+                {orderResults.length === 1
+                  ? 'Encargo Creado Exitosamente'
+                  : `${orderResults.length} Encargos Creados Exitosamente`}
+              </h3>
+            </div>
+
+            {/* Order Results */}
+            <div className="space-y-3 mb-6">
+              {orderResults.map((result, index) => (
+                <div
+                  key={index}
+                  className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+                >
+                  {orderResults.length > 1 && (
+                    <div className="flex items-center text-sm text-blue-600 mb-2">
+                      <Building2 className="w-4 h-4 mr-1" />
+                      {result.schoolName}
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-lg font-bold text-gray-900">
+                      {result.orderCode}
+                    </span>
+                    <span className="text-lg font-semibold text-green-600">
+                      ${result.total.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Total Summary */}
+            {orderResults.length > 1 && (
+              <div className="border-t border-gray-200 pt-4 mb-6">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-gray-700">Total General:</span>
+                  <span className="text-xl font-bold text-blue-600">
+                    ${orderResults.reduce((sum, r) => sum + r.total, 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleCloseSuccessModal}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

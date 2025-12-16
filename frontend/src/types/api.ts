@@ -120,6 +120,13 @@ export interface Product {
   inventory_quantity?: number;
   inventory_min_stock?: number;
   stock?: number; // Alias for inventory_quantity
+  min_stock?: number; // Minimum stock alert level
+  // Pending orders info
+  pending_orders_qty?: number;
+  pending_orders_count?: number;
+  // Extra fields from multi-school endpoint
+  garment_type_name?: string;
+  school_name?: string;
 }
 
 export interface ProductWithInventory extends Product {

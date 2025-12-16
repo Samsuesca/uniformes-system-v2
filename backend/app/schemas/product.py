@@ -122,6 +122,9 @@ class ProductListResponse(BaseSchema):
     school_id: UUID
     school_name: str | None = None
     stock: int | None = None  # Only populated when with_stock=True
+    min_stock: int | None = None  # Minimum stock alert level
+    pending_orders_qty: int | None = None  # Quantity in pending orders
+    pending_orders_count: int | None = None  # Number of pending orders
 
 
 # ============================================

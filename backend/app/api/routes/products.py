@@ -7,12 +7,13 @@ Two types of endpoints:
 """
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Query, Depends
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import selectinload, joinedload
 
 from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole
 from app.models.product import Product, GarmentType, Inventory
+from app.models.order import OrderItem, Order, OrderStatus, OrderItemStatus
 from app.models.school import School
 from app.schemas.product import (
     GarmentTypeCreate, GarmentTypeUpdate, GarmentTypeResponse,
@@ -101,6 +102,7 @@ async def list_all_products(
 
     # If with_stock, get inventory data
     stock_map = {}
+    min_stock_map = {}
     if with_stock and products:
         product_ids = [p.id for p in products]
         inv_result = await db.execute(
@@ -108,6 +110,35 @@ async def list_all_products(
         )
         for inv in inv_result.scalars().all():
             stock_map[inv.product_id] = inv.quantity
+            min_stock_map[inv.product_id] = inv.min_stock_alert
+
+    # Get pending orders information for each product
+    pending_orders_map = {}
+    if products:
+        product_ids = [p.id for p in products]
+        # Get pending order items (where order is not delivered/cancelled and item is not delivered/cancelled)
+        pending_statuses = [OrderStatus.PENDING, OrderStatus.IN_PRODUCTION, OrderStatus.READY]
+        pending_item_statuses = [OrderItemStatus.PENDING, OrderItemStatus.IN_PRODUCTION, OrderItemStatus.READY]
+
+        pending_orders_query = await db.execute(
+            select(
+                OrderItem.product_id,
+                func.sum(OrderItem.quantity).label('total_qty'),
+                func.count(func.distinct(OrderItem.order_id)).label('order_count')
+            )
+            .join(Order, OrderItem.order_id == Order.id)
+            .where(
+                OrderItem.product_id.in_(product_ids),
+                Order.status.in_(pending_statuses),
+                OrderItem.item_status.in_(pending_item_statuses)
+            )
+            .group_by(OrderItem.product_id)
+        )
+        for row in pending_orders_query:
+            pending_orders_map[row.product_id] = {
+                'qty': int(row.total_qty or 0),
+                'count': int(row.order_count or 0)
+            }
 
     return [
         ProductListResponse(
@@ -123,7 +154,10 @@ async def list_all_products(
             garment_type_name=product.garment_type.name if product.garment_type else None,
             school_id=product.school_id,
             school_name=product.school.name if product.school else None,
-            stock=stock_map.get(product.id, 0) if with_stock else None
+            stock=stock_map.get(product.id, 0) if with_stock else None,
+            min_stock=min_stock_map.get(product.id, 5) if with_stock else None,
+            pending_orders_qty=pending_orders_map.get(product.id, {}).get('qty', 0),
+            pending_orders_count=pending_orders_map.get(product.id, {}).get('count', 0)
         )
         for product in products
     ]

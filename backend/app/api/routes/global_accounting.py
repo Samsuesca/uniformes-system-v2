@@ -967,11 +967,14 @@ async def get_global_patrimony_summary(
     - Debts
     """
     from app.services.balance_integration import BalanceIntegrationService
+    from app.models.inventory import Inventory
+    from app.models.product import Product
+    from app.models.accounting import AccountsReceivable
 
     balance_service = BalanceIntegrationService(db)
     cash_balances = await balance_service.get_global_cash_balances()
 
-    # Get all global assets and liabilities
+    # Get all global assets and liabilities from balance_accounts
     result = await db.execute(
         select(
             BalanceAccount.account_type,
@@ -984,21 +987,39 @@ async def get_global_patrimony_summary(
 
     totals_by_type = {row.account_type: float(row.total or 0) for row in result}
 
-    # Calculate pending payables
+    # Calculate INVENTORY VALUE (sum of stock * cost for all products across all schools)
+    result = await db.execute(
+        select(func.sum(Inventory.quantity * Product.cost))
+        .join(Product, Inventory.product_id == Product.id)
+        .where(
+            Product.is_active == True,
+            Inventory.quantity > 0
+        )
+    )
+    inventory_value = float(result.scalar() or 0)
+
+    # Calculate ACCOUNTS RECEIVABLE (pending amounts from all schools)
+    result = await db.execute(
+        select(func.sum(AccountsReceivable.amount - AccountsReceivable.amount_paid))
+        .where(
+            AccountsReceivable.is_paid == False
+        )
+    )
+    pending_receivables = float(result.scalar() or 0)
+
+    # Calculate pending payables (from all schools, global business)
     result = await db.execute(
         select(func.sum(AccountsPayable.amount - AccountsPayable.amount_paid))
         .where(
-            AccountsPayable.school_id.is_(None),
             AccountsPayable.is_paid == False
         )
     )
     pending_payables = float(result.scalar() or 0)
 
-    # Calculate pending expenses
+    # Calculate pending expenses (from all schools, global business)
     result = await db.execute(
         select(func.sum(Expense.amount - Expense.amount_paid))
         .where(
-            Expense.school_id.is_(None),
             Expense.is_paid == False,
             Expense.is_active == True
         )
@@ -1010,9 +1031,11 @@ async def get_global_patrimony_summary(
     banco_balance = float(cash_balances["banco"]["balance"]) if cash_balances["banco"] else 0
     total_liquid = float(cash_balances["total_liquid"])
 
+    # Calculate total current assets (liquid + inventory + receivables)
+    current_assets = total_liquid + inventory_value + pending_receivables
+
     total_assets = (
-        caja_balance +
-        banco_balance +
+        current_assets +
         totals_by_type.get(AccountType.ASSET_FIXED, 0) +
         totals_by_type.get(AccountType.ASSET_OTHER, 0)
     )
@@ -1029,6 +1052,9 @@ async def get_global_patrimony_summary(
             "caja": caja_balance,
             "banco": banco_balance,
             "total_liquid": total_liquid,
+            "inventory": inventory_value,
+            "receivables": pending_receivables,
+            "current_assets": current_assets,
             "fixed_assets": totals_by_type.get(AccountType.ASSET_FIXED, 0),
             "other_assets": totals_by_type.get(AccountType.ASSET_OTHER, 0),
             "total": total_assets

@@ -1,9 +1,10 @@
 /**
  * Sale Modal - Create New Sale Form
- * Supports multi-school: allows selecting school when user has multiple schools
+ * Supports multi-school: allows adding items from different schools in a single transaction.
+ * Creates separate sales (one per school) when items span multiple schools.
  */
-import { useState, useEffect } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Printer } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
@@ -17,10 +18,20 @@ interface SaleModalProps {
   initialSchoolId?: string;  // Optional - modal can manage school selection internally
 }
 
-// Extended type for sale items with global flag
+// Extended type for sale items with global flag AND school info for multi-school support
 interface SaleItemCreateExtended extends SaleItemCreate {
   is_global: boolean;
   display_name?: string;
+  school_id: string;      // School this item belongs to
+  school_name: string;    // For display in UI
+}
+
+// Result of creating a sale (for multi-school success modal)
+interface SaleResult {
+  schoolName: string;
+  saleCode: string;
+  total: number;
+  saleId: string;
 }
 
 export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId }: SaleModalProps) {
@@ -36,6 +47,10 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [productSource, setProductSource] = useState<'school' | 'global'>('school');
+
+  // Multi-school success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [saleResults, setSaleResults] = useState<SaleResult[]>([]);
 
   const [formData, setFormData] = useState({
     client_id: '',
@@ -66,22 +81,36 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
     }
   }, [isOpen]);
 
-  // Handler for school change - reload products when school changes
+  // Handler for school change - reload products but KEEP existing items from other schools
+  // This enables multi-school sales: items from different schools stay in the cart
   const handleSchoolChange = async (newSchoolId: string) => {
-    if (items.length > 0) {
-      const confirmed = window.confirm(
-        `Tienes ${items.length} producto(s) agregado(s). Al cambiar de colegio se eliminarán porque los productos son diferentes.\n\n¿Deseas continuar?`
-      );
-      if (!confirmed) return;
-    }
-
     setSelectedSchoolId(newSchoolId);
-    setItems([]);
+    // DON'T clear items - they belong to their respective schools
+    // DON'T reset client - clients are global
     setCurrentItem({ product_id: '', quantity: 1, unit_price: 0, is_global: false });
-    setFormData({ ...formData, client_id: '' }); // Reset client as clients are per school
     setError(null);
     await loadProducts(newSchoolId);
   };
+
+  // Group items by school for display and submission
+  const itemsBySchool = useMemo(() => {
+    const grouped = new Map<string, SaleItemCreateExtended[]>();
+    items.forEach(item => {
+      if (!grouped.has(item.school_id)) {
+        grouped.set(item.school_id, []);
+      }
+      grouped.get(item.school_id)!.push(item);
+    });
+    return grouped;
+  }, [items]);
+
+  // Get school name by id
+  const getSchoolName = (schoolId: string) => {
+    return availableSchools.find(s => s.id === schoolId)?.name || 'Colegio';
+  };
+
+  // Get selected school object
+  const selectedSchool = availableSchools.find(s => s.id === selectedSchoolId);
 
   const resetForm = () => {
     setFormData({
@@ -103,6 +132,8 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
     });
     setProductSource('school');
     setError(null);
+    setShowSuccessModal(false);
+    setSaleResults([]);
   };
 
   const loadProducts = async (schoolIdToLoad?: string) => {
@@ -192,9 +223,11 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
       return;
     }
 
-    // Check if product already in items (same product and same source)
+    // Check if product already in items (same product, same source, same school)
     const existingIndex = items.findIndex(
-      item => item.product_id === currentItem.product_id && item.is_global === currentItem.is_global
+      item => item.product_id === currentItem.product_id &&
+              item.is_global === currentItem.is_global &&
+              item.school_id === selectedSchoolId
     );
     if (existingIndex >= 0) {
       // Update quantity
@@ -202,8 +235,14 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
       updatedItems[existingIndex].quantity += currentItem.quantity;
       setItems(updatedItems);
     } else {
-      // Add new item
-      setItems([...items, { ...currentItem, display_name: displayName }]);
+      // Add new item with school info
+      const newItem: SaleItemCreateExtended = {
+        ...currentItem,
+        display_name: displayName,
+        school_id: selectedSchoolId,
+        school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
+      };
+      setItems([...items, newItem]);
     }
 
     // Reset current item
@@ -268,33 +307,67 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
         saleDateStr = `${year}-${month}-${day}T12:00:00`;
       }
 
-      // Build sale data - be explicit with historical fields
-      const saleData: SaleCreate = {
-        school_id: selectedSchoolId,
-        client_id: clientId as string, // Will be null in backend
-        items: items,
-        payment_method: formData.payment_method,
-        notes: formData.notes || undefined,
-        // Historical sale fields - must be explicit
-        is_historical: formData.is_historical === true,
-        sale_date: saleDateStr,
-      };
+      // Multi-school: Create separate sales for each school
+      const results: SaleResult[] = [];
 
-      console.log('Creating sale with data:', {
-        is_historical: saleData.is_historical,
-        sale_date: saleData.sale_date,
-        formData_date_fields: { day: formData.sale_day, month: formData.sale_month, year: formData.sale_year }
-      });
+      for (const [schoolId, schoolItems] of itemsBySchool.entries()) {
+        // Build sale data for this school
+        const saleData: SaleCreate = {
+          school_id: schoolId,
+          client_id: clientId as string, // Will be null in backend
+          items: schoolItems.map(item => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            is_global: item.is_global,
+          })),
+          payment_method: formData.payment_method,
+          notes: formData.notes || undefined,
+          // Historical sale fields - must be explicit
+          is_historical: formData.is_historical === true,
+          sale_date: saleDateStr,
+        };
 
-      await saleService.createSale(selectedSchoolId, saleData);
-      onSuccess();
-      onClose();
+        console.log(`Creating sale for school ${schoolId}:`, {
+          is_historical: saleData.is_historical,
+          sale_date: saleData.sale_date,
+          items_count: saleData.items.length
+        });
+
+        const response = await saleService.createSale(schoolId, saleData);
+
+        // Calculate school total
+        const schoolTotal = schoolItems.reduce(
+          (sum, item) => sum + (item.quantity * item.unit_price),
+          0
+        );
+
+        results.push({
+          schoolName: schoolItems[0].school_name,
+          saleCode: response.code,
+          total: schoolTotal,
+          saleId: response.id,
+        });
+      }
+
+      // Show success modal with results
+      setSaleResults(results);
+      setShowSuccessModal(true);
+
     } catch (err: any) {
       console.error('Error creating sale:', err);
       setError(err.response?.data?.detail || 'Error al crear la venta');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle closing success modal
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false);
+    setSaleResults([]);
+    onSuccess();
+    onClose();
   };
 
   const getProductName = (productId: string, isGlobal: boolean = false) => {
@@ -681,46 +754,100 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
               </div>
             </div>
 
-            {/* Items List */}
+            {/* Items List - Grouped by School for multi-school support */}
             {items.length > 0 && (
               <div className="border-t border-gray-200 pt-6 mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Productos en la Venta</h3>
-                <div className="space-y-2">
-                  {items.map((item, index) => (
-                    <div
-                      key={index}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        item.is_global ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">
-                          {item.display_name || getProductName(item.product_id, item.is_global)}
-                          {item.is_global && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Global</span>}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Cantidad: {item.quantity} × ${item.unit_price.toLocaleString()} = ${(item.quantity * item.unit_price).toLocaleString()}
-                        </p>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                  Productos en la Venta
+                  {itemsBySchool.size > 1 && (
+                    <span className="ml-2 text-sm font-normal text-blue-600">
+                      ({itemsBySchool.size} colegios)
+                    </span>
+                  )}
+                </h3>
+
+                {/* Items grouped by school */}
+                <div className="space-y-4">
+                  {Array.from(itemsBySchool.entries()).map(([schoolId, schoolItems]) => {
+                    const schoolTotal = schoolItems.reduce(
+                      (sum, item) => sum + (item.quantity * item.unit_price),
+                      0
+                    );
+                    return (
+                      <div key={schoolId} className="border border-gray-200 rounded-lg overflow-hidden">
+                        {/* School header - only show if multiple schools */}
+                        {itemsBySchool.size > 1 && (
+                          <div className="bg-blue-50 px-4 py-2 flex items-center justify-between border-b border-blue-200">
+                            <span className="font-medium text-blue-800 flex items-center">
+                              <Building2 className="w-4 h-4 mr-2" />
+                              {schoolItems[0].school_name}
+                            </span>
+                            <span className="text-sm text-blue-600 font-medium">
+                              Subtotal: ${schoolTotal.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Items for this school */}
+                        <div className="divide-y divide-gray-100">
+                          {schoolItems.map((item) => {
+                            // Find original index for removal
+                            const originalIndex = items.findIndex(
+                              i => i.product_id === item.product_id &&
+                                   i.school_id === item.school_id &&
+                                   i.is_global === item.is_global
+                            );
+                            return (
+                              <div
+                                key={`${item.school_id}-${item.product_id}-${item.is_global}`}
+                                className={`flex items-center justify-between p-3 ${
+                                  item.is_global ? 'bg-purple-50' : 'bg-white'
+                                }`}
+                              >
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900">
+                                    {item.display_name || getProductName(item.product_id, item.is_global)}
+                                    {item.is_global && (
+                                      <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                                        Global
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    Cantidad: {item.quantity} × ${item.unit_price.toLocaleString()} = ${(item.quantity * item.unit_price).toLocaleString()}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(originalIndex)}
+                                  className="ml-4 text-red-600 hover:text-red-800 transition"
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(index)}
-                        className="ml-4 text-red-600 hover:text-red-800 transition"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Total */}
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold text-gray-900">Total:</span>
+                    <span className="text-lg font-semibold text-gray-900">
+                      {itemsBySchool.size > 1 ? 'Total General:' : 'Total:'}
+                    </span>
                     <span className="text-2xl font-bold text-blue-600">
                       ${calculateTotal().toLocaleString()}
                     </span>
                   </div>
+                  {itemsBySchool.size > 1 && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Se crearán {itemsBySchool.size} ventas separadas (una por colegio)
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -760,13 +887,81 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
                     Procesando...
                   </>
                 ) : (
-                  'Crear Venta'
+                  itemsBySchool.size > 1 ? `Crear ${itemsBySchool.size} Ventas` : 'Crear Venta'
                 )}
               </button>
             </div>
           </form>
         </div>
       </div>
+
+      {/* Success Modal for Multi-School Sales */}
+      {showSuccessModal && saleResults.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={handleCloseSuccessModal} />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            {/* Success Header */}
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle className="w-10 h-10 text-green-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">
+                {saleResults.length === 1
+                  ? 'Venta Creada Exitosamente'
+                  : `${saleResults.length} Ventas Creadas Exitosamente`}
+              </h3>
+            </div>
+
+            {/* Sales Results */}
+            <div className="space-y-3 mb-6">
+              {saleResults.map((result, index) => (
+                <div
+                  key={index}
+                  className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+                >
+                  {saleResults.length > 1 && (
+                    <div className="flex items-center text-sm text-blue-600 mb-2">
+                      <Building2 className="w-4 h-4 mr-1" />
+                      {result.schoolName}
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-lg font-bold text-gray-900">
+                      {result.saleCode}
+                    </span>
+                    <span className="text-lg font-semibold text-green-600">
+                      ${result.total.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Total Summary */}
+            {saleResults.length > 1 && (
+              <div className="border-t border-gray-200 pt-4 mb-6">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-gray-700">Total General:</span>
+                  <span className="text-xl font-bold text-blue-600">
+                    ${saleResults.reduce((sum, r) => sum + r.total, 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleCloseSuccessModal}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

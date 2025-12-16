@@ -294,6 +294,9 @@ export interface GlobalPatrimonySummary {
     caja: number;
     banco: number;
     total_liquid: number;
+    inventory: number;
+    receivables: number;
+    current_assets: number;
     fixed_assets: number;
     other_assets: number;
     total: number;

@@ -1,16 +1,21 @@
 /**
  * Products Page - List and manage products with inventory
  * Includes both school-specific products and global products
+ * Enhanced with advanced filtering, sorting, and order tracking
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Layout from '../components/Layout';
 import ProductModal from '../components/ProductModal';
-import { Package, Plus, Search, AlertCircle, Loader2, Edit2, PackagePlus, X, Save, Globe, Building2 } from 'lucide-react';
+import {
+  Package, Plus, Search, AlertCircle, Loader2, Edit2, PackagePlus, X, Save,
+  Globe, Building2, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingCart,
+  AlertTriangle, PackageX, TrendingUp, BarChart3, ChevronDown
+} from 'lucide-react';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useAuthStore } from '../stores/authStore';
 import apiClient from '../utils/api-client';
-import type { Product, GlobalProduct } from '../types/api';
+import type { Product, GlobalProduct, GarmentType } from '../types/api';
 
 interface InventoryAdjustment {
   productId: string;
@@ -18,10 +23,18 @@ interface InventoryAdjustment {
   productName: string;
   currentStock: number;
   isGlobal: boolean;
-  schoolId?: string;  // For school products
+  schoolId?: string;
 }
 
 type TabType = 'school' | 'global';
+type StockFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'with_orders';
+type SortField = 'code' | 'name' | 'size' | 'price' | 'stock' | 'pending_orders';
+type SortDirection = 'asc' | 'desc';
+
+interface SortConfig {
+  field: SortField;
+  direction: SortDirection;
+}
 
 export default function Products() {
   const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
@@ -38,13 +51,22 @@ export default function Products() {
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
   const [loadingGlobal, setLoadingGlobal] = useState(true);
 
+  // Garment types for filtering
+  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+
   // Common state
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
   const [schoolFilter, setSchoolFilter] = useState('');
+  const [garmentTypeFilter, setGarmentTypeFilter] = useState('');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'code', direction: 'asc' });
 
   // Inventory adjustment modal state
   const [inventoryModal, setInventoryModal] = useState<InventoryAdjustment | null>(null);
@@ -58,24 +80,23 @@ export default function Products() {
   const isSuperuser = user?.is_superuser || false;
 
   useEffect(() => {
-    // Load schools if not already loaded
     if (availableSchools.length === 0) {
       loadSchools();
     }
     loadProducts();
     loadGlobalProducts();
+    loadGarmentTypes();
   }, []);
 
-  // Reload when school filter changes
   useEffect(() => {
     loadProducts();
+    loadGarmentTypes();
   }, [schoolFilter]);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       setError(null);
-      // Load products from all schools or filtered by school
       const data = await productService.getAllProducts({
         school_id: schoolFilter || undefined,
         with_stock: true,
@@ -97,9 +118,19 @@ export default function Products() {
       setGlobalProducts(data);
     } catch (err: any) {
       console.error('Error loading global products:', err);
-      // Don't set error - global products are optional
     } finally {
       setLoadingGlobal(false);
+    }
+  };
+
+  const loadGarmentTypes = async () => {
+    try {
+      const data = await productService.getAllGarmentTypes({
+        school_id: schoolFilter || undefined
+      });
+      setGarmentTypes(data);
+    } catch (err: any) {
+      console.error('Error loading garment types:', err);
     }
   };
 
@@ -117,7 +148,6 @@ export default function Products() {
     loadProducts();
   };
 
-  // Open inventory adjustment modal for school product
   const handleOpenInventoryModal = (product: Product) => {
     setInventoryModal({
       productId: product.id,
@@ -132,7 +162,6 @@ export default function Products() {
     setAdjustmentType('add');
   };
 
-  // Open inventory adjustment modal for global product
   const handleOpenGlobalInventoryModal = (product: GlobalProduct) => {
     setInventoryModal({
       productId: product.id,
@@ -146,14 +175,12 @@ export default function Products() {
     setAdjustmentType('add');
   };
 
-  // Close inventory modal
   const handleCloseInventoryModal = () => {
     setInventoryModal(null);
     setAdjustmentAmount('');
     setAdjustmentReason('');
   };
 
-  // Submit inventory adjustment
   const handleAdjustInventory = async () => {
     if (!inventoryModal || !adjustmentAmount) return;
 
@@ -173,7 +200,6 @@ export default function Products() {
         return;
       }
     } else {
-      // 'set' - calculate difference
       adjustment = amount - inventoryModal.currentStock;
     }
 
@@ -182,7 +208,6 @@ export default function Products() {
       setError(null);
 
       if (inventoryModal.isGlobal) {
-        // Adjust global inventory
         await productService.adjustGlobalInventory(
           inventoryModal.productId,
           adjustment,
@@ -190,7 +215,6 @@ export default function Products() {
         );
         await loadGlobalProducts();
       } else {
-        // Adjust school inventory
         await apiClient.post(`/schools/${inventoryModal.schoolId}/inventory/product/${inventoryModal.productId}/adjust`, {
           adjustment,
           reason: adjustmentReason || `Ajuste manual: ${adjustmentType === 'add' ? 'Agregar' : adjustmentType === 'remove' ? 'Remover' : 'Establecer'} ${amount} unidades`,
@@ -207,37 +231,157 @@ export default function Products() {
     }
   };
 
-  // Filter school products
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = searchTerm === '' ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.size.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product as any).school_name?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Sorting function
+  const handleSort = (field: SortField) => {
+    setSortConfig(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
-    const matchesSize = sizeFilter === '' || product.size === sizeFilter;
+  const getSortIcon = (field: SortField) => {
+    if (sortConfig.field !== field) {
+      return <ArrowUpDown className="w-4 h-4 text-gray-400" />;
+    }
+    return sortConfig.direction === 'asc'
+      ? <ArrowUp className="w-4 h-4 text-blue-600" />
+      : <ArrowDown className="w-4 h-4 text-blue-600" />;
+  };
 
-    return matchesSearch && matchesSize;
-  });
+  // Filter and sort school products
+  const filteredAndSortedProducts = useMemo(() => {
+    let filtered = products.filter(product => {
+      const stock = product.stock ?? product.inventory_quantity ?? 0;
+      const minStock = product.min_stock ?? product.inventory_min_stock ?? 5;
+      const pendingOrders = product.pending_orders_qty ?? 0;
+
+      // Search filter
+      const matchesSearch = searchTerm === '' ||
+        product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.size.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product as any).school_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product as any).garment_type_name?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      // Size filter
+      const matchesSize = sizeFilter === '' || product.size === sizeFilter;
+
+      // Garment type filter
+      const matchesGarmentType = garmentTypeFilter === '' || product.garment_type_id === garmentTypeFilter;
+
+      // Stock filter
+      let matchesStock = true;
+      if (stockFilter === 'in_stock') {
+        matchesStock = stock > minStock;
+      } else if (stockFilter === 'low_stock') {
+        matchesStock = stock > 0 && stock <= minStock;
+      } else if (stockFilter === 'out_of_stock') {
+        matchesStock = stock === 0;
+      } else if (stockFilter === 'with_orders') {
+        matchesStock = pendingOrders > 0;
+      }
+
+      return matchesSearch && matchesSize && matchesGarmentType && matchesStock;
+    });
+
+    // Sort
+    filtered.sort((a, b) => {
+      let aVal: any, bVal: any;
+
+      switch (sortConfig.field) {
+        case 'code':
+          aVal = a.code.toLowerCase();
+          bVal = b.code.toLowerCase();
+          break;
+        case 'name':
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
+          break;
+        case 'size':
+          aVal = a.size.toLowerCase();
+          bVal = b.size.toLowerCase();
+          break;
+        case 'price':
+          aVal = Number(a.price);
+          bVal = Number(b.price);
+          break;
+        case 'stock':
+          aVal = a.stock ?? a.inventory_quantity ?? 0;
+          bVal = b.stock ?? b.inventory_quantity ?? 0;
+          break;
+        case 'pending_orders':
+          aVal = a.pending_orders_qty ?? 0;
+          bVal = b.pending_orders_qty ?? 0;
+          break;
+        default:
+          aVal = a.code;
+          bVal = b.code;
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [products, searchTerm, sizeFilter, garmentTypeFilter, stockFilter, sortConfig]);
 
   // Filter global products
-  const filteredGlobalProducts = globalProducts.filter(product => {
-    const matchesSearch = searchTerm === '' ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.size.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredGlobalProducts = useMemo(() => {
+    return globalProducts.filter(product => {
+      const matchesSearch = searchTerm === '' ||
+        product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.size.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesSize = sizeFilter === '' || product.size === sizeFilter;
+      const matchesSize = sizeFilter === '' || product.size === sizeFilter;
 
-    return matchesSearch && matchesSize;
-  });
+      return matchesSearch && matchesSize;
+    });
+  }, [globalProducts, searchTerm, sizeFilter]);
 
-  // Get unique sizes for filter (combine both)
+  // Get unique sizes for filter
   const allProducts = activeTab === 'school' ? products : globalProducts;
   const uniqueSizes = Array.from(new Set(allProducts.map(p => p.size))).sort();
 
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const prods = activeTab === 'school' ? products : globalProducts;
+    let totalProducts = prods.length;
+    let totalStock = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+    let withOrdersCount = 0;
+    let totalPendingOrders = 0;
+
+    prods.forEach(p => {
+      const stock = (p as any).stock ?? (p as any).inventory_quantity ?? 0;
+      const minStock = (p as any).min_stock ?? (p as any).inventory_min_stock ?? 5;
+      const pendingOrders = (p as any).pending_orders_qty ?? 0;
+
+      totalStock += stock;
+      if (stock === 0) outOfStockCount++;
+      else if (stock <= minStock) lowStockCount++;
+      if (pendingOrders > 0) {
+        withOrdersCount++;
+        totalPendingOrders += pendingOrders;
+      }
+    });
+
+    return { totalProducts, totalStock, lowStockCount, outOfStockCount, withOrdersCount, totalPendingOrders };
+  }, [products, globalProducts, activeTab]);
+
   const isLoading = activeTab === 'school' ? loading : loadingGlobal;
-  const currentProducts = activeTab === 'school' ? filteredProducts : filteredGlobalProducts;
+  const currentProducts = activeTab === 'school' ? filteredAndSortedProducts : filteredGlobalProducts;
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSizeFilter('');
+    setGarmentTypeFilter('');
+    setStockFilter('all');
+  };
+
+  const hasActiveFilters = searchTerm || sizeFilter || garmentTypeFilter || stockFilter !== 'all';
 
   return (
     <Layout>
@@ -248,7 +392,7 @@ export default function Products() {
             {isLoading ? 'Cargando...' : `${currentProducts.length} productos encontrados`}
             {activeTab === 'school' && schoolFilter && availableSchools.length > 1 && (
               <span className="ml-2 text-blue-600">
-                • Filtrado por colegio
+                - Filtrado por colegio
               </span>
             )}
           </p>
@@ -264,11 +408,78 @@ export default function Products() {
         )}
       </div>
 
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center">
+            <Package className="w-8 h-8 text-blue-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Total Productos</p>
+              <p className="text-xl font-bold text-gray-800">{stats.totalProducts}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center">
+            <BarChart3 className="w-8 h-8 text-green-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Stock Total</p>
+              <p className="text-xl font-bold text-gray-800">{stats.totalStock.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+        <div
+          className="bg-white rounded-lg shadow-sm p-4 cursor-pointer hover:bg-yellow-50 transition"
+          onClick={() => setStockFilter('low_stock')}
+        >
+          <div className="flex items-center">
+            <AlertTriangle className="w-8 h-8 text-yellow-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Stock Bajo</p>
+              <p className="text-xl font-bold text-yellow-600">{stats.lowStockCount}</p>
+            </div>
+          </div>
+        </div>
+        <div
+          className="bg-white rounded-lg shadow-sm p-4 cursor-pointer hover:bg-red-50 transition"
+          onClick={() => setStockFilter('out_of_stock')}
+        >
+          <div className="flex items-center">
+            <PackageX className="w-8 h-8 text-red-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Sin Stock</p>
+              <p className="text-xl font-bold text-red-600">{stats.outOfStockCount}</p>
+            </div>
+          </div>
+        </div>
+        <div
+          className="bg-white rounded-lg shadow-sm p-4 cursor-pointer hover:bg-purple-50 transition"
+          onClick={() => setStockFilter('with_orders')}
+        >
+          <div className="flex items-center">
+            <ShoppingCart className="w-8 h-8 text-purple-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Con Encargos</p>
+              <p className="text-xl font-bold text-purple-600">{stats.withOrdersCount}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center">
+            <TrendingUp className="w-8 h-8 text-indigo-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Uds. en Encargos</p>
+              <p className="text-xl font-bold text-indigo-600">{stats.totalPendingOrders}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="bg-white rounded-lg shadow-sm mb-6">
         <div className="flex border-b border-gray-200">
           <button
-            onClick={() => { setActiveTab('school'); setSizeFilter(''); }}
+            onClick={() => { setActiveTab('school'); setSizeFilter(''); setStockFilter('all'); }}
             className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition ${
               activeTab === 'school'
                 ? 'border-blue-600 text-blue-600'
@@ -282,7 +493,7 @@ export default function Products() {
             </span>
           </button>
           <button
-            onClick={() => { setActiveTab('global'); setSizeFilter(''); }}
+            onClick={() => { setActiveTab('global'); setSizeFilter(''); setStockFilter('all'); }}
             className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition ${
               activeTab === 'global'
                 ? 'border-green-600 text-green-600'
@@ -314,44 +525,159 @@ export default function Products() {
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
         <div className="flex flex-wrap items-center gap-4">
+          {/* Search */}
           <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar productos por codigo, nombre, talla..."
+              placeholder="Buscar por codigo, nombre, talla, tipo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
 
-          {/* School Filter - Only show for school products tab and if user has multiple schools */}
-          {activeTab === 'school' && availableSchools.length > 1 && (
-            <select
-              value={schoolFilter}
-              onChange={(e) => setSchoolFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          {/* Quick Stock Filter Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setStockFilter('all')}
+              className={`px-3 py-2 text-sm rounded-lg border transition ${
+                stockFilter === 'all'
+                  ? 'bg-blue-100 border-blue-500 text-blue-700'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
             >
-              <option value="">Todos los colegios</option>
-              {availableSchools.map(school => (
-                <option key={school.id} value={school.id}>
-                  {school.name}
-                </option>
-              ))}
-            </select>
-          )}
+              Todos
+            </button>
+            <button
+              onClick={() => setStockFilter('in_stock')}
+              className={`px-3 py-2 text-sm rounded-lg border transition ${
+                stockFilter === 'in_stock'
+                  ? 'bg-green-100 border-green-500 text-green-700'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              En Stock
+            </button>
+            <button
+              onClick={() => setStockFilter('low_stock')}
+              className={`px-3 py-2 text-sm rounded-lg border transition ${
+                stockFilter === 'low_stock'
+                  ? 'bg-yellow-100 border-yellow-500 text-yellow-700'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Stock Bajo
+            </button>
+            <button
+              onClick={() => setStockFilter('out_of_stock')}
+              className={`px-3 py-2 text-sm rounded-lg border transition ${
+                stockFilter === 'out_of_stock'
+                  ? 'bg-red-100 border-red-500 text-red-700'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Sin Stock
+            </button>
+            {activeTab === 'school' && (
+              <button
+                onClick={() => setStockFilter('with_orders')}
+                className={`px-3 py-2 text-sm rounded-lg border transition ${
+                  stockFilter === 'with_orders'
+                    ? 'bg-purple-100 border-purple-500 text-purple-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Con Encargos
+              </button>
+            )}
+          </div>
 
-          <select
-            value={sizeFilter}
-            onChange={(e) => setSizeFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          {/* Toggle More Filters */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-3 py-2 text-sm rounded-lg border transition flex items-center gap-2 ${
+              showFilters || hasActiveFilters
+                ? 'bg-blue-50 border-blue-300 text-blue-700'
+                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
           >
-            <option value="">Todas las tallas</option>
-            {uniqueSizes.map(size => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
+            <Filter className="w-4 h-4" />
+            Filtros
+            {hasActiveFilters && (
+              <span className="w-2 h-2 rounded-full bg-blue-600" />
+            )}
+            <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
+
+        {/* Extended Filters */}
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t border-gray-200 flex flex-wrap items-center gap-4">
+            {/* School Filter */}
+            {activeTab === 'school' && availableSchools.length > 1 && (
+              <div className="flex flex-col">
+                <label className="text-xs text-gray-500 mb-1">Colegio</label>
+                <select
+                  value={schoolFilter}
+                  onChange={(e) => setSchoolFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  <option value="">Todos los colegios</option>
+                  {availableSchools.map(school => (
+                    <option key={school.id} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Garment Type Filter */}
+            {activeTab === 'school' && garmentTypes.length > 0 && (
+              <div className="flex flex-col">
+                <label className="text-xs text-gray-500 mb-1">Tipo de Prenda</label>
+                <select
+                  value={garmentTypeFilter}
+                  onChange={(e) => setGarmentTypeFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  <option value="">Todos los tipos</option>
+                  {garmentTypes.map(gt => (
+                    <option key={gt.id} value={gt.id}>
+                      {gt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Size Filter */}
+            <div className="flex flex-col">
+              <label className="text-xs text-gray-500 mb-1">Talla</label>
+              <select
+                value={sizeFilter}
+                onChange={(e) => setSizeFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+              >
+                <option value="">Todas las tallas</option>
+                {uniqueSizes.map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Loading State */}
@@ -384,36 +710,77 @@ export default function Products() {
       {/* Products Table */}
       {!isLoading && !error && currentProducts.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <thead className={activeTab === 'global' ? 'bg-green-50' : 'bg-gray-50'}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Codigo
+                <th
+                  className="w-28 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('code')}
+                >
+                  <div className="flex items-center gap-1">
+                    Codigo
+                    {getSortIcon('code')}
+                  </div>
                 </th>
                 {activeTab === 'school' && availableSchools.length > 1 && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-48 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Colegio
                   </th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Nombre
+                <th
+                  className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Nombre / Tipo
+                    {getSortIcon('name')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Talla
+                <th
+                  className="w-20 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('size')}
+                >
+                  <div className="flex items-center gap-1">
+                    Talla
+                    {getSortIcon('size')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-24 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Color
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Precio
+                <th
+                  className="w-24 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('price')}
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    Precio
+                    {getSortIcon('price')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Stock
+                <th
+                  className="w-20 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('stock')}
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    Stock
+                    {getSortIcon('stock')}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {activeTab === 'school' && (
+                  <th
+                    className="w-24 px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('pending_orders')}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      Encargos
+                      {getSortIcon('pending_orders')}
+                    </div>
+                  </th>
+                )}
+                <th className="w-20 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Estado
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Acciones
                 </th>
               </tr>
@@ -421,62 +788,89 @@ export default function Products() {
             <tbody className="bg-white divide-y divide-gray-200">
               {activeTab === 'school' ? (
                 // School products
-                filteredProducts.map((product) => {
+                filteredAndSortedProducts.map((product) => {
                   const stock = product.stock ?? product.inventory_quantity ?? 0;
-                  const minStock = product.inventory_min_stock ?? 5;
+                  const minStock = product.min_stock ?? product.inventory_min_stock ?? 5;
                   const isLowStock = stock <= minStock && stock > 0;
                   const isOutOfStock = stock === 0;
                   const schoolName = (product as any).school_name;
+                  const garmentTypeName = (product as any).garment_type_name;
+                  const pendingOrdersQty = product.pending_orders_qty ?? 0;
+                  const pendingOrdersCount = product.pending_orders_count ?? 0;
 
                   return (
                     <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <td className="w-28 px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                         {product.code}
                       </td>
                       {availableSchools.length > 1 && (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="w-48 px-3 py-2 text-sm text-gray-900">
                           <div className="flex items-center">
-                            <Building2 className="w-4 h-4 mr-2 text-gray-400" />
-                            <span className="truncate max-w-[120px]" title={schoolName || ''}>
+                            <Building2 className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+                            <span className="truncate" title={schoolName || ''}>
                               {schoolName || 'Sin colegio'}
                             </span>
                           </div>
                         </td>
                       )}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.name || '-'}
+                      <td className="px-3 py-2">
+                        <div>
+                          <div className="text-sm font-medium text-gray-900 truncate">{product.name || '-'}</div>
+                          {garmentTypeName && (
+                            <div className="text-xs text-gray-500 truncate">{garmentTypeName}</div>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.size}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.color || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                        ${Number(product.price).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          isOutOfStock
-                            ? 'bg-red-100 text-red-800'
-                            : isLowStock
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {stock}
+                      <td className="w-20 px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                        <span className="px-2 py-0.5 bg-gray-100 rounded text-gray-700 font-medium text-xs">
+                          {product.size}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      <td className="w-24 px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {product.color || '-'}
+                      </td>
+                      <td className="w-24 px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
+                        ${Number(product.price).toLocaleString()}
+                      </td>
+                      <td className="w-20 px-3 py-2 whitespace-nowrap text-sm text-right">
+                        <div className="flex flex-col items-end">
+                          <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            isOutOfStock
+                              ? 'bg-red-100 text-red-800'
+                              : isLowStock
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {stock}
+                          </span>
+                          <span className="text-xs text-gray-400">min:{minStock}</span>
+                        </div>
+                      </td>
+                      <td className="w-24 px-3 py-2 whitespace-nowrap text-center">
+                        {pendingOrdersQty > 0 ? (
+                          <div className="flex flex-col items-center">
+                            <span className="px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                              {pendingOrdersQty} uds
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {pendingOrdersCount} enc.
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="w-20 px-3 py-2 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${
                           product.is_active
                             ? 'bg-green-100 text-green-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {product.is_active ? 'Activo' : 'Inactivo'}
+                          {product.is_active ? 'Activo' : 'Inact.'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="w-20 px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleOpenModal(product)}
                             className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50"
@@ -508,46 +902,51 @@ export default function Products() {
 
                   return (
                     <tr key={product.id} className="hover:bg-green-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <td className="w-28 px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                         <div className="flex items-center">
-                          <Globe className="w-4 h-4 text-green-600 mr-2" />
+                          <Globe className="w-4 h-4 text-green-600 mr-2 flex-shrink-0" />
                           {product.code}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2 text-sm text-gray-900">
                         {product.name || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.size}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.color || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                        ${Number(product.price).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          isOutOfStock
-                            ? 'bg-red-100 text-red-800'
-                            : isLowStock
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {stock}
+                      <td className="w-20 px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                        <span className="px-2 py-0.5 bg-gray-100 rounded text-gray-700 font-medium text-xs">
+                          {product.size}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      <td className="w-24 px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {product.color || '-'}
+                      </td>
+                      <td className="w-24 px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
+                        ${Number(product.price).toLocaleString()}
+                      </td>
+                      <td className="w-20 px-3 py-2 whitespace-nowrap text-sm text-right">
+                        <div className="flex flex-col items-end">
+                          <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            isOutOfStock
+                              ? 'bg-red-100 text-red-800'
+                              : isLowStock
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {stock}
+                          </span>
+                          <span className="text-xs text-gray-400">min:{minStock}</span>
+                        </div>
+                      </td>
+                      <td className="w-20 px-3 py-2 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${
                           product.is_active
                             ? 'bg-green-100 text-green-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {product.is_active ? 'Activo' : 'Inactivo'}
+                          {product.is_active ? 'Activo' : 'Inact.'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="w-20 px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex items-center justify-end gap-1">
                           {isSuperuser && (
                             <button
                               onClick={() => handleOpenGlobalInventoryModal(product)}
@@ -579,17 +978,25 @@ export default function Products() {
           <h3 className={`text-lg font-medium mb-2 ${
             activeTab === 'global' ? 'text-green-900' : 'text-blue-900'
           }`}>
-            {searchTerm || sizeFilter || schoolFilter ? 'No se encontraron productos' : 'No hay productos'}
+            {hasActiveFilters ? 'No se encontraron productos' : 'No hay productos'}
           </h3>
           <p className={activeTab === 'global' ? 'text-green-700 mb-4' : 'text-blue-700 mb-4'}>
-            {searchTerm || sizeFilter || schoolFilter
+            {hasActiveFilters
               ? 'Intenta ajustar los filtros de busqueda'
               : activeTab === 'global'
               ? 'Los productos globales son configurados por el administrador'
               : 'Comienza agregando tu primer producto al catalogo'
             }
           </p>
-          {!searchTerm && !sizeFilter && !schoolFilter && activeTab === 'school' && (
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-blue-600 hover:text-blue-700 underline mr-4"
+            >
+              Limpiar filtros
+            </button>
+          )}
+          {!hasActiveFilters && activeTab === 'school' && (
             <button
               onClick={() => handleOpenModal()}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg inline-flex items-center"

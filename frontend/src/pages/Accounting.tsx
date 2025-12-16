@@ -1294,6 +1294,27 @@ export default function Accounting() {
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-gray-100">
                   <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Inventario</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.inventory || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Cuentas por Cobrar</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.receivables || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100 bg-blue-50 -mx-2 px-2 rounded">
+                  <div className="flex items-center gap-2">
+                    <Calculator className="w-4 h-4 text-blue-600" />
+                    <span className="text-blue-700 font-medium">Activos Corrientes</span>
+                  </div>
+                  <span className="font-bold text-blue-700">{formatCurrency(patrimony.assets.current_assets || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">Activos Fijos</span>
                   </div>
@@ -1503,11 +1524,13 @@ export default function Accounting() {
                   Nuevo Balance
                 </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={newBalanceValue}
-                  onChange={(e) => setNewBalanceValue(parseFloat(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={newBalanceValue === 0 ? '' : newBalanceValue}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.]/g, '');
+                    setNewBalanceValue(val === '' ? 0 : parseFloat(val));
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Ingrese el nuevo balance"
                 />

@@ -21,6 +21,8 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [orderCode, setOrderCode] = useState('');
+  // Multi-school order results
+  const [orderResults, setOrderResults] = useState<{schoolName: string; orderCode: string; total: number}[]>([]);
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState('');
 
@@ -180,8 +182,8 @@ export default function CheckoutPage() {
         }
       }
 
-      // Obtener school_id del primer item (todos deben ser del mismo colegio)
-      const schoolId = items[0].school.id;
+      // Get first school_id for client registration (students can be from multiple schools)
+      const firstSchoolId = items[0].school.id;
 
       let clientId: string;
 
@@ -202,13 +204,14 @@ export default function CheckoutPage() {
         }
 
         // Step 1: Register client (web portal endpoint)
+        // Register student with first school, client is global
         const clientResponse = await clientsApi.register({
           name: formData.client_name,
           email: formData.client_email,
           password: formData.client_password,
           phone: formData.client_phone || undefined,
           students: [{
-            school_id: schoolId,
+            school_id: firstSchoolId,
             student_name: formData.student_name || formData.client_name,
             student_grade: formData.grade || undefined,
           }]
@@ -221,21 +224,40 @@ export default function CheckoutPage() {
         await login(formData.client_email, formData.client_password);
       }
 
-      // Step 2: Create order with client_id (using public web endpoint)
-      const orderResponse = await ordersApi.createWeb({
-        school_id: schoolId,
-        client_id: clientId,
-        items: items.map(item => ({
-          garment_type_id: item.product.garment_type_id,
-          quantity: item.quantity,
-          unit_price: item.product.price,
-          size: item.product.size,
-          gender: item.product.gender,
-        })),
-        notes: formData.notes || undefined,
-      });
+      // Step 2: Create orders with client_id (using public web endpoint)
+      // Multi-school: Create separate orders for each school
+      const itemsBySchool = getItemsBySchool();
+      const results: {schoolName: string; orderCode: string; total: number}[] = [];
 
-      setOrderCode(orderResponse.data.code || '');
+      for (const [schoolId, schoolItems] of itemsBySchool.entries()) {
+        const schoolTotal = schoolItems.reduce(
+          (sum, item) => sum + (item.product.price * item.quantity), 0
+        );
+
+        const orderResponse = await ordersApi.createWeb({
+          school_id: schoolId,
+          client_id: clientId,
+          items: schoolItems.map(item => ({
+            garment_type_id: item.product.garment_type_id,
+            quantity: item.quantity,
+            unit_price: item.product.price,
+            size: item.product.size,
+            gender: item.product.gender,
+          })),
+          notes: formData.notes || undefined,
+        });
+
+        results.push({
+          schoolName: schoolItems[0].school.name,
+          orderCode: orderResponse.data.code || '',
+          total: schoolTotal,
+        });
+      }
+
+      // Store results and show success
+      setOrderResults(results);
+      // For backwards compatibility, set orderCode to first result
+      setOrderCode(results.length > 0 ? results[0].orderCode : '');
       setSuccess(true);
       clearCart();
     } catch (error: any) {
@@ -255,6 +277,9 @@ export default function CheckoutPage() {
   };
 
   if (success) {
+    const hasMultipleOrders = orderResults.length > 1;
+    const totalAmount = orderResults.reduce((sum, r) => sum + r.total, 0);
+
     return (
       <div className="min-h-screen bg-surface-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl border border-surface-200 p-8 text-center">
@@ -262,15 +287,48 @@ export default function CheckoutPage() {
             <CheckCircle className="w-10 h-10 text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-primary font-display mb-2">
-            ¡Pedido Confirmado!
+            {hasMultipleOrders ? '¡Pedidos Confirmados!' : '¡Pedido Confirmado!'}
           </h2>
-          {orderCode && (
+
+          {/* Single order display */}
+          {!hasMultipleOrders && orderCode && (
             <p className="text-lg font-semibold text-brand-600 mb-4">
-              Código: {orderCode}
+              Codigo: {orderCode}
             </p>
           )}
+
+          {/* Multiple orders display */}
+          {hasMultipleOrders && (
+            <div className="space-y-3 mb-4 text-left">
+              {orderResults.map((result, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="flex items-center gap-2 text-sm text-brand-600 mb-1">
+                    <SchoolIcon className="w-4 h-4" />
+                    {result.schoolName}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono font-bold text-primary">
+                      {result.orderCode}
+                    </span>
+                    <span className="font-semibold text-green-600">
+                      ${formatNumber(result.total)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+                <span className="font-semibold text-gray-700">Total:</span>
+                <span className="text-xl font-bold text-brand-600">
+                  ${formatNumber(totalAmount)}
+                </span>
+              </div>
+            </div>
+          )}
+
           <p className="text-slate-600 mb-6">
-            Hemos recibido tu pedido. Te contactaremos pronto para coordinar la entrega.
+            {hasMultipleOrders
+              ? 'Hemos recibido tus pedidos. Te contactaremos pronto para coordinar las entregas.'
+              : 'Hemos recibido tu pedido. Te contactaremos pronto para coordinar la entrega.'}
           </p>
 
           {/* Account created info */}

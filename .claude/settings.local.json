@@ -20,7 +20,10 @@
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"journalctl -u uniformes-api --since ''10 minutes ago'' --no-pager | grep -i ''error\\|500\\|traceback'' -A 5\")",
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2/backend && source venv/bin/activate && PGPASSWORD=''$Un1f0rm3s2024!'' psql -h localhost -U uniformes_user -d uniformes_db -c \"\"SELECT id, code, source, user_id, created_at FROM orders ORDER BY created_at DESC LIMIT 10;\"\"\")",
       "Bash(source venv/bin/activate)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 'sudo -u postgres psql -d uniformes_db -c \"\"SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = ''''order_item_status_enum'''');\"\"')",
+      "Bash(ssh root@104.156.247.226 \"tail -300 /var/log/uniformes/backend.log 2>/dev/null | grep -A5 ''receivables-payables\\|/receivables\\|/payables'' | tail -40\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && cd frontend && npm run build && sudo systemctl restart nginx\")"
     ],
     "deny": [],
     "ask": []
