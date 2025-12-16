@@ -115,6 +115,9 @@ export default function CatalogPage() {
                 } finally {
                     setIsSearching(false);
                 }
+            } else if (searchQuery.length === 0 && products.length > 0 && globalProducts.length === 0) {
+                // Search was cleared - reload original products
+                loadAllProducts();
             }
         }, 300);
 
