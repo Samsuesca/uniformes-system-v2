@@ -49,7 +49,7 @@ export default function PaymentPage() {
   const loadPaymentAccounts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('https://uniformesconsuelo.com/api/v1/payment-accounts/public');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/payment-accounts/public`);
 
       if (response.ok) {
         const data = await response.json();
