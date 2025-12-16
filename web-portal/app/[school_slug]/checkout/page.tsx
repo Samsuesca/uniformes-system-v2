@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff, Mail, AlertCircle, Loader2, User, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff, Mail, AlertCircle, Loader2, User, X, CreditCard, Upload } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
 import { clientsApi, ordersApi } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
 import { formatNumber } from '@/lib/utils';
+import UploadPaymentProofModal from '@/components/UploadPaymentProofModal';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -21,10 +22,12 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [orderCode, setOrderCode] = useState('');
+  const [firstOrderId, setFirstOrderId] = useState(''); // Store first order ID for upload
   // Multi-school order results
   const [orderResults, setOrderResults] = useState<{schoolName: string; orderCode: string; total: number}[]>([]);
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState('');
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // Step management for new users
   const [step, setStep] = useState<CheckoutStep>('email');
@@ -252,6 +255,11 @@ export default function CheckoutPage() {
           orderCode: orderResponse.data.code || '',
           total: schoolTotal,
         });
+
+        // Store first order ID for payment proof upload
+        if (results.length === 1) {
+          setFirstOrderId(orderResponse.data.id);
+        }
       }
 
       // Store results and show success
@@ -281,84 +289,142 @@ export default function CheckoutPage() {
     const totalAmount = orderResults.reduce((sum, r) => sum + r.total, 0);
 
     return (
-      <div className="min-h-screen bg-surface-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-surface-200 p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-10 h-10 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-primary font-display mb-2">
-            {hasMultipleOrders ? '¡Pedidos Confirmados!' : '¡Pedido Confirmado!'}
-          </h2>
-
-          {/* Single order display */}
-          {!hasMultipleOrders && orderCode && (
-            <p className="text-lg font-semibold text-brand-600 mb-4">
-              Codigo: {orderCode}
-            </p>
-          )}
-
-          {/* Multiple orders display */}
-          {hasMultipleOrders && (
-            <div className="space-y-3 mb-4 text-left">
-              {orderResults.map((result, index) => (
-                <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                  <div className="flex items-center gap-2 text-sm text-brand-600 mb-1">
-                    <SchoolIcon className="w-4 h-4" />
-                    {result.schoolName}
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-mono font-bold text-primary">
-                      {result.orderCode}
-                    </span>
-                    <span className="font-semibold text-green-600">
-                      ${formatNumber(result.total)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
-                <span className="font-semibold text-gray-700">Total:</span>
-                <span className="text-xl font-bold text-brand-600">
-                  ${formatNumber(totalAmount)}
-                </span>
+      <>
+        <div className="min-h-screen bg-surface-50 flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-white rounded-2xl border border-surface-200 p-8">
+            {/* Success Header */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-10 h-10 text-green-600" />
               </div>
+              <h2 className="text-2xl font-bold text-primary font-display mb-2">
+                {hasMultipleOrders ? '¡Pedidos Confirmados!' : '¡Pedido Confirmado!'}
+              </h2>
             </div>
-          )}
 
-          <p className="text-slate-600 mb-6">
-            {hasMultipleOrders
-              ? 'Hemos recibido tus pedidos. Te contactaremos pronto para coordinar las entregas.'
-              : 'Hemos recibido tu pedido. Te contactaremos pronto para coordinar la entrega.'}
-          </p>
+            {/* Single order display */}
+            {!hasMultipleOrders && orderCode && (
+              <div className="text-center mb-6">
+                <p className="text-sm text-slate-600 mb-1">Código de pedido</p>
+                <p className="text-2xl font-bold text-brand-600 mb-2">
+                  {orderCode}
+                </p>
+                <p className="text-3xl font-bold text-green-600">
+                  ${formatNumber(totalAmount)}
+                </p>
+              </div>
+            )}
 
-          {/* Account created info */}
-          {!isAuthenticated && (
-            <div className="bg-green-50 rounded-xl p-4 mb-6 text-left">
-              <p className="text-sm font-semibold text-green-800 mb-1">
-                Tu cuenta ha sido creada
-              </p>
-              <p className="text-xs text-green-700">
-                Ya puedes iniciar sesión con tu email y contraseña para ver el estado de tus pedidos.
-              </p>
+            {/* Multiple orders display */}
+            {hasMultipleOrders && (
+              <div className="space-y-3 mb-6">
+                {orderResults.map((result, index) => (
+                  <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center gap-2 text-sm text-brand-600 mb-2">
+                      <SchoolIcon className="w-4 h-4" />
+                      {result.schoolName}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="font-mono font-bold text-primary text-lg">
+                        {result.orderCode}
+                      </span>
+                      <span className="font-semibold text-green-600 text-lg">
+                        ${formatNumber(result.total)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                <div className="border-t-2 border-gray-300 pt-3 flex justify-between items-center">
+                  <span className="font-bold text-gray-700 text-lg">Total:</span>
+                  <span className="text-2xl font-bold text-brand-600">
+                    ${formatNumber(totalAmount)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Next Steps */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+              <h3 className="font-bold text-blue-900 text-lg mb-3 flex items-center gap-2">
+                <span>📋</span> Próximos pasos
+              </h3>
+              <ol className="space-y-2 text-blue-800">
+                <li className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">1.</span>
+                  <span>Realiza el pago por transferencia bancaria o Nequi</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">2.</span>
+                  <span>Sube el comprobante de pago usando el botón de abajo</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">3.</span>
+                  <span>Espera la confirmación y procesaremos tu pedido</span>
+                </li>
+              </ol>
             </div>
-          )}
 
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => router.push('/mi-cuenta')}
-              className="w-full py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
-            >
-              Ver Mis Pedidos
-            </button>
-            <button
-              onClick={() => router.push('/')}
-              className="w-full py-3 text-slate-600 hover:text-slate-800 transition-colors"
-            >
-              Volver al Inicio
-            </button>
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              <button
+                onClick={() => window.open('/pago', '_blank')}
+                className="flex items-center justify-center gap-2 py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-semibold"
+              >
+                <CreditCard className="w-5 h-5" />
+                Ver Métodos de Pago
+              </button>
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="flex items-center justify-center gap-2 py-3 px-4 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold"
+              >
+                <Upload className="w-5 h-5" />
+                Subir Comprobante
+              </button>
+            </div>
+
+            {/* Account created info */}
+            {!isAuthenticated && (
+              <div className="bg-green-50 rounded-xl p-4 mb-6 border border-green-200">
+                <p className="text-sm font-semibold text-green-800 mb-1">
+                  ✓ Tu cuenta ha sido creada
+                </p>
+                <p className="text-xs text-green-700">
+                  Ya puedes iniciar sesión con tu email y contraseña para ver el estado de tus pedidos.
+                </p>
+              </div>
+            )}
+
+            {/* Navigation Buttons */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => router.push('/mi-cuenta')}
+                className="w-full py-3 border-2 border-brand-600 text-brand-600 rounded-xl hover:bg-brand-50 transition-colors font-semibold"
+              >
+                Ver Mis Pedidos
+              </button>
+              <button
+                onClick={() => router.push('/')}
+                className="w-full py-3 text-slate-600 hover:text-slate-800 transition-colors"
+              >
+                Volver al Inicio
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Upload Payment Proof Modal */}
+        {firstOrderId && (
+          <UploadPaymentProofModal
+            isOpen={showUploadModal}
+            onClose={() => setShowUploadModal(false)}
+            orderId={firstOrderId}
+            onUploadSuccess={() => {
+              // Could show additional success message or redirect
+              console.log('Payment proof uploaded successfully');
+            }}
+          />
+        )}
+      </>
     );
   }
 

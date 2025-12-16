@@ -333,6 +333,29 @@ export const ordersApi = {
     apiClient.post<Order>(`/schools/${schoolId}/orders`, data),
   get: (schoolId: string, orderId: string) =>
     apiClient.get<Order>(`/schools/${schoolId}/orders/${orderId}`),
+
+  // Upload payment proof (public endpoint - sin autenticación)
+  uploadPaymentProof: async (orderId: string, file: File, notes?: string) => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const formData = new FormData();
+    formData.append('file', file);
+    if (notes && notes.trim()) {
+      formData.append('notes', notes.trim());
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/portal/orders/${orderId}/upload-payment-proof`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Error al subir el comprobante' }));
+      throw new Error(error.detail || 'Error al subir el comprobante');
+    }
+
+    const result = await response.json();
+    return { data: result };
+  },
 };
 
 // Helper function for product images (placeholder)

@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, User, Clock, CheckCircle, AlertCircle, XCircle, Truck, Calendar, DollarSign } from 'lucide-react';
+import { ArrowLeft, Package, User, Clock, CheckCircle, AlertCircle, XCircle, Truck, Calendar, DollarSign, Upload, FileCheck } from 'lucide-react';
 import { useClientAuth, getStatusLabel, getStatusColor, type ClientOrder } from '@/lib/clientAuth';
 import { formatNumber } from '@/lib/utils';
+import UploadPaymentProofModal from '@/components/UploadPaymentProofModal';
 
 export default function MiCuentaPage() {
   const router = useRouter();
@@ -13,6 +14,8 @@ export default function MiCuentaPage() {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ClientOrder | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedOrderForUpload, setSelectedOrderForUpload] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -182,19 +185,19 @@ export default function MiCuentaPage() {
                   className="p-6 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4 flex-1">
                       <div className={`p-3 rounded-lg ${getStatusColor(order.status)}`}>
                         {getStatusIcon(order.status)}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <h3 className="font-bold text-gray-800">{order.code}</h3>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(order.status)}`}>
                             {getStatusLabel(order.status)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
                             {new Date(order.created_at).toLocaleDateString('es-CO', {
@@ -207,6 +210,28 @@ export default function MiCuentaPage() {
                             <Package className="w-4 h-4" />
                             {order.items_count} {order.items_count === 1 ? 'producto' : 'productos'}
                           </span>
+                        </div>
+
+                        {/* Payment Status */}
+                        <div className="mt-3">
+                          {order.payment_proof_url ? (
+                            <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 inline-flex">
+                              <FileCheck className="w-4 h-4" />
+                              <span className="font-medium">Comprobante enviado</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedOrderForUpload(order.id);
+                                setShowUploadModal(true);
+                              }}
+                              className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 hover:bg-brand-100 transition-colors font-medium"
+                            >
+                              <Upload className="w-4 h-4" />
+                              <span>Subir comprobante de pago</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -284,6 +309,22 @@ export default function MiCuentaPage() {
           </button>
         </div>
       </main>
+
+      {/* Upload Payment Proof Modal */}
+      {selectedOrderForUpload && (
+        <UploadPaymentProofModal
+          isOpen={showUploadModal}
+          onClose={() => {
+            setShowUploadModal(false);
+            setSelectedOrderForUpload(null);
+          }}
+          orderId={selectedOrderForUpload}
+          onUploadSuccess={() => {
+            // Reload orders to show updated payment status
+            loadOrders();
+          }}
+        />
+      )}
     </div>
   );
 }
