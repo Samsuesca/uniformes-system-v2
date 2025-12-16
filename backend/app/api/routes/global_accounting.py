@@ -1173,9 +1173,19 @@ async def get_global_patrimony_summary(
     pending_expenses = float(result.scalar() or 0)
 
     # Extract balance values from cash_balances dict objects
-    caja_balance = float(cash_balances["caja"]["balance"]) if cash_balances["caja"] else 0
-    banco_balance = float(cash_balances["banco"]["balance"]) if cash_balances["banco"] else 0
-    total_liquid = float(cash_balances["total_liquid"])
+    # Note: get_global_cash_balances returns caja_menor, caja_mayor, nequi, banco
+    caja_menor = cash_balances.get("caja_menor")
+    caja_mayor = cash_balances.get("caja_mayor")
+    nequi = cash_balances.get("nequi")
+    banco = cash_balances.get("banco")
+
+    caja_menor_balance = float(caja_menor["balance"]) if caja_menor else 0
+    caja_mayor_balance = float(caja_mayor["balance"]) if caja_mayor else 0
+    nequi_balance = float(nequi["balance"]) if nequi else 0
+    banco_balance = float(banco["balance"]) if banco else 0
+
+    total_cash = caja_menor_balance + caja_mayor_balance
+    total_liquid = float(cash_balances.get("total_liquid", 0))
 
     # Calculate total current assets (liquid + inventory + receivables)
     current_assets = total_liquid + inventory_value + pending_receivables
@@ -1195,7 +1205,10 @@ async def get_global_patrimony_summary(
 
     return {
         "assets": {
-            "caja": caja_balance,
+            "caja": total_cash,  # caja_menor + caja_mayor
+            "caja_menor": caja_menor_balance,
+            "caja_mayor": caja_mayor_balance,
+            "nequi": nequi_balance,
             "banco": banco_balance,
             "total_liquid": total_liquid,
             "inventory": inventory_value,

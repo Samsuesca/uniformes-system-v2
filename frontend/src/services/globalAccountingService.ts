@@ -37,9 +37,42 @@ export interface GlobalCashBalanceInfo {
 }
 
 export interface GlobalCashBalancesResponse {
+  // Legacy fields
   caja: GlobalCashBalanceInfo | null;
   banco: GlobalCashBalanceInfo | null;
   total_liquid: number;
+  // New 4-account structure
+  caja_menor?: GlobalCashBalanceInfo | null;
+  caja_mayor?: GlobalCashBalanceInfo | null;
+  nequi?: GlobalCashBalanceInfo | null;
+  total_cash?: number;
+}
+
+// Caja Menor / Liquidation types
+export interface GlobalCajaMenorSummary {
+  caja_menor_balance: number;
+  caja_mayor_balance: number;
+  today_liquidations: number;
+  today_entries_count: number;
+  date: string;
+}
+
+export interface GlobalLiquidationResult {
+  success: boolean;
+  message: string;
+  caja_menor_balance: number;
+  caja_mayor_balance: number;
+  amount_liquidated: number;
+}
+
+export interface GlobalLiquidationHistoryItem {
+  id: string;
+  date: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  reference: string;
+  created_at: string;
 }
 
 export const getGlobalCashBalances = async (): Promise<GlobalCashBalancesResponse> => {
@@ -82,6 +115,45 @@ export const setGlobalAccountBalance = async (
     `${BASE_URL}/set-balance`,
     null,
     { params: { account_code: accountCode, new_balance: newBalance, description: description || 'Ajuste de balance inicial' } }
+  );
+  return response.data;
+};
+
+// ============================================
+// Global Caja Menor / Liquidation (uses first available school for now)
+// ============================================
+
+export const getGlobalCajaMenorSummary = async (schoolId: string): Promise<GlobalCajaMenorSummary> => {
+  const response = await apiClient.get<GlobalCajaMenorSummary>(`/schools/${schoolId}/accounting/caja-menor/summary`);
+  return response.data;
+};
+
+export const liquidateGlobalCajaMenor = async (
+  schoolId: string,
+  amount: number,
+  notes?: string
+): Promise<GlobalLiquidationResult> => {
+  const response = await apiClient.post<GlobalLiquidationResult>(
+    `/schools/${schoolId}/accounting/caja-menor/liquidate`,
+    null,
+    { params: { amount, notes } }
+  );
+  return response.data;
+};
+
+export const getGlobalLiquidationHistory = async (
+  schoolId: string,
+  options?: { startDate?: string; endDate?: string; limit?: number }
+): Promise<GlobalLiquidationHistoryItem[]> => {
+  const response = await apiClient.get<GlobalLiquidationHistoryItem[]>(
+    `/schools/${schoolId}/accounting/caja-menor/liquidation-history`,
+    {
+      params: {
+        start_date: options?.startDate,
+        end_date: options?.endDate,
+        limit: options?.limit || 50
+      }
+    }
   );
   return response.data;
 };
@@ -460,7 +532,10 @@ export const payGlobalReceivable = async (
 
 export interface GlobalPatrimonySummary {
   assets: {
-    caja: number;
+    caja: number;  // caja_menor + caja_mayor
+    caja_menor: number;
+    caja_mayor: number;
+    nequi: number;
     banco: number;
     total_liquid: number;
     inventory: number;
@@ -494,6 +569,10 @@ export const globalAccountingService = {
   getGlobalCashBalances,
   initializeGlobalAccounts,
   setGlobalAccountBalance,
+  // Caja Menor / Liquidation
+  getGlobalCajaMenorSummary,
+  liquidateGlobalCajaMenor,
+  getGlobalLiquidationHistory,
   // Balance Accounts
   getGlobalBalanceAccounts,
   getGlobalBalanceAccount,
