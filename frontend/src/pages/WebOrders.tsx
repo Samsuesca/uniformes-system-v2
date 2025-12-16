@@ -1,6 +1,7 @@
 /**
  * WebOrders - Page to manage orders from web portal
  * Filters orders with source='web_portal' and user_id=NULL
+ * Includes stock verification and smart approval
  */
 import { useState, useEffect, useMemo } from 'react';
 import {
@@ -19,12 +20,17 @@ import {
   AlertCircle,
   X,
   MessageCircle,
-  ChevronRight
+  ChevronRight,
+  PackageCheck,
+  PackageX,
+  Boxes,
+  Sparkles,
+  Factory
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { formatDateSpanish } from '../components/DatePicker';
 import { useSchoolStore } from '../stores/schoolStore';
-import { orderService } from '../services/orderService';
+import { orderService, OrderStockVerification, OrderItemStockInfo } from '../services/orderService';
 import type { OrderListItem, OrderStatus, OrderWithItems } from '../types/api';
 
 // Status configuration
@@ -51,6 +57,11 @@ export default function WebOrders() {
   const [selectedOrderSchoolId, setSelectedOrderSchoolId] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // Stock verification
+  const [stockVerification, setStockVerification] = useState<OrderStockVerification | null>(null);
+  const [loadingStock, setLoadingStock] = useState(false);
+  const [approvingOrder, setApprovingOrder] = useState(false);
 
   // Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -136,14 +147,51 @@ export default function WebOrders() {
     try {
       setLoadingDetail(true);
       setSelectedOrderSchoolId(schoolId);
+      setStockVerification(null);
+
       const order = await orderService.getOrder(schoolId, orderId);
       setSelectedOrder(order);
       setShowDetailModal(true);
+
+      // Load stock verification for pending orders
+      if (order.status === 'pending') {
+        setLoadingStock(true);
+        try {
+          const stockInfo = await orderService.verifyOrderStock(schoolId, orderId);
+          setStockVerification(stockInfo);
+        } catch (err) {
+          console.error('Error loading stock verification:', err);
+        } finally {
+          setLoadingStock(false);
+        }
+      }
     } catch (err) {
       console.error('Error loading order detail:', err);
       setError('Error al cargar detalle del pedido');
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const handleApproveWithStock = async (autoFulfill: boolean = true) => {
+    if (!selectedOrderSchoolId || !selectedOrder) return;
+
+    try {
+      setApprovingOrder(true);
+      await orderService.approveOrderWithStock(selectedOrderSchoolId, selectedOrder.id, {
+        auto_fulfill_if_stock: autoFulfill
+      });
+
+      // Reload order detail and list
+      const updatedOrder = await orderService.getOrder(selectedOrderSchoolId, selectedOrder.id);
+      setSelectedOrder(updatedOrder);
+      setStockVerification(null);
+      loadOrders();
+    } catch (err: any) {
+      console.error('Error approving order:', err);
+      setError(err.response?.data?.detail || 'Error al aprobar pedido');
+    } finally {
+      setApprovingOrder(false);
     }
   };
 
@@ -547,6 +595,107 @@ export default function WebOrders() {
                   </div>
                 </div>
 
+                {/* Stock Verification Banner (for pending orders) */}
+                {selectedOrder.status === 'pending' && (
+                  <div className={`rounded-lg p-4 ${
+                    loadingStock
+                      ? 'bg-gray-50 border border-gray-200'
+                      : stockVerification?.can_fulfill_completely
+                      ? 'bg-green-50 border border-green-200'
+                      : stockVerification?.items_in_stock && stockVerification.items_in_stock > 0
+                      ? 'bg-yellow-50 border border-yellow-200'
+                      : 'bg-blue-50 border border-blue-200'
+                  }`}>
+                    {loadingStock ? (
+                      <div className="flex items-center">
+                        <Loader2 className="w-5 h-5 animate-spin text-gray-500 mr-2" />
+                        <span className="text-gray-600">Verificando disponibilidad de stock...</span>
+                      </div>
+                    ) : stockVerification ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-medium flex items-center">
+                            {stockVerification.can_fulfill_completely ? (
+                              <>
+                                <PackageCheck className="w-5 h-5 text-green-600 mr-2" />
+                                <span className="text-green-800">Todos los items disponibles en stock</span>
+                              </>
+                            ) : stockVerification.items_in_stock > 0 ? (
+                              <>
+                                <Boxes className="w-5 h-5 text-yellow-600 mr-2" />
+                                <span className="text-yellow-800">Stock parcial disponible</span>
+                              </>
+                            ) : (
+                              <>
+                                <Factory className="w-5 h-5 text-blue-600 mr-2" />
+                                <span className="text-blue-800">Requiere produccion</span>
+                              </>
+                            )}
+                          </h3>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 text-center mb-4">
+                          <div className="bg-white rounded-lg p-2">
+                            <p className="text-xs text-gray-500">En Stock</p>
+                            <p className="text-lg font-bold text-green-600">{stockVerification.items_in_stock}</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-2">
+                            <p className="text-xs text-gray-500">Parcial</p>
+                            <p className="text-lg font-bold text-yellow-600">{stockVerification.items_partial}</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-2">
+                            <p className="text-xs text-gray-500">A Producir</p>
+                            <p className="text-lg font-bold text-blue-600">{stockVerification.items_to_produce}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {stockVerification.can_fulfill_completely ? (
+                            <button
+                              onClick={() => handleApproveWithStock(true)}
+                              disabled={approvingOrder}
+                              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center disabled:opacity-50"
+                            >
+                              {approvingOrder ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-4 h-4 mr-2" />
+                              )}
+                              Aprobar y Despachar
+                            </button>
+                          ) : stockVerification.items_in_stock > 0 ? (
+                            <>
+                              <button
+                                onClick={() => handleApproveWithStock(true)}
+                                disabled={approvingOrder}
+                                className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition flex items-center justify-center disabled:opacity-50"
+                              >
+                                {approvingOrder ? (
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                  <PackageCheck className="w-4 h-4 mr-2" />
+                                )}
+                                Despachar Stock + Producir Resto
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleApproveWithStock(false)}
+                              disabled={approvingOrder}
+                              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center disabled:opacity-50"
+                            >
+                              {approvingOrder ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : (
+                                <Factory className="w-4 h-4 mr-2" />
+                              )}
+                              Enviar Todo a Produccion
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 {/* Items */}
                 <div>
                   <h3 className="font-medium text-gray-800 mb-3">Items del Pedido</h3>
@@ -556,34 +705,76 @@ export default function WebOrders() {
                         <tr>
                           <th className="px-4 py-2 text-left">Producto</th>
                           <th className="px-4 py-2 text-center">Cant.</th>
+                          {selectedOrder.status === 'pending' && stockVerification && (
+                            <th className="px-4 py-2 text-center">Stock</th>
+                          )}
                           <th className="px-4 py-2 text-right">Precio</th>
                           <th className="px-4 py-2 text-right">Subtotal</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {selectedOrder.items.map((item) => (
-                          <tr key={item.id}>
-                            <td className="px-4 py-2">
-                              <div>
-                                <p className="font-medium">{item.garment_type_name}</p>
-                                <p className="text-xs text-gray-500">
-                                  {item.size && `Talla: ${item.size}`}
-                                  {item.color && ` | Color: ${item.color}`}
-                                </p>
-                                {item.custom_measurements && (
-                                  <p className="text-xs text-purple-600">Con medidas personalizadas</p>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2 text-center">{item.quantity}</td>
-                            <td className="px-4 py-2 text-right">${Number(item.unit_price).toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right font-medium">${Number(item.subtotal).toLocaleString()}</td>
-                          </tr>
-                        ))}
+                        {selectedOrder.items.map((item) => {
+                          // Find stock info for this item
+                          const stockInfo = stockVerification?.items.find(
+                            (si: OrderItemStockInfo) => si.item_id === item.id
+                          );
+
+                          return (
+                            <tr key={item.id}>
+                              <td className="px-4 py-2">
+                                <div>
+                                  <p className="font-medium">{item.garment_type_name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {item.size && `Talla: ${item.size}`}
+                                    {item.color && ` | Color: ${item.color}`}
+                                  </p>
+                                  {item.custom_measurements && (
+                                    <p className="text-xs text-purple-600">Con medidas personalizadas</p>
+                                  )}
+                                  {stockInfo?.product_code && (
+                                    <p className="text-xs text-blue-600">Producto: {stockInfo.product_code}</p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-2 text-center">{item.quantity}</td>
+                              {selectedOrder.status === 'pending' && stockVerification && (
+                                <td className="px-4 py-2 text-center">
+                                  {stockInfo ? (
+                                    <div className="flex flex-col items-center">
+                                      {stockInfo.has_custom_measurements ? (
+                                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">
+                                          Yomber
+                                        </span>
+                                      ) : stockInfo.can_fulfill_from_stock ? (
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs flex items-center">
+                                          <PackageCheck className="w-3 h-3 mr-1" />
+                                          {stockInfo.stock_available}
+                                        </span>
+                                      ) : stockInfo.stock_available > 0 ? (
+                                        <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">
+                                          {stockInfo.stock_available}/{item.quantity}
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs flex items-center">
+                                          <PackageX className="w-3 h-3 mr-1" />
+                                          0
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                              )}
+                              <td className="px-4 py-2 text-right">${Number(item.unit_price).toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right font-medium">${Number(item.subtotal).toLocaleString()}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                       <tfoot className="bg-gray-50">
                         <tr>
-                          <td colSpan={3} className="px-4 py-2 text-right font-medium">Total:</td>
+                          <td colSpan={selectedOrder.status === 'pending' && stockVerification ? 4 : 3} className="px-4 py-2 text-right font-medium">Total:</td>
                           <td className="px-4 py-2 text-right font-bold text-lg">
                             ${Number(selectedOrder.total).toLocaleString()}
                           </td>

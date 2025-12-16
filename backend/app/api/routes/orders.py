@@ -18,9 +18,10 @@ from app.models.school import School
 from app.schemas.order import (
     OrderCreate, OrderUpdate, OrderPayment, OrderResponse, OrderListResponse,
     OrderWithItems, OrderItemResponse, WebOrderResponse, OrderItemStatusUpdate,
-    OrderItemWithGarment
+    OrderItemWithGarment, OrderApprovalRequest
 )
 from app.services.order import OrderService
+from app.models.sale import SaleSource
 
 
 # =============================================================================
@@ -466,6 +467,102 @@ async def update_item_status(
             requires_embroidery=item.garment_type.requires_embroidery if item.garment_type else False,
             has_custom_measurements=bool(item.custom_measurements)
         )
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@school_router.get(
+    "/{order_id}/stock-verification",
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def verify_order_stock(
+    school_id: UUID,
+    order_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Verify stock availability for all items in an order.
+
+    Returns detailed information about:
+    - Which items can be fulfilled from current inventory
+    - Which items need to be produced
+    - Suggested actions for each item
+
+    This is useful for web orders to determine if they can be
+    immediately fulfilled or need production.
+    """
+    order_service = OrderService(db)
+
+    try:
+        verification = await order_service.verify_order_stock(order_id, school_id)
+        return verification
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+
+@school_router.post(
+    "/{order_id}/approve",
+    response_model=OrderResponse,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def approve_order_with_stock(
+    school_id: UUID,
+    order_id: UUID,
+    approval_request: OrderApprovalRequest,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Approve/process a web order with intelligent stock handling.
+
+    This endpoint:
+    1. Checks stock availability for each item
+    2. For items WITH stock: marks as READY and decrements inventory
+    3. For items WITHOUT stock: marks as IN_PRODUCTION
+
+    Options:
+    - auto_fulfill_if_stock: If true, automatically fulfill items that have stock
+    - items: Override actions for specific items
+
+    The order status is automatically updated based on item statuses:
+    - All READY → Order is READY
+    - Any IN_PRODUCTION → Order is IN_PRODUCTION
+    """
+    order_service = OrderService(db)
+
+    try:
+        # Convert item actions from request
+        item_actions = None
+        if approval_request.items:
+            item_actions = [
+                {
+                    "item_id": str(item.item_id),
+                    "action": item.action,
+                    "product_id": str(item.product_id) if item.product_id else None,
+                    "quantity_from_stock": item.quantity_from_stock
+                }
+                for item in approval_request.items
+            ]
+
+        order = await order_service.approve_order_with_stock(
+            order_id=order_id,
+            school_id=school_id,
+            user_id=current_user.id,
+            auto_fulfill=approval_request.auto_fulfill_if_stock,
+            item_actions=item_actions
+        )
+
+        await db.commit()
+        return OrderResponse.model_validate(order)
 
     except ValueError as e:
         await db.rollback()

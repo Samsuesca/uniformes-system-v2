@@ -121,4 +121,81 @@ export const orderService = {
     );
     return response.data;
   },
+
+  /**
+   * Verify stock availability for all items in an order
+   *
+   * Returns detailed information about which items can be fulfilled from
+   * current inventory vs which need to be produced.
+   */
+  async verifyOrderStock(schoolId: string, orderId: string): Promise<OrderStockVerification> {
+    const response = await apiClient.get<OrderStockVerification>(
+      `/schools/${schoolId}/orders/${orderId}/stock-verification`
+    );
+    return response.data;
+  },
+
+  /**
+   * Approve/process a web order with intelligent stock handling
+   *
+   * This endpoint:
+   * 1. Checks stock availability for each item
+   * 2. For items WITH stock: marks as READY and decrements inventory
+   * 3. For items WITHOUT stock: marks as IN_PRODUCTION
+   */
+  async approveOrderWithStock(
+    schoolId: string,
+    orderId: string,
+    options?: {
+      auto_fulfill_if_stock?: boolean;
+      items?: Array<{
+        item_id: string;
+        action: 'fulfill' | 'produce' | 'auto';
+        product_id?: string;
+        quantity_from_stock?: number;
+      }>;
+    }
+  ): Promise<Order> {
+    const response = await apiClient.post<Order>(
+      `/schools/${schoolId}/orders/${orderId}/approve`,
+      {
+        auto_fulfill_if_stock: options?.auto_fulfill_if_stock ?? true,
+        items: options?.items || [],
+        notify_client: true
+      }
+    );
+    return response.data;
+  },
 };
+
+// Types for stock verification
+export interface OrderItemStockInfo {
+  item_id: string;
+  garment_type_id: string;
+  garment_type_name: string;
+  size: string | null;
+  color: string | null;
+  quantity_requested: number;
+  product_id: string | null;
+  product_code: string | null;
+  stock_available: number;
+  can_fulfill_from_stock: boolean;
+  quantity_from_stock: number;
+  quantity_to_produce: number;
+  suggested_action: 'fulfill' | 'partial' | 'produce';
+  has_custom_measurements: boolean;
+  item_status: string;
+}
+
+export interface OrderStockVerification {
+  order_id: string;
+  order_code: string;
+  order_status: string;
+  items: OrderItemStockInfo[];
+  total_items: number;
+  items_in_stock: number;
+  items_partial: number;
+  items_to_produce: number;
+  can_fulfill_completely: boolean;
+  suggested_action: 'approve_all' | 'partial' | 'produce_all' | 'review';
+}

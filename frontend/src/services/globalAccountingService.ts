@@ -286,6 +286,101 @@ export const payGlobalPayable = async (
 };
 
 // ============================================
+// Global Accounts Receivable (Cuentas por Cobrar)
+// ============================================
+
+export interface AccountsReceivableCreate {
+  amount: number;
+  description: string;
+  invoice_date: string;
+  due_date?: string | null;
+  notes?: string | null;
+  client_id?: string | null;
+  sale_id?: string | null;
+  order_id?: string | null;
+}
+
+export interface AccountsReceivable {
+  id: string;
+  school_id: string | null;
+  client_id: string | null;
+  sale_id: string | null;
+  order_id: string | null;
+  amount: number;
+  amount_paid: number;
+  balance: number;
+  description: string;
+  invoice_date: string;
+  due_date: string | null;
+  is_paid: boolean;
+  is_overdue: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountsReceivableListItem {
+  id: string;
+  client_id: string | null;
+  client_name: string | null;
+  amount: number;
+  amount_paid: number;
+  balance: number;
+  description: string;
+  invoice_date: string;
+  due_date: string | null;
+  is_paid: boolean;
+  is_overdue: boolean;
+}
+
+export interface AccountsReceivablePayment {
+  amount: number;
+  payment_method: 'cash' | 'transfer' | 'card';
+  notes?: string | null;
+}
+
+export const getGlobalReceivables = async (
+  options?: { isPaid?: boolean; isOverdue?: boolean; skip?: number; limit?: number }
+): Promise<AccountsReceivableListItem[]> => {
+  const response = await apiClient.get<AccountsReceivableListItem[]>(
+    `${BASE_URL}/receivables`,
+    {
+      params: {
+        is_paid: options?.isPaid,
+        is_overdue: options?.isOverdue,
+        skip: options?.skip || 0,
+        limit: options?.limit || 100
+      }
+    }
+  );
+  return response.data;
+};
+
+export const getPendingGlobalReceivables = async (): Promise<AccountsReceivableListItem[]> => {
+  const response = await apiClient.get<AccountsReceivableListItem[]>(`${BASE_URL}/receivables/pending`);
+  return response.data;
+};
+
+export const getGlobalReceivable = async (receivableId: string): Promise<AccountsReceivable> => {
+  const response = await apiClient.get<AccountsReceivable>(`${BASE_URL}/receivables/${receivableId}`);
+  return response.data;
+};
+
+export const createGlobalReceivable = async (data: AccountsReceivableCreate): Promise<AccountsReceivable> => {
+  const response = await apiClient.post<AccountsReceivable>(`${BASE_URL}/receivables`, data);
+  return response.data;
+};
+
+export const payGlobalReceivable = async (
+  receivableId: string,
+  payment: AccountsReceivablePayment
+): Promise<AccountsReceivable> => {
+  const response = await apiClient.post<AccountsReceivable>(`${BASE_URL}/receivables/${receivableId}/pay`, payment);
+  return response.data;
+};
+
+// ============================================
 // Global Patrimony Summary
 // ============================================
 
@@ -345,6 +440,12 @@ export const globalAccountingService = {
   getGlobalPayable,
   createGlobalPayable,
   payGlobalPayable,
+  // Receivables
+  getGlobalReceivables,
+  getPendingGlobalReceivables,
+  getGlobalReceivable,
+  createGlobalReceivable,
+  payGlobalReceivable,
   // Patrimony
   getGlobalPatrimonySummary
 };

@@ -175,14 +175,35 @@ export default function Accounting() {
         setBalanceSummary(summary);
         setBalanceDetailed(detailed);
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
-        const [rpSummary, receivables, payables] = await Promise.all([
-          accountingService.getReceivablesPayablesSummary(schoolId),
-          accountingService.getAccountsReceivable(schoolId, { isPaid: false }),
-          accountingService.getAccountsPayable(schoolId, { isPaid: false })
+        // Use global accounting services for CxC and CxP
+        const [receivables, payables] = await Promise.all([
+          globalAccountingService.getGlobalReceivables({ isPaid: false }),
+          globalAccountingService.getGlobalPayables({ isPaid: false })
         ]);
-        setReceivablesPayables(rpSummary);
         setReceivablesList(receivables);
         setPayablesList(payables);
+
+        // Calculate summary from the lists
+        const totalReceivables = receivables.reduce((sum, r) => sum + r.amount, 0);
+        const pendingReceivables = receivables.reduce((sum, r) => sum + r.balance, 0);
+        const collectedReceivables = receivables.reduce((sum, r) => sum + r.amount_paid, 0);
+        const totalPayables = payables.reduce((sum, p) => sum + p.amount, 0);
+        const pendingPayables = payables.reduce((sum, p) => sum + p.balance, 0);
+        const paidPayables = payables.reduce((sum, p) => sum + p.amount_paid, 0);
+
+        setReceivablesPayables({
+          total_receivables: totalReceivables,
+          receivables_collected: collectedReceivables,
+          receivables_pending: pendingReceivables,
+          receivables_overdue: receivables.filter(r => r.is_overdue).reduce((sum, r) => sum + r.balance, 0),
+          receivables_count: receivables.length,
+          total_payables: totalPayables,
+          payables_paid: paidPayables,
+          payables_pending: pendingPayables,
+          payables_overdue: payables.filter(p => p.is_overdue).reduce((sum, p) => sum + p.balance, 0),
+          payables_count: payables.length,
+          net_position: pendingReceivables - pendingPayables
+        });
       } else if (activeTab === 'patrimony') {
         // Load global patrimony summary (business-wide)
         const patrimonyData = await globalAccountingService.getGlobalPatrimonySummary();
@@ -252,7 +273,15 @@ export default function Accounting() {
     if (!receivableForm.description || !receivableForm.amount) return;
     try {
       setSubmitting(true);
-      await accountingService.createAccountReceivable(schoolId, receivableForm as AccountsReceivableCreate);
+      // Use global accounting service for CxC (no school_id required)
+      await globalAccountingService.createGlobalReceivable({
+        amount: receivableForm.amount,
+        description: receivableForm.description,
+        invoice_date: receivableForm.invoice_date,
+        due_date: receivableForm.due_date || null,
+        notes: receivableForm.notes || null,
+        client_id: receivableForm.client_id || null
+      });
       setShowReceivableModal(false);
       resetReceivableForm();
       await loadData();
@@ -268,9 +297,10 @@ export default function Accounting() {
     if (!selectedReceivable || paymentAmount <= 0) return;
     try {
       setSubmitting(true);
-      await accountingService.payAccountReceivable(schoolId, selectedReceivable.id, {
+      // Use global accounting service for payment
+      await globalAccountingService.payGlobalReceivable(selectedReceivable.id, {
         amount: paymentAmount,
-        payment_method: paymentMethod
+        payment_method: paymentMethod as 'cash' | 'transfer' | 'card'
       });
       setShowPayReceivableModal(false);
       setSelectedReceivable(null);
@@ -288,7 +318,17 @@ export default function Accounting() {
     if (!payableForm.vendor || !payableForm.description || !payableForm.amount) return;
     try {
       setSubmitting(true);
-      await accountingService.createAccountPayable(schoolId, payableForm as AccountsPayableCreate);
+      // Use global accounting service for CxP (no school_id required)
+      await globalAccountingService.createGlobalPayable({
+        vendor: payableForm.vendor,
+        amount: payableForm.amount,
+        description: payableForm.description,
+        category: payableForm.category || null,
+        invoice_number: payableForm.invoice_number || null,
+        invoice_date: payableForm.invoice_date,
+        due_date: payableForm.due_date || null,
+        notes: payableForm.notes || null
+      });
       setShowPayableModal(false);
       resetPayableForm();
       await loadData();
@@ -304,9 +344,10 @@ export default function Accounting() {
     if (!selectedPayable || paymentAmount <= 0) return;
     try {
       setSubmitting(true);
-      await accountingService.payAccountPayable(schoolId, selectedPayable.id, {
+      // Use global accounting service for payment
+      await globalAccountingService.payGlobalPayable(selectedPayable.id, {
         amount: paymentAmount,
-        payment_method: paymentMethod
+        payment_method: paymentMethod as 'cash' | 'transfer' | 'card'
       });
       setShowPayPayableModal(false);
       setSelectedPayable(null);

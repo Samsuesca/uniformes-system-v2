@@ -4,7 +4,7 @@
  * Creates separate sales (one per school) when items span multiple schools.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Printer } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';

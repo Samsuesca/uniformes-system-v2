@@ -268,3 +268,59 @@ class WebOrderResponse(BaseSchema):
     total: Decimal
     created_at: datetime | None = None
     message: str = "Pedido creado exitosamente"
+
+
+# ============================================
+# Order Stock Verification Schemas
+# ============================================
+
+class OrderItemStockInfo(BaseSchema):
+    """Stock information for an order item"""
+    item_id: UUID
+    garment_type_id: UUID
+    garment_type_name: str
+    size: str | None
+    color: str | None
+    quantity_requested: int
+    # Product match info
+    product_id: UUID | None = None
+    product_code: str | None = None
+    stock_available: int = 0
+    can_fulfill_from_stock: bool = False
+    # Quantities
+    quantity_from_stock: int = 0  # How many can be taken from stock
+    quantity_to_produce: int = 0  # How many need to be produced
+    # Status suggestion
+    suggested_action: str = "produce"  # "fulfill" | "partial" | "produce"
+
+
+class OrderStockVerification(BaseSchema):
+    """Stock verification result for an entire order"""
+    order_id: UUID
+    order_code: str
+    items: list[OrderItemStockInfo]
+    # Summary
+    total_items: int = 0
+    items_in_stock: int = 0  # Items that can be fully fulfilled
+    items_partial: int = 0   # Items that can be partially fulfilled
+    items_to_produce: int = 0  # Items that need production
+    can_fulfill_completely: bool = False
+    suggested_action: str = "review"  # "approve_all" | "partial" | "produce_all" | "review"
+
+
+class OrderItemApprovalAction(BaseSchema):
+    """Action for a specific item during approval"""
+    item_id: UUID
+    action: str = "auto"  # "fulfill" | "produce" | "auto"
+    # If fulfilling from stock, specify product
+    product_id: UUID | None = None
+    quantity_from_stock: int | None = None
+
+
+class OrderApprovalRequest(BaseSchema):
+    """Request to approve/process a web order"""
+    # Items actions - if empty, use auto-detection
+    items: list[OrderItemApprovalAction] = []
+    # Global options
+    auto_fulfill_if_stock: bool = True  # Automatically fulfill items with stock
+    notify_client: bool = True  # Send notification to client

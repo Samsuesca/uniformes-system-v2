@@ -18,12 +18,13 @@ from app.api.dependencies import DatabaseSession, CurrentUser, require_any_schoo
 from app.models.user import UserRole
 from app.models.accounting import (
     TransactionType, ExpenseCategory, AccountType,
-    BalanceAccount, BalanceEntry, Expense, AccountsPayable
+    BalanceAccount, BalanceEntry, Expense, AccountsPayable, AccountsReceivable
 )
 from app.schemas.accounting import (
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
     BalanceAccountResponse, BalanceAccountListResponse,
-    AccountsPayableCreate, AccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
+    GlobalAccountsPayableCreate, AccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
+    GlobalAccountsReceivableCreate, AccountsReceivableResponse, AccountsReceivableListResponse, AccountsReceivablePayment,
     BalanceGeneralSummary, BalanceGeneralDetailed
 )
 from sqlalchemy import select, func
@@ -733,7 +734,7 @@ async def pay_global_expense(
     dependencies=[Depends(require_any_school_admin)]
 )
 async def create_global_payable(
-    payable_data: AccountsPayableCreate,
+    payable_data: GlobalAccountsPayableCreate,
     db: DatabaseSession,
     current_user: CurrentUser
 ):
@@ -1068,3 +1069,220 @@ async def get_global_patrimony_summary(
         },
         "net_patrimony": total_assets - total_liabilities
     }
+
+
+# ============================================
+# Global Accounts Receivable (Cuentas por Cobrar)
+# ============================================
+
+@router.post(
+    "/receivables",
+    response_model=AccountsReceivableResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def create_global_receivable(
+    receivable_data: GlobalAccountsReceivableCreate,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Create a global accounts receivable (customer debt)
+
+    For tracking money owed TO the business by customers.
+    """
+    receivable = AccountsReceivable(
+        school_id=None,  # Global receivable
+        client_id=receivable_data.client_id,
+        sale_id=receivable_data.sale_id,
+        order_id=receivable_data.order_id,
+        amount=receivable_data.amount,
+        description=receivable_data.description,
+        invoice_date=receivable_data.invoice_date,
+        due_date=receivable_data.due_date,
+        notes=receivable_data.notes,
+        created_by=current_user.id
+    )
+    db.add(receivable)
+    await db.commit()
+    await db.refresh(receivable)
+
+    return AccountsReceivableResponse.model_validate(receivable)
+
+
+@router.get(
+    "/receivables",
+    response_model=list[AccountsReceivableListResponse],
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def list_global_receivables(
+    db: DatabaseSession,
+    is_paid: bool = Query(None, description="Filter by payment status"),
+    is_overdue: bool = Query(None, description="Filter by overdue status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    List global accounts receivable (school_id = NULL)
+    """
+    query = select(AccountsReceivable).where(
+        AccountsReceivable.school_id.is_(None)
+    )
+
+    if is_paid is not None:
+        query = query.where(AccountsReceivable.is_paid == is_paid)
+
+    query = query.order_by(AccountsReceivable.due_date).offset(skip).limit(limit)
+    result = await db.execute(query)
+    receivables = result.scalars().all()
+
+    # Filter by overdue if requested
+    if is_overdue is not None:
+        receivables = [r for r in receivables if r.is_overdue == is_overdue]
+
+    return [
+        AccountsReceivableListResponse(
+            id=r.id,
+            client_id=r.client_id,
+            client_name=None,  # Would need to join with clients table
+            amount=r.amount,
+            amount_paid=r.amount_paid,
+            balance=r.balance,
+            description=r.description,
+            invoice_date=r.invoice_date,
+            due_date=r.due_date,
+            is_paid=r.is_paid,
+            is_overdue=r.is_overdue
+        )
+        for r in receivables
+    ]
+
+
+@router.get(
+    "/receivables/pending",
+    response_model=list[AccountsReceivableListResponse],
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def get_pending_global_receivables(
+    db: DatabaseSession
+):
+    """
+    Get all pending (unpaid) global receivables
+    """
+    result = await db.execute(
+        select(AccountsReceivable).where(
+            AccountsReceivable.school_id.is_(None),
+            AccountsReceivable.is_paid == False
+        ).order_by(AccountsReceivable.due_date)
+    )
+    receivables = result.scalars().all()
+
+    return [
+        AccountsReceivableListResponse(
+            id=r.id,
+            client_id=r.client_id,
+            client_name=None,
+            amount=r.amount,
+            amount_paid=r.amount_paid,
+            balance=r.balance,
+            description=r.description,
+            invoice_date=r.invoice_date,
+            due_date=r.due_date,
+            is_paid=r.is_paid,
+            is_overdue=r.is_overdue
+        )
+        for r in receivables
+    ]
+
+
+@router.get(
+    "/receivables/{receivable_id}",
+    response_model=AccountsReceivableResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def get_global_receivable(
+    receivable_id: UUID,
+    db: DatabaseSession
+):
+    """Get global receivable by ID"""
+    result = await db.execute(
+        select(AccountsReceivable).where(
+            AccountsReceivable.id == receivable_id,
+            AccountsReceivable.school_id.is_(None)
+        )
+    )
+    receivable = result.scalar_one_or_none()
+
+    if not receivable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Global receivable not found"
+        )
+
+    return AccountsReceivableResponse.model_validate(receivable)
+
+
+@router.post(
+    "/receivables/{receivable_id}/pay",
+    response_model=AccountsReceivableResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def pay_global_receivable(
+    receivable_id: UUID,
+    payment: AccountsReceivablePayment,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Record a payment on global accounts receivable
+
+    Updates balance accounts (Caja/Banco) automatically.
+    """
+    result = await db.execute(
+        select(AccountsReceivable).where(
+            AccountsReceivable.id == receivable_id,
+            AccountsReceivable.school_id.is_(None)
+        )
+    )
+    receivable = result.scalar_one_or_none()
+
+    if not receivable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Global receivable not found"
+        )
+
+    if receivable.is_paid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Receivable is already fully paid"
+        )
+
+    remaining = receivable.balance
+    if payment.amount > remaining:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Payment amount ({payment.amount}) exceeds balance ({remaining})"
+        )
+
+    # Update receivable
+    receivable.amount_paid = (receivable.amount_paid or Decimal("0")) + payment.amount
+    if receivable.amount_paid >= receivable.amount:
+        receivable.is_paid = True
+        receivable.paid_date = date.today()
+
+    # Update global balance account (add to Caja or Banco)
+    from app.services.balance_integration import BalanceIntegrationService
+    balance_service = BalanceIntegrationService(db)
+
+    await balance_service.record_income_payment(
+        amount=payment.amount,
+        payment_method=payment.payment_method,
+        description=f"Cobro CxC: {receivable.description}",
+        created_by=current_user.id
+    )
+
+    await db.commit()
+    await db.refresh(receivable)
+
+    return AccountsReceivableResponse.model_validate(receivable)

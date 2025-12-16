@@ -413,6 +413,13 @@ class AccountsReceivableCreate(AccountsReceivableBase, SchoolIsolatedSchema):
     order_id: UUID | None = None
 
 
+class GlobalAccountsReceivableCreate(AccountsReceivableBase):
+    """Schema for creating global accounts receivable (no school_id required)"""
+    client_id: UUID | None = None
+    sale_id: UUID | None = None
+    order_id: UUID | None = None
+
+
 class AccountsReceivableUpdate(BaseSchema):
     """Schema for updating accounts receivable"""
     description: str | None = Field(None, min_length=1, max_length=500)
@@ -486,6 +493,11 @@ class AccountsPayableBase(BaseSchema):
 
 class AccountsPayableCreate(AccountsPayableBase, SchoolIsolatedSchema):
     """Schema for creating accounts payable"""
+    pass
+
+
+class GlobalAccountsPayableCreate(AccountsPayableBase):
+    """Schema for creating global accounts payable (no school_id required)"""
     pass
 
 
