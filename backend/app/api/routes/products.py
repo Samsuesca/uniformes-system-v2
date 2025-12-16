@@ -321,6 +321,35 @@ async def list_garment_types_for_school(
     return [GarmentTypeResponse.model_validate(g) for g in garments]
 
 
+@school_router.put(
+    "/garment-types/{garment_type_id}",
+    response_model=GarmentTypeResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def update_garment_type(
+    school_id: UUID,
+    garment_type_id: UUID,
+    garment_data: GarmentTypeUpdate,
+    db: DatabaseSession
+):
+    """Update garment type for school (requires ADMIN role)"""
+    garment_service = GarmentTypeService(db)
+    garment_type = await garment_service.update_garment_type(
+        garment_type_id,
+        school_id,
+        garment_data
+    )
+
+    if not garment_type:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Garment type not found"
+        )
+
+    await db.commit()
+    return GarmentTypeResponse.model_validate(garment_type)
+
+
 # ==========================================
 # Products
 # ==========================================
