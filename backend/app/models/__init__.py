@@ -17,6 +17,7 @@ from app.models.client import Client, ClientStudent, ClientType
 from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.contact import Contact, ContactType, ContactStatus
+from app.models.payment_account import PaymentAccount, PaymentMethodType
 from app.models.accounting import (
     Transaction, TransactionType,
     Expense, ExpenseCategory,
@@ -67,6 +68,9 @@ __all__ = [
     "Contact",
     "ContactType",
     "ContactStatus",
+    # Payment Account models
+    "PaymentAccount",
+    "PaymentMethodType",
     # Accounting models
     "Transaction",
     "TransactionType",
