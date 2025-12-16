@@ -4,7 +4,16 @@ import { getPublicToken, clearPublicToken } from './auth';
 // API Base URL - se configura desde variables de entorno
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Axios instance
+// Public client - NO authentication required (for public endpoints like /schools)
+const publicClient = axios.create({
+  baseURL: `${API_BASE_URL}/api/v1`,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Authenticated client - requires public-viewer token
 const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api/v1`,
   timeout: 30000,
@@ -13,7 +22,7 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token (only for apiClient)
 apiClient.interceptors.request.use(
   async (config) => {
     // Get public token for catalog access
@@ -126,10 +135,10 @@ export interface Order {
 
 // API Endpoints
 
-// Schools
+// Schools (public endpoints - no auth required)
 export const schoolsApi = {
-  list: () => apiClient.get<School[]>('/schools'),
-  getBySlug: (slug: string) => apiClient.get<School>(`/schools/slug/${slug}`),
+  list: () => publicClient.get<School[]>('/schools'),
+  getBySlug: (slug: string) => publicClient.get<School>(`/schools/slug/${slug}`),
 };
 
 // Products
