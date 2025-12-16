@@ -37,7 +37,7 @@ export default function SoportePage() {
 
     try {
       // Call backend API to submit contact message
-      const apiUrl = 'https://uniformesconsuelo.com/api/v1/contacts/submit';
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/contacts/submit`;
 
       const response = await fetch(apiUrl, {
         method: 'POST',
