@@ -70,14 +70,13 @@ export default function GeneralProductsPage() {
             if (searchQuery.trim().length > 0) {
                 setIsSearching(true);
                 try {
-                    // Search in global products with global_search always true
-                    const results = await productsApi.listGlobal({
-                        with_inventory: true,
-                        limit: 500,
-                        search: searchQuery.trim()
+                    // Search in global products using search endpoint
+                    const response = await productsApi.search('general', {
+                        query: searchQuery,
+                        global_search: true
                     });
 
-                    setProducts(results.data);
+                    setProducts(response);
                 } catch (error) {
                     console.error('Search error:', error);
                 } finally {
