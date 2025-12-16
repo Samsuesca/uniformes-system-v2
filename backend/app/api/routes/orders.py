@@ -637,9 +637,9 @@ async def create_web_order(
 )
 async def upload_payment_proof(
     order_id: UUID,
+    db: DatabaseSession,
     file: UploadFile = File(...),
-    payment_notes: str = Query(None, description="Optional payment notes"),
-    db: DatabaseSession
+    payment_notes: str = Query(None, description="Optional payment notes")
 ):
     """
     Upload payment proof (receipt/screenshot) for an order.
