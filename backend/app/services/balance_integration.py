@@ -3,12 +3,18 @@ Balance Integration Service
 
 Integra transacciones con cuentas del balance general.
 Cuando se crea una transacción, automáticamente actualiza
-la cuenta correspondiente (Caja para efectivo, Banco para transferencias).
+la cuenta correspondiente según el método de pago.
 
 ARQUITECTURA GLOBAL:
-- Las cuentas Caja y Banco son GLOBALES (school_id = NULL)
-- El dinero de todas las ventas va a la misma Caja/Banco
+- Las cuentas son GLOBALES (school_id = NULL)
+- El dinero de todas las ventas va a las cuentas globales
 - Las transacciones mantienen school_id para reportes por colegio
+
+CUENTAS DE ACTIVO LIQUIDO:
+- 1101 Caja Menor: Efectivo operativo (se liquida diario a Caja Mayor)
+- 1102 Caja Mayor: Efectivo consolidado
+- 1103 Nequi: Cuenta Nequi
+- 1104 Banco: Transferencias bancarias y tarjetas
 """
 from uuid import UUID
 from decimal import Decimal
@@ -28,27 +34,45 @@ from app.models.accounting import (
 
 # Códigos estándar de contabilidad para cuentas default GLOBALES
 DEFAULT_ACCOUNTS = {
-    "caja": {
-        "name": "Caja General",
+    "caja_menor": {
+        "name": "Caja Menor",
         "code": "1101",
-        "description": "Efectivo en caja (global del negocio)",
+        "description": "Efectivo operativo (se liquida diario a Caja Mayor)",
+        "account_type": AccountType.ASSET_CURRENT
+    },
+    "caja_mayor": {
+        "name": "Caja Mayor",
+        "code": "1102",
+        "description": "Efectivo consolidado (liquidaciones de Caja Menor)",
+        "account_type": AccountType.ASSET_CURRENT
+    },
+    "nequi": {
+        "name": "Nequi",
+        "code": "1103",
+        "description": "Cuenta Nequi",
         "account_type": AccountType.ASSET_CURRENT
     },
     "banco": {
-        "name": "Banco General",
-        "code": "1102",
-        "description": "Cuentas bancarias (global del negocio)",
+        "name": "Banco",
+        "code": "1104",
+        "description": "Cuentas bancarias (transferencias + tarjetas)",
         "account_type": AccountType.ASSET_CURRENT
     }
 }
 
 # Mapeo de payment_method a tipo de cuenta
 PAYMENT_METHOD_TO_ACCOUNT = {
-    AccPaymentMethod.CASH: "caja",       # Efectivo -> Caja
-    AccPaymentMethod.TRANSFER: "banco",  # Transferencia -> Banco
-    AccPaymentMethod.CARD: "banco",      # Tarjeta -> Banco (cuando se deposita)
-    AccPaymentMethod.CREDIT: None,       # Crédito -> No afecta cuentas (genera CxC/CxP)
-    AccPaymentMethod.OTHER: None         # Otro -> Configurable (por defecto no afecta)
+    AccPaymentMethod.CASH: "caja_menor",    # Efectivo -> Caja Menor (operativo)
+    AccPaymentMethod.NEQUI: "nequi",        # Nequi -> Cuenta Nequi
+    AccPaymentMethod.TRANSFER: "banco",     # Transferencia -> Banco
+    AccPaymentMethod.CARD: "banco",         # Tarjeta -> Banco
+    AccPaymentMethod.CREDIT: None,          # Crédito -> No afecta cuentas (genera CxC)
+    AccPaymentMethod.OTHER: None            # Otro -> No afecta cuentas
+}
+
+# Alias para compatibilidad con código legacy
+LEGACY_ACCOUNT_ALIASES = {
+    "caja": "caja_menor",  # "caja" ahora apunta a "caja_menor"
 }
 
 
@@ -56,15 +80,22 @@ class BalanceIntegrationService:
     """
     Servicio para integrar transacciones con cuentas del balance.
 
-    IMPORTANTE: Las cuentas Caja y Banco son GLOBALES (school_id = NULL).
-    Esto significa que todas las ventas de todos los colegios van a la misma
-    Caja/Banco del negocio.
+    IMPORTANTE: Las cuentas son GLOBALES (school_id = NULL).
+    Esto significa que todas las ventas de todos los colegios van a las mismas
+    cuentas globales del negocio.
+
+    Cuentas disponibles:
+    - Caja Menor (1101): Efectivo operativo, se liquida diario
+    - Caja Mayor (1102): Efectivo consolidado
+    - Nequi (1103): Cuenta Nequi
+    - Banco (1104): Transferencias y tarjetas
 
     Responsabilidades:
-    - Crear cuentas globales (Caja, Banco) si no existen
+    - Crear cuentas globales si no existen
     - Mapear payment_method a la cuenta correspondiente
     - Actualizar saldos de cuentas al crear transacciones
     - Crear entradas de auditoría (BalanceEntry)
+    - Liquidar Caja Menor a Caja Mayor
     """
 
     def __init__(self, db: AsyncSession):
@@ -317,26 +348,32 @@ class BalanceIntegrationService:
 
     async def get_global_cash_balances(self) -> dict:
         """
-        Obtiene los saldos actuales globales de Caja y Banco.
+        Obtiene los saldos actuales globales de todas las cuentas líquidas.
 
         Returns:
             Dict con información de saldos:
             {
-                "caja": {"id": UUID, "name": str, "balance": Decimal},
-                "banco": {"id": UUID, "name": str, "balance": Decimal},
-                "total_liquid": Decimal
+                "caja_menor": {"id": UUID, "name": str, "balance": Decimal, "code": str},
+                "caja_mayor": {"id": UUID, "name": str, "balance": Decimal, "code": str},
+                "nequi": {"id": UUID, "name": str, "balance": Decimal, "code": str},
+                "banco": {"id": UUID, "name": str, "balance": Decimal, "code": str},
+                "total_liquid": Decimal,
+                "total_cash": Decimal  # caja_menor + caja_mayor
             }
         """
         # Obtener/crear cuentas globales
         accounts_map = await self.get_or_create_global_accounts()
 
         result = {
-            "caja": None,
+            "caja_menor": None,
+            "caja_mayor": None,
+            "nequi": None,
             "banco": None,
-            "total_liquid": Decimal("0")
+            "total_liquid": Decimal("0"),
+            "total_cash": Decimal("0")
         }
 
-        for account_key in ["caja", "banco"]:
+        for account_key in ["caja_menor", "caja_mayor", "nequi", "banco"]:
             account_id = accounts_map.get(account_key)
             if account_id:
                 account_result = await self.db.execute(
@@ -347,10 +384,14 @@ class BalanceIntegrationService:
                     result[account_key] = {
                         "id": str(account.id),
                         "name": account.name,
+                        "code": account.code,
                         "balance": account.balance,
                         "last_updated": account.updated_at.isoformat() if account.updated_at else None
                     }
                     result["total_liquid"] += account.balance
+                    # Sumar efectivo (caja_menor + caja_mayor)
+                    if account_key in ["caja_menor", "caja_mayor"]:
+                        result["total_cash"] += account.balance
 
         return result
 
@@ -372,7 +413,9 @@ class BalanceIntegrationService:
 
     async def initialize_global_accounts(
         self,
-        caja_initial_balance: Decimal = Decimal("0"),
+        caja_menor_initial_balance: Decimal = Decimal("0"),
+        caja_mayor_initial_balance: Decimal = Decimal("0"),
+        nequi_initial_balance: Decimal = Decimal("0"),
         banco_initial_balance: Decimal = Decimal("0"),
         created_by: UUID | None = None
     ) -> dict[str, UUID]:
@@ -381,7 +424,9 @@ class BalanceIntegrationService:
         Útil para configuración inicial del sistema.
 
         Args:
-            caja_initial_balance: Saldo inicial de Caja
+            caja_menor_initial_balance: Saldo inicial de Caja Menor
+            caja_mayor_initial_balance: Saldo inicial de Caja Mayor
+            nequi_initial_balance: Saldo inicial de Nequi
             banco_initial_balance: Saldo inicial de Banco
             created_by: ID del usuario
 
@@ -390,12 +435,15 @@ class BalanceIntegrationService:
         """
         accounts_map = {}
 
+        initial_balances = {
+            "caja_menor": caja_menor_initial_balance,
+            "caja_mayor": caja_mayor_initial_balance,
+            "nequi": nequi_initial_balance,
+            "banco": banco_initial_balance
+        }
+
         for account_key, account_config in DEFAULT_ACCOUNTS.items():
-            initial_balance = (
-                caja_initial_balance if account_key == "caja"
-                else banco_initial_balance if account_key == "banco"
-                else Decimal("0")
-            )
+            initial_balance = initial_balances.get(account_key, Decimal("0"))
 
             # Buscar cuenta global existente
             result = await self.db.execute(
@@ -468,11 +516,12 @@ class BalanceIntegrationService:
         Legacy method - redirects to initialize_global_accounts.
 
         NOTA: school_id se ignora - siempre usa cuentas globales.
+        caja_initial_balance se aplica a caja_menor por compatibilidad.
         """
         return await self.initialize_global_accounts(
-            caja_initial_balance,
-            banco_initial_balance,
-            created_by
+            caja_menor_initial_balance=caja_initial_balance,
+            banco_initial_balance=banco_initial_balance,
+            created_by=created_by
         )
 
     async def record_expense_payment(

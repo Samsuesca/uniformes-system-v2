@@ -54,7 +54,7 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
 
   const [formData, setFormData] = useState({
     client_id: '',
-    payment_method: 'cash' as 'cash' | 'credit' | 'transfer' | 'card',
+    payment_method: 'cash' as 'cash' | 'nequi' | 'credit' | 'transfer' | 'card',
     notes: '',
     is_historical: false,
     sale_date: '',  // ISO date string for historical sales
@@ -472,8 +472,9 @@ export default function SaleModal({ isOpen, onClose, onSuccess, initialSchoolId 
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 >
                   <option value="cash">Efectivo</option>
-                  <option value="card">Tarjeta</option>
+                  <option value="nequi">Nequi</option>
                   <option value="transfer">Transferencia</option>
+                  <option value="card">Tarjeta</option>
                   <option value="credit">Crédito</option>
                 </select>
               </div>

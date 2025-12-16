@@ -169,6 +169,31 @@ export interface Client {
 }
 
 // ============================================
+// Payment Method Types
+// ============================================
+
+// Payment methods for sales
+export type PaymentMethod = 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
+
+// Payment method display labels
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: 'Efectivo',
+  nequi: 'Nequi',
+  transfer: 'Transferencia',
+  card: 'Tarjeta',
+  credit: 'Crédito',
+};
+
+// Payment method to account mapping (for UI display)
+export const PAYMENT_METHOD_ACCOUNTS: Record<PaymentMethod, string> = {
+  cash: 'Caja Menor',
+  nequi: 'Nequi',
+  transfer: 'Banco',
+  card: 'Banco',
+  credit: 'Cuenta por Cobrar',
+};
+
+// ============================================
 // Sale Types
 // ============================================
 
@@ -180,7 +205,7 @@ export interface Sale {
   user_id: string;
   status: 'pending' | 'completed' | 'cancelled';
   is_historical: boolean;  // Historical sale (migration data)
-  payment_method: 'cash' | 'credit' | 'transfer' | 'card' | null;
+  payment_method: 'cash' | 'nequi' | 'credit' | 'transfer' | 'card' | null;
   total: number;
   paid_amount: number;
   sale_date: string;
@@ -228,7 +253,7 @@ export interface SaleListItem {
   status: 'pending' | 'completed' | 'cancelled';
   source: 'desktop_app' | 'web_portal' | 'api' | null;
   is_historical: boolean;  // Historical sale (migration data)
-  payment_method: 'cash' | 'credit' | 'transfer' | 'card' | null;
+  payment_method: 'cash' | 'nequi' | 'credit' | 'transfer' | 'card' | null;
   total: number;
   paid_amount: number;
   client_id: string | null;
@@ -416,7 +441,7 @@ export interface OrderCreate {
   notes?: string;
   items: OrderItemCreate[];
   advance_payment?: number;
-  advance_payment_method?: 'cash' | 'transfer' | 'card';
+  advance_payment_method?: 'cash' | 'nequi' | 'transfer' | 'card';
 }
 
 export interface OrderPayment {
@@ -435,7 +460,7 @@ export interface OrderItemStatusUpdate {
 // ============================================
 
 export type TransactionType = 'income' | 'expense' | 'transfer';
-export type AccPaymentMethod = 'cash' | 'transfer' | 'card' | 'credit' | 'other';
+export type AccPaymentMethod = 'cash' | 'nequi' | 'transfer' | 'card' | 'credit' | 'other';
 export type ExpenseCategory = 'rent' | 'utilities' | 'payroll' | 'supplies' | 'inventory' |
                               'transport' | 'maintenance' | 'marketing' | 'taxes' | 'bank_fees' | 'other';
 
@@ -897,4 +922,88 @@ export interface PaginatedResponse<T> {
 
 export interface ApiError {
   detail: string;
+}
+
+// ============================================
+// Caja Menor Types (Cash Register)
+// ============================================
+
+export interface CajaMenorBalance {
+  id: string | null;
+  name: string;
+  code: string;
+  balance: number;
+  last_updated: string | null;
+}
+
+export interface CajaMenorSummary {
+  caja_menor_balance: number;
+  caja_mayor_balance: number;
+  today_liquidations: number;
+  today_entries_count: number;
+  date: string;
+}
+
+export interface LiquidationResult {
+  success: boolean;
+  message: string;
+  caja_menor_balance: number;
+  caja_mayor_balance: number;
+  amount_liquidated: number;
+  entry_from: {
+    id: string;
+    amount: number;
+    balance_after: number;
+    description: string;
+  };
+  entry_to: {
+    id: string;
+    amount: number;
+    balance_after: number;
+    description: string;
+  };
+}
+
+export interface LiquidationHistoryItem {
+  id: string;
+  date: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  reference: string;
+  created_at: string;
+}
+
+// Cash balances response with all accounts
+export interface CashBalances {
+  caja_menor: {
+    id: string;
+    name: string;
+    code: string;
+    balance: number;
+    last_updated: string | null;
+  } | null;
+  caja_mayor: {
+    id: string;
+    name: string;
+    code: string;
+    balance: number;
+    last_updated: string | null;
+  } | null;
+  nequi: {
+    id: string;
+    name: string;
+    code: string;
+    balance: number;
+    last_updated: string | null;
+  } | null;
+  banco: {
+    id: string;
+    name: string;
+    code: string;
+    balance: number;
+    last_updated: string | null;
+  } | null;
+  total_liquid: number;
+  total_cash: number;
 }

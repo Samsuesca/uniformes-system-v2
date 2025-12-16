@@ -32,14 +32,18 @@ export const saleChangeService = {
 
   /**
    * Approve a sale change request (ADMIN only)
+   * @param paymentMethod - Payment method for refunds/additional payments (cash, nequi, transfer, card)
    */
   async approveChange(
     schoolId: string,
     saleId: string,
-    changeId: string
+    changeId: string,
+    paymentMethod?: 'cash' | 'nequi' | 'transfer' | 'card'
   ): Promise<SaleChange> {
+    const data = paymentMethod ? { payment_method: paymentMethod } : undefined;
     const response = await apiClient.patch<SaleChange>(
-      `/schools/${schoolId}/sales/${saleId}/changes/${changeId}/approve`
+      `/schools/${schoolId}/sales/${saleId}/changes/${changeId}/approve`,
+      data
     );
     return response.data;
   },

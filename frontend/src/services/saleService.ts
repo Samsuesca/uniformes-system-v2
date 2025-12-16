@@ -19,7 +19,7 @@ export interface SaleCreate {
   school_id: string;
   client_id?: string | null;
   items: SaleItemCreate[];
-  payment_method: 'cash' | 'credit' | 'transfer' | 'card';
+  payment_method: 'cash' | 'nequi' | 'credit' | 'transfer' | 'card';
   notes?: string;
   source?: 'desktop_app' | 'web_portal' | 'api';
   // Historical sales (migration) - don't affect inventory

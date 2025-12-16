@@ -6,29 +6,26 @@ import Layout from '../components/Layout';
 import {
   Calculator, TrendingUp, TrendingDown, DollarSign, Plus,
   Loader2, AlertCircle, Receipt, X, Building2, Users, Wallet,
-  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle, PiggyBank, Pencil,
+  Landmark, CreditCard, Clock, PiggyBank, Pencil,
   Settings, Trash2, Car, Package
 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import {
-  accountingService,
   getExpenseCategoryLabel,
   getExpenseCategoryColor,
   getPaymentMethodLabel,
-  getCashBalances,
   type CashBalancesResponse
 } from '../services/accountingService';
 import {
   globalAccountingService,
   type GlobalPatrimonySummary,
   type GlobalBalanceAccountCreate,
-  type GlobalBalanceAccountResponse,
-  type GlobalBalanceAccountUpdate
+  type GlobalBalanceAccountResponse
 } from '../services/globalAccountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
 import type {
-  AccountingDashboard, ExpenseListItem,
+  ExpenseListItem,
   ExpenseCreate, ExpenseCategory, AccPaymentMethod,
   ReceivablesPayablesSummary,
   BalanceAccountCreate, AccountType,
@@ -41,6 +38,14 @@ type TabType = 'dashboard' | 'receivables' | 'payables' | 'patrimony';
 
 // Balance Account Modal Type - uses lowercase values to match backend enum (asset_fixed, liability_current, liability_long)
 type BalanceAccountModalType = 'asset_fixed' | 'liability_current' | 'liability_long';
+
+// Global Dashboard Summary (simplified for global accounting)
+interface GlobalDashboardSummary {
+  total_expenses: number;
+  cash_balance: number;
+  expenses_pending: number;
+  transaction_count: number;
+}
 
 // Expense categories and payment methods
 // Helper to extract error message from API response
@@ -66,14 +71,15 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 const PAYMENT_METHODS: AccPaymentMethod[] = ['cash', 'transfer', 'card', 'credit', 'other'];
 
 export default function Accounting() {
-  const { currentSchool } = useSchoolStore();
+  // Note: School store available for future filtering in reports
+  useSchoolStore(); // Keep subscription active for navbar
   const { canAccessAccounting, isSuperuser } = useUserRole();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
 
   // Dashboard data
-  const [dashboard, setDashboard] = useState<AccountingDashboard | null>(null);
+  const [dashboard, setDashboard] = useState<GlobalDashboardSummary | null>(null);
   const [pendingExpenses, setPendingExpenses] = useState<ExpenseListItem[]>([]);
 
   // Receivables/Payables data
@@ -87,10 +93,6 @@ export default function Accounting() {
   // Global Patrimony data
   const [patrimony, setPatrimony] = useState<GlobalPatrimonySummary | null>(null);
 
-  // UI states
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    assets: true, liabilities: true, equity: true
-  });
 
   // Modal states
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -161,13 +163,15 @@ export default function Accounting() {
   const [paymentMethod, setPaymentMethod] = useState<AccPaymentMethod>('cash');
   const [submitting, setSubmitting] = useState(false);
 
-  const schoolId = currentSchool?.id || '';
+  // Note: currentSchool is available if needed for filtering in reports
+  // Global accounting operations don't require a school to be selected
 
   useEffect(() => {
-    if (schoolId && (canAccessAccounting || isSuperuser)) {
+    // Global accounting doesn't require a school to be selected
+    if (canAccessAccounting || isSuperuser) {
       loadData();
     }
-  }, [schoolId, canAccessAccounting, isSuperuser, activeTab]);
+  }, [canAccessAccounting, isSuperuser, activeTab]);
 
   const loadData = async () => {
     try {
@@ -175,22 +179,30 @@ export default function Accounting() {
       setError(null);
 
       if (activeTab === 'dashboard') {
-        // Load dashboard and pending expenses (required)
-        const [dashboardData, pendingData] = await Promise.all([
-          accountingService.getAccountingDashboard(schoolId),
-          accountingService.getPendingExpenses(schoolId)
+        // Load global cash balances and pending expenses
+        const [cashData, pendingData] = await Promise.all([
+          globalAccountingService.getGlobalCashBalances(),
+          globalAccountingService.getPendingGlobalExpenses()
         ]);
-        setDashboard(dashboardData);
+        // Map global cash data to local CashBalancesResponse type
+        setCashBalances({
+          caja: cashData.caja,
+          banco: cashData.banco,
+          total_liquid: cashData.total_liquid
+        });
         setPendingExpenses(pendingData);
 
-        // Load cash balances separately (optional - may not be deployed yet)
-        try {
-          const cashData = await getCashBalances(schoolId);
-          setCashBalances(cashData);
-        } catch (cashErr) {
-          console.warn('Cash balances not available:', cashErr);
-          setCashBalances(null);
-        }
+        // Build dashboard summary from global data
+        const allExpenses = await globalAccountingService.getGlobalExpenses();
+        const totalExpenses = allExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const pendingExpensesAmount = pendingData.reduce((sum, e) => sum + (e.amount - e.amount_paid), 0);
+
+        setDashboard({
+          total_expenses: totalExpenses,
+          cash_balance: cashData.total_liquid,
+          expenses_pending: pendingExpensesAmount,
+          transaction_count: allExpenses.length
+        });
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
         // Use global accounting services for CxC and CxP
         const [receivables, payables] = await Promise.all([
@@ -238,7 +250,15 @@ export default function Accounting() {
     if (!expenseForm.description || !expenseForm.amount || !expenseForm.expense_date) return;
     try {
       setSubmitting(true);
-      await accountingService.createExpense(schoolId, expenseForm as Omit<ExpenseCreate, 'school_id'>);
+      // Use global accounting service - expenses are business-wide by default
+      await globalAccountingService.createGlobalExpense({
+        category: expenseForm.category || 'other',
+        description: expenseForm.description,
+        amount: expenseForm.amount,
+        expense_date: expenseForm.expense_date,
+        vendor: expenseForm.vendor,
+        notes: expenseForm.notes
+      });
       setShowExpenseModal(false);
       resetExpenseForm();
       await loadData();
@@ -254,7 +274,8 @@ export default function Accounting() {
     if (!selectedExpense || paymentAmount <= 0) return;
     try {
       setSubmitting(true);
-      await accountingService.payExpense(schoolId, selectedExpense.id, {
+      // Use global accounting service for expense payment
+      await globalAccountingService.payGlobalExpense(selectedExpense.id, {
         amount: paymentAmount,
         payment_method: paymentMethod
       });
@@ -274,7 +295,13 @@ export default function Accounting() {
     if (!balanceAccountForm.name || !balanceAccountForm.account_type) return;
     try {
       setSubmitting(true);
-      await accountingService.createBalanceAccount(schoolId, balanceAccountForm as BalanceAccountCreate);
+      // Use global accounting service for balance accounts
+      await globalAccountingService.createGlobalBalanceAccount({
+        account_type: balanceAccountForm.account_type,
+        name: balanceAccountForm.name,
+        description: balanceAccountForm.description,
+        balance: balanceAccountForm.balance || 0
+      });
       setShowBalanceAccountModal(false);
       resetBalanceAccountForm();
       await loadData();
@@ -287,7 +314,7 @@ export default function Accounting() {
   };
 
   const handleCreateReceivable = async () => {
-    if (!receivableForm.description || !receivableForm.amount) return;
+    if (!receivableForm.description || !receivableForm.amount || !receivableForm.invoice_date) return;
     try {
       setSubmitting(true);
       // Use global accounting service for CxC (no school_id required)
@@ -295,9 +322,9 @@ export default function Accounting() {
         amount: receivableForm.amount,
         description: receivableForm.description,
         invoice_date: receivableForm.invoice_date,
-        due_date: receivableForm.due_date || null,
-        notes: receivableForm.notes || null,
-        client_id: receivableForm.client_id || null
+        due_date: receivableForm.due_date ?? undefined,
+        notes: receivableForm.notes ?? undefined,
+        client_id: receivableForm.client_id ?? undefined
       });
       setShowReceivableModal(false);
       resetReceivableForm();
@@ -332,7 +359,7 @@ export default function Accounting() {
   };
 
   const handleCreatePayable = async () => {
-    if (!payableForm.vendor || !payableForm.description || !payableForm.amount) return;
+    if (!payableForm.vendor || !payableForm.description || !payableForm.amount || !payableForm.invoice_date) return;
     try {
       setSubmitting(true);
       // Use global accounting service for CxP (no school_id required)
@@ -340,11 +367,11 @@ export default function Accounting() {
         vendor: payableForm.vendor,
         amount: payableForm.amount,
         description: payableForm.description,
-        category: payableForm.category || null,
-        invoice_number: payableForm.invoice_number || null,
+        category: payableForm.category ?? undefined,
+        invoice_number: payableForm.invoice_number ?? undefined,
         invoice_date: payableForm.invoice_date,
-        due_date: payableForm.due_date || null,
-        notes: payableForm.notes || null
+        due_date: payableForm.due_date ?? undefined,
+        notes: payableForm.notes ?? undefined
       });
       setShowPayableModal(false);
       resetPayableForm();
@@ -448,9 +475,6 @@ export default function Accounting() {
   const formatCurrency = (amount: number) => `$${Number(amount).toLocaleString('es-CO')}`;
   const formatDate = (dateStr: string) => formatDateSpanish(dateStr);
 
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
 
   // ============================================
   // Balance Accounts (Fixed Assets / Liabilities) Management
@@ -629,17 +653,18 @@ export default function Accounting() {
   // Render Dashboard Tab
   const renderDashboard = () => (
     <>
-      {/* Summary Cards */}
+      {/* Summary Cards - Global accounting overview */}
       {dashboard && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Ingresos Hoy</p>
-                <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(dashboard.today_income)}</p>
+                <p className="text-sm font-medium text-gray-500">Liquidez Total</p>
+                <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(dashboard.cash_balance)}</p>
+                <p className="text-xs text-gray-400">Caja + Banco</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-green-600" />
+                <Wallet className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
@@ -647,8 +672,9 @@ export default function Accounting() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Gastos Hoy</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(dashboard.today_expenses)}</p>
+                <p className="text-sm font-medium text-gray-500">Gastos Totales</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(dashboard.total_expenses)}</p>
+                <p className="text-xs text-gray-400">{dashboard.transaction_count} registro(s)</p>
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <TrendingDown className="w-6 h-6 text-red-600" />
@@ -659,13 +685,12 @@ export default function Accounting() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Neto del Mes</p>
-                <p className={`text-2xl font-bold mt-1 ${dashboard.month_net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(dashboard.month_net)}
-                </p>
+                <p className="text-sm font-medium text-gray-500">Gastos Pendientes</p>
+                <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(dashboard.expenses_pending)}</p>
+                <p className="text-xs text-gray-400">Por pagar</p>
               </div>
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${dashboard.month_net >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                <DollarSign className={`w-6 h-6 ${dashboard.month_net >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                <Receipt className="w-6 h-6 text-orange-600" />
               </div>
             </div>
           </div>
@@ -673,12 +698,14 @@ export default function Accounting() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Gastos Pendientes</p>
-                <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(dashboard.pending_expenses_amount)}</p>
-                <p className="text-xs text-gray-400">{dashboard.pending_expenses} pendiente(s)</p>
+                <p className="text-sm font-medium text-gray-500">Balance Neto</p>
+                <p className={`text-2xl font-bold mt-1 ${dashboard.cash_balance - dashboard.expenses_pending >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(dashboard.cash_balance - dashboard.expenses_pending)}
+                </p>
+                <p className="text-xs text-gray-400">Liquidez - Pendientes</p>
               </div>
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                <Receipt className="w-6 h-6 text-orange-600" />
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${dashboard.cash_balance - dashboard.expenses_pending >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                <DollarSign className={`w-6 h-6 ${dashboard.cash_balance - dashboard.expenses_pending >= 0 ? 'text-green-600' : 'text-red-600'}`} />
               </div>
             </div>
           </div>
@@ -770,43 +797,31 @@ export default function Accounting() {
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Transactions */}
+        {/* Quick Stats Card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-800">Transacciones Recientes</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Resumen Global</h3>
           </div>
-          <div className="divide-y divide-gray-100">
-            {dashboard?.recent_transactions.length === 0 ? (
-              <div className="px-6 py-8 text-center text-gray-500">No hay transacciones recientes</div>
-            ) : (
-              dashboard?.recent_transactions.slice(0, 8).map((transaction) => (
-                <div key={transaction.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        transaction.type === 'income' ? 'bg-green-100' : 'bg-red-100'
-                      }`}>
-                        {transaction.type === 'income' ? (
-                          <TrendingUp className="w-5 h-5 text-green-600" />
-                        ) : (
-                          <TrendingDown className="w-5 h-5 text-red-600" />
-                        )}
-                      </div>
-                      <div className="ml-4">
-                        <p className="text-sm font-medium text-gray-800">{transaction.description}</p>
-                        <p className="text-xs text-gray-500">
-                          {formatDate(transaction.transaction_date)} - {getPaymentMethodLabel(transaction.payment_method)}
-                        </p>
-                      </div>
-                    </div>
-                    <p className={`text-sm font-semibold ${
-                      transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-600">Total de Gastos Registrados</span>
+                <span className="font-semibold text-gray-800">{dashboard?.transaction_count || 0}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-gray-600">Gastos Pagados</span>
+                <span className="font-semibold text-green-600">{formatCurrency((dashboard?.total_expenses || 0) - (dashboard?.expenses_pending || 0))}</span>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-gray-600">Gastos Por Pagar</span>
+                <span className="font-semibold text-orange-600">{formatCurrency(dashboard?.expenses_pending || 0)}</span>
+              </div>
+            </div>
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-700">
+                💡 <strong>Tip:</strong> Usa la pestaña "Patrimonio" para ver el balance general completo del negocio incluyendo activos, pasivos e inventario.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -861,28 +876,7 @@ export default function Accounting() {
         </div>
       </div>
 
-      {/* Monthly Summary */}
-      {dashboard && (
-        <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Resumen del Mes</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <p className="text-sm text-gray-600 mb-1">Ingresos del Mes</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(dashboard.month_income)}</p>
-            </div>
-            <div className="text-center p-4 bg-red-50 rounded-lg">
-              <p className="text-sm text-gray-600 mb-1">Gastos del Mes</p>
-              <p className="text-2xl font-bold text-red-600">{formatCurrency(dashboard.month_expenses)}</p>
-            </div>
-            <div className={`text-center p-4 rounded-lg ${dashboard.month_net >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
-              <p className="text-sm text-gray-600 mb-1">Utilidad Neta</p>
-              <p className={`text-2xl font-bold ${dashboard.month_net >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                {formatCurrency(dashboard.month_net)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Note: Monthly reports available in the Reports page (coming soon) */}
     </>
   );
 

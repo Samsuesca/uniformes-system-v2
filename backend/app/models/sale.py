@@ -14,6 +14,7 @@ from app.db.base import Base
 class PaymentMethod(str, enum.Enum):
     """Payment methods"""
     CASH = "cash"
+    NEQUI = "nequi"
     TRANSFER = "transfer"
     CARD = "card"
     CREDIT = "credit"

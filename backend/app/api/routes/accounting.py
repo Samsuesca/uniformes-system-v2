@@ -1258,9 +1258,12 @@ async def get_cash_balances(
     Get current cash and bank balances (requires VIEWER role)
 
     Returns:
-        - caja: Current cash balance
+        - caja_menor: Current cash balance (operational)
+        - caja_mayor: Consolidated cash balance
+        - nequi: Nequi balance
         - banco: Current bank account balance
-        - total_liquid: Sum of both
+        - total_liquid: Sum of all
+        - total_cash: Sum of caja_menor + caja_mayor
     """
     from app.services.balance_integration import BalanceIntegrationService
 
@@ -1268,6 +1271,144 @@ async def get_cash_balances(
     balances = await service.get_cash_balances(school_id)
 
     return balances
+
+
+# ============================================
+# Caja Menor - Liquidation to Caja Mayor
+# ============================================
+
+@router.get(
+    "/caja-menor/balance",
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def get_caja_menor_balance(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get current Caja Menor balance (requires SELLER role)
+
+    Returns:
+        - id: Account ID
+        - name: Account name
+        - code: Account code (1101)
+        - balance: Current balance
+        - last_updated: Last update timestamp
+    """
+    from app.services.cash_register import CashRegisterService
+
+    service = CashRegisterService(db)
+    return await service.get_caja_menor_balance()
+
+
+@router.get(
+    "/caja-menor/summary",
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def get_caja_menor_summary(
+    school_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get today's Caja Menor summary (requires SELLER role)
+
+    Returns:
+        - caja_menor_balance: Current Caja Menor balance
+        - caja_mayor_balance: Current Caja Mayor balance
+        - today_liquidations: Total liquidated today
+        - today_entries_count: Number of entries today
+        - date: Today's date
+    """
+    from app.services.cash_register import CashRegisterService
+
+    service = CashRegisterService(db)
+    return await service.get_today_summary()
+
+
+@router.post(
+    "/caja-menor/liquidate",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def liquidate_caja_menor(
+    school_id: UUID,
+    amount: float,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    notes: str | None = None
+):
+    """
+    Liquidate (transfer) from Caja Menor to Caja Mayor (requires ADMIN role)
+
+    Use this at the end of the day to consolidate cash.
+
+    Args:
+        amount: Amount to liquidate
+        notes: Optional notes for the liquidation
+
+    Returns:
+        - success: Whether the operation was successful
+        - message: Status message
+        - caja_menor_balance: New Caja Menor balance
+        - caja_mayor_balance: New Caja Mayor balance
+        - amount_liquidated: Amount transferred
+    """
+    from decimal import Decimal
+    from app.services.cash_register import CashRegisterService
+
+    service = CashRegisterService(db)
+
+    try:
+        result = await service.liquidate_to_caja_mayor(
+            amount=Decimal(str(amount)),
+            notes=notes,
+            created_by=current_user.id
+        )
+        await db.commit()
+        return result
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/caja-menor/liquidation-history",
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def get_liquidation_history(
+    school_id: UUID,
+    db: DatabaseSession,
+    start_date: date = Query(None, description="Start date filter"),
+    end_date: date = Query(None, description="End date filter"),
+    limit: int = Query(50, ge=1, le=200)
+):
+    """
+    Get history of Caja Menor liquidations (requires ADMIN role)
+
+    Args:
+        start_date: Optional start date filter
+        end_date: Optional end date filter
+        limit: Maximum number of records to return
+
+    Returns list of liquidation records with:
+        - id: Entry ID
+        - date: Liquidation date
+        - amount: Amount liquidated
+        - balance_after: Balance after liquidation
+        - description: Notes
+        - reference: Liquidation reference code
+        - created_at: Timestamp
+    """
+    from app.services.cash_register import CashRegisterService
+
+    service = CashRegisterService(db)
+    return await service.get_liquidation_history(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
 
 
 @router.post(

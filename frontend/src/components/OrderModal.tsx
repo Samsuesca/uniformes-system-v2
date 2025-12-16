@@ -70,7 +70,7 @@ export default function OrderModal({
   const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [advancePayment, setAdvancePayment] = useState<number>(0);
-  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'cash' | 'transfer' | 'card'>('cash');
+  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'cash' | 'nequi' | 'transfer' | 'card'>('cash');
   const [items, setItems] = useState<OrderItemForm[]>([]);
 
   // Tab state
@@ -1099,41 +1099,16 @@ export default function OrderModal({
                     {advancePayment > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-200">
                         <label className="block text-xs text-gray-600 mb-2">Método de Pago del Anticipo:</label>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setAdvancePaymentMethod('cash')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
-                              advancePaymentMethod === 'cash'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            💵 Efectivo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAdvancePaymentMethod('transfer')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
-                              advancePaymentMethod === 'transfer'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            🏦 Transferencia
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAdvancePaymentMethod('card')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
-                              advancePaymentMethod === 'card'
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            💳 Tarjeta
-                          </button>
-                        </div>
+                        <select
+                          value={advancePaymentMethod}
+                          onChange={(e) => setAdvancePaymentMethod(e.target.value as any)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        >
+                          <option value="cash">Efectivo</option>
+                          <option value="nequi">Nequi</option>
+                          <option value="transfer">Transferencia</option>
+                          <option value="card">Tarjeta</option>
+                        </select>
                       </div>
                     )}
                   </div>

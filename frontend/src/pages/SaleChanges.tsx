@@ -33,6 +33,11 @@ export default function SaleChanges() {
   const [selectedSale, setSelectedSale] = useState<SaleWithItems | null>(null);
   const [loadingSale, setLoadingSale] = useState(false);
 
+  // Approval modal with payment method selection
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveChangeData, setApproveChangeData] = useState<{ saleId: string; changeId: string; priceAdjustment: number } | null>(null);
+  const [approvePaymentMethod, setApprovePaymentMethod] = useState<'cash' | 'nequi' | 'transfer' | 'card'>('cash');
+
   const schoolId = currentSchool?.id || '';
 
   // Recargar datos cuando cambia el colegio seleccionado
@@ -116,7 +121,25 @@ export default function SaleChanges() {
     }
   };
 
-  const handleApprove = async (saleId: string, changeId: string) => {
+  // Open approval modal to select payment method
+  const handleApproveClick = (change: SaleChangeListItem) => {
+    const priceAdjustment = Number(change.price_adjustment);
+    if (priceAdjustment !== 0) {
+      // Show modal to select payment method for refund or additional payment
+      setApproveChangeData({
+        saleId: change.sale_id,
+        changeId: change.id,
+        priceAdjustment
+      });
+      setApprovePaymentMethod('cash');
+      setShowApproveModal(true);
+    } else {
+      // No price adjustment, approve directly
+      handleApprove(change.sale_id, change.id);
+    }
+  };
+
+  const handleApprove = async (saleId: string, changeId: string, paymentMethod?: 'cash' | 'nequi' | 'transfer' | 'card') => {
     if (!confirm('¿Confirmar aprobación de este cambio? Se ajustará el inventario automáticamente.')) {
       return;
     }
@@ -124,7 +147,9 @@ export default function SaleChanges() {
     try {
       setProcessingId(changeId);
       setError(null);
-      await saleChangeService.approveChange(schoolId, saleId, changeId);
+      setShowApproveModal(false);
+      await saleChangeService.approveChange(schoolId, saleId, changeId, paymentMethod);
+      setApproveChangeData(null);
       await loadAllChanges();
     } catch (err: any) {
       console.error('Error approving change:', err);
@@ -521,7 +546,7 @@ export default function SaleChanges() {
                       {isPending && !isProcessing && (
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => handleApprove(change.sale_id, change.id)}
+                            onClick={() => handleApproveClick(change)}
                             className="text-green-600 hover:text-green-800 p-2 rounded hover:bg-green-50 transition"
                             title="Aprobar"
                           >
@@ -574,6 +599,74 @@ export default function SaleChanges() {
               Crear Cambio/Devolución
             </button>
           )}
+        </div>
+      )}
+
+      {/* Approval Modal with Payment Method Selection */}
+      {showApproveModal && approveChangeData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center">
+                <CheckCircle className="w-6 h-6 mr-2 text-green-600" />
+                Aprobar Cambio
+              </h2>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Price Adjustment Info */}
+              <div className={`p-4 rounded-lg ${approveChangeData.priceAdjustment < 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                <p className="text-sm font-medium mb-1">
+                  {approveChangeData.priceAdjustment < 0 ? 'Reembolso al cliente:' : 'Cobro adicional:'}
+                </p>
+                <p className={`text-2xl font-bold ${approveChangeData.priceAdjustment < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  ${Math.abs(approveChangeData.priceAdjustment).toLocaleString()}
+                </p>
+              </div>
+
+              {/* Payment Method Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {approveChangeData.priceAdjustment < 0 ? 'Método de Reembolso:' : 'Método de Pago:'}
+                </label>
+                <select
+                  value={approvePaymentMethod}
+                  onChange={(e) => setApprovePaymentMethod(e.target.value as 'cash' | 'nequi' | 'transfer' | 'card')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                >
+                  <option value="cash">Efectivo</option>
+                  <option value="nequi">Nequi</option>
+                  <option value="transfer">Transferencia</option>
+                  <option value="card">Tarjeta</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {approveChangeData.priceAdjustment < 0
+                    ? 'Selecciona cómo se realizará el reembolso al cliente'
+                    : 'Selecciona cómo pagará el cliente la diferencia'
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowApproveModal(false);
+                  setApproveChangeData(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleApprove(approveChangeData.saleId, approveChangeData.changeId, approvePaymentMethod)}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Confirmar Aprobación
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Layout>

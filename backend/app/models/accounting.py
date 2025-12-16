@@ -21,10 +21,11 @@ class TransactionType(str, enum.Enum):
 
 class AccPaymentMethod(str, enum.Enum):
     """Payment methods for accounting transactions (extended)"""
-    CASH = "cash"               # Efectivo
-    TRANSFER = "transfer"       # Transferencia bancaria
-    CARD = "card"               # Tarjeta débito/crédito
-    CREDIT = "credit"           # Crédito (fiado)
+    CASH = "cash"               # Efectivo → Caja Menor
+    NEQUI = "nequi"             # Nequi → Cuenta Nequi
+    TRANSFER = "transfer"       # Transferencia bancaria → Banco
+    CARD = "card"               # Tarjeta débito/crédito → Banco
+    CREDIT = "credit"           # Crédito (fiado) → CxC
     OTHER = "other"             # Otro
 
 
