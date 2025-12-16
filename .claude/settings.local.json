@@ -25,7 +25,8 @@
       "Bash(ssh root@104.156.247.226 \"tail -300 /var/log/uniformes/backend.log 2>/dev/null | grep -A5 ''receivables-payables\\|/receivables\\|/payables'' | tail -40\")",
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && cd frontend && npm run build && sudo systemctl restart nginx\")",
       "Bash(ssh root@104.156.247.226 \"tail -500 /var/log/uniformes/backend.log 2>/dev/null | grep -i ''422\\|validation\\|unprocessable'' | tail -20\")",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(ssh root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api\")"
     ],
     "deny": [],
     "ask": []

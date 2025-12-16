@@ -19,16 +19,13 @@ import {
 } from '../services/accountingService';
 import {
   globalAccountingService,
-  type GlobalPatrimonySummary,
-  type GlobalBalanceGeneralSummary,
-  type GlobalBalanceGeneralDetailed
+  type GlobalPatrimonySummary
 } from '../services/globalAccountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
 import type {
   AccountingDashboard, ExpenseListItem,
   ExpenseCreate, ExpenseCategory, AccPaymentMethod,
-  BalanceGeneralSummary, BalanceGeneralDetailed,
   ReceivablesPayablesSummary,
   BalanceAccountCreate, AccountType,
   AccountsReceivableCreate, AccountsReceivableListItem,
@@ -36,7 +33,7 @@ import type {
 } from '../types/api';
 
 // Tabs
-type TabType = 'dashboard' | 'balance' | 'receivables' | 'payables' | 'patrimony';
+type TabType = 'dashboard' | 'receivables' | 'payables' | 'patrimony';
 
 // Expense categories and payment methods
 // Helper to extract error message from API response
@@ -72,9 +69,7 @@ export default function Accounting() {
   const [dashboard, setDashboard] = useState<AccountingDashboard | null>(null);
   const [pendingExpenses, setPendingExpenses] = useState<ExpenseListItem[]>([]);
 
-  // Balance General data
-  const [balanceSummary, setBalanceSummary] = useState<BalanceGeneralSummary | null>(null);
-  const [balanceDetailed, setBalanceDetailed] = useState<BalanceGeneralDetailed | null>(null);
+  // Receivables/Payables data
   const [receivablesPayables, setReceivablesPayables] = useState<ReceivablesPayablesSummary | null>(null);
   const [receivablesList, setReceivablesList] = useState<AccountsReceivableListItem[]>([]);
   const [payablesList, setPayablesList] = useState<AccountsPayableListItem[]>([]);
@@ -169,14 +164,6 @@ export default function Accounting() {
           console.warn('Cash balances not available:', cashErr);
           setCashBalances(null);
         }
-      } else if (activeTab === 'balance') {
-        // Use global accounting services for Balance General (business-wide)
-        const [summary, detailed] = await Promise.all([
-          globalAccountingService.getGlobalBalanceGeneralSummary(),
-          globalAccountingService.getGlobalBalanceGeneralDetailed()
-        ]);
-        setBalanceSummary(summary as unknown as BalanceGeneralSummary);
-        setBalanceDetailed(detailed as unknown as BalanceGeneralDetailed);
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
         // Use global accounting services for CxC and CxP
         const [receivables, payables] = await Promise.all([
@@ -463,7 +450,6 @@ export default function Accounting() {
       <nav className="-mb-px flex space-x-8">
         {[
           { id: 'dashboard', label: 'Dashboard', icon: Calculator },
-          { id: 'balance', label: 'Balance General', icon: Landmark },
           { id: 'receivables', label: 'Cuentas por Cobrar', icon: Users },
           { id: 'payables', label: 'Cuentas por Pagar', icon: Building2 },
           { id: 'patrimony', label: 'Patrimonio', icon: PiggyBank }
@@ -740,311 +726,6 @@ export default function Accounting() {
               </p>
             </div>
           </div>
-        </div>
-      )}
-    </>
-  );
-
-  // Render Balance General Tab
-  const renderBalanceGeneral = () => (
-    <>
-      {/* Balance Summary Cards */}
-      {balanceSummary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-green-700">Activos</h3>
-              <Wallet className="w-6 h-6 text-green-600" />
-            </div>
-            <p className="text-3xl font-bold text-green-600">{formatCurrency(balanceSummary.total_assets)}</p>
-            <div className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Corrientes</span>
-                <span>{formatCurrency(balanceSummary.total_current_assets)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Fijos</span>
-                <span>{formatCurrency(balanceSummary.total_fixed_assets)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Otros</span>
-                <span>{formatCurrency(balanceSummary.total_other_assets)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-red-700">Pasivos</h3>
-              <CreditCard className="w-6 h-6 text-red-600" />
-            </div>
-            <p className="text-3xl font-bold text-red-600">{formatCurrency(balanceSummary.total_liabilities)}</p>
-            <div className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Corrientes</span>
-                <span>{formatCurrency(balanceSummary.total_current_liabilities)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Largo Plazo</span>
-                <span>{formatCurrency(balanceSummary.total_long_liabilities)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Otros</span>
-                <span>{formatCurrency(balanceSummary.total_other_liabilities)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-blue-700">Patrimonio</h3>
-              <Landmark className="w-6 h-6 text-blue-600" />
-            </div>
-            <p className="text-3xl font-bold text-blue-600">{formatCurrency(balanceSummary.total_equity)}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Balance Equation Check */}
-      {balanceSummary && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 mb-8">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Ecuaci&oacute;n Contable</h3>
-          <div className="flex items-center justify-center gap-4 text-lg">
-            <div className="text-center">
-              <p className="text-sm text-gray-500">Activos</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(balanceSummary.total_assets)}</p>
-            </div>
-            <span className="text-2xl text-gray-400">=</span>
-            <div className="text-center">
-              <p className="text-sm text-gray-500">Pasivos</p>
-              <p className="text-2xl font-bold text-red-600">{formatCurrency(balanceSummary.total_liabilities)}</p>
-            </div>
-            <span className="text-2xl text-gray-400">+</span>
-            <div className="text-center">
-              <p className="text-sm text-gray-500">Patrimonio</p>
-              <p className="text-2xl font-bold text-blue-600">{formatCurrency(balanceSummary.total_equity)}</p>
-            </div>
-          </div>
-          <div className="text-center mt-4">
-            {balanceSummary.is_balanced ? (
-              <span className="text-green-600 flex items-center justify-center gap-2">
-                <CheckCircle className="w-5 h-5" /> Balance cuadrado correctamente
-              </span>
-            ) : (
-              <span className="text-red-600 flex items-center justify-center gap-2">
-                <AlertCircle className="w-5 h-5" /> Diferencia detectada
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Detailed Balance Sections */}
-      {balanceDetailed && (
-        <div className="space-y-6">
-          {/* Assets Section */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <button
-              onClick={() => toggleSection('assets')}
-              className="w-full px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50"
-            >
-              <div className="flex items-center gap-3">
-                {expandedSections.assets ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                <h3 className="text-lg font-semibold text-green-700">Activos</h3>
-              </div>
-              <span className="text-xl font-bold text-green-600">{formatCurrency(balanceDetailed.total_assets)}</span>
-            </button>
-            {expandedSections.assets && (
-              <div className="p-6 space-y-6">
-                {/* Current Assets */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">{balanceDetailed.current_assets.account_type_label}</h4>
-                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.current_assets.total)}</span>
-                  </div>
-                  {balanceDetailed.current_assets.accounts.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.current_assets.accounts.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Fixed Assets */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">{balanceDetailed.fixed_assets.account_type_label}</h4>
-                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.fixed_assets.total)}</span>
-                  </div>
-                  {balanceDetailed.fixed_assets.accounts.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.fixed_assets.accounts.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Other Assets */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">{balanceDetailed.other_assets.account_type_label}</h4>
-                    <span className="font-semibold text-green-600">{formatCurrency(balanceDetailed.other_assets.total)}</span>
-                  </div>
-                  {balanceDetailed.other_assets.accounts.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.other_assets.accounts.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Liabilities Section */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <button
-              onClick={() => toggleSection('liabilities')}
-              className="w-full px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50"
-            >
-              <div className="flex items-center gap-3">
-                {expandedSections.liabilities ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                <h3 className="text-lg font-semibold text-red-700">Pasivos</h3>
-              </div>
-              <span className="text-xl font-bold text-red-600">{formatCurrency(balanceDetailed.total_liabilities)}</span>
-            </button>
-            {expandedSections.liabilities && (
-              <div className="p-6 space-y-6">
-                {/* Current Liabilities */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">{balanceDetailed.current_liabilities.account_type_label}</h4>
-                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.current_liabilities.total)}</span>
-                  </div>
-                  {balanceDetailed.current_liabilities.accounts.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.current_liabilities.accounts.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Long-term Liabilities */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">{balanceDetailed.long_liabilities.account_type_label}</h4>
-                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.long_liabilities.total)}</span>
-                  </div>
-                  {balanceDetailed.long_liabilities.accounts.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.long_liabilities.accounts.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Other Liabilities */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-700">{balanceDetailed.other_liabilities.account_type_label}</h4>
-                    <span className="font-semibold text-red-600">{formatCurrency(balanceDetailed.other_liabilities.total)}</span>
-                  </div>
-                  {balanceDetailed.other_liabilities.accounts.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceDetailed.other_liabilities.accounts.map(account => (
-                        <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700">{account.name}</span>
-                          <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Equity Section */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <button
-              onClick={() => toggleSection('equity')}
-              className="w-full px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50"
-            >
-              <div className="flex items-center gap-3">
-                {expandedSections.equity ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                <h3 className="text-lg font-semibold text-blue-700">Patrimonio</h3>
-              </div>
-              <span className="text-xl font-bold text-blue-600">{formatCurrency(balanceDetailed.total_equity)}</span>
-            </button>
-            {expandedSections.equity && (
-              <div className="p-6 space-y-6">
-                {balanceDetailed.equity.map((equityGroup) => (
-                  <div key={equityGroup.account_type}>
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium text-gray-700">{equityGroup.account_type_label}</h4>
-                      <span className="font-semibold text-blue-600">{formatCurrency(equityGroup.total)}</span>
-                    </div>
-                    {equityGroup.accounts.length === 0 ? (
-                      <p className="text-gray-400 text-sm">Sin cuentas registradas</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {equityGroup.accounts.map(account => (
-                          <div key={account.id} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
-                            <span className="text-sm text-gray-700">{account.name}</span>
-                            <span className="text-sm font-medium">{formatCurrency(account.net_value)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Empty state message */}
-      {!balanceDetailed && !loading && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Landmark className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">Sin cuentas de balance</h3>
-          <p className="text-gray-500 mb-6">Comienza agregando activos, pasivos o patrimonio para visualizar tu balance general.</p>
-          <button
-            onClick={() => setShowBalanceAccountModal(true)}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Agregar Cuenta
-          </button>
         </div>
       )}
     </>
@@ -1461,17 +1142,6 @@ export default function Accounting() {
         </button>
       );
     }
-    if (activeTab === 'balance') {
-      return (
-        <button
-          onClick={() => setShowBalanceAccountModal(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Nueva Cuenta
-        </button>
-      );
-    }
     return null;
   };
 
@@ -1527,7 +1197,6 @@ export default function Accounting() {
 
       {/* Tab Content */}
       {activeTab === 'dashboard' && renderDashboard()}
-      {activeTab === 'balance' && renderBalanceGeneral()}
       {activeTab === 'receivables' && renderReceivables()}
       {activeTab === 'payables' && renderPayables()}
       {activeTab === 'patrimony' && renderPatrimony()}
