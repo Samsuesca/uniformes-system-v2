@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X } from 'lucide-react';
+import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { productsApi, schoolsApi, type Product, type School, getProductImage } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 import { formatNumber } from '@/lib/utils';
@@ -22,6 +22,16 @@ export default function CatalogPage() {
     const [categories, setCategories] = useState<string[]>(['all']);
     const [sizes, setSizes] = useState<string[]>([]);
     const [mounted, setMounted] = useState(false);
+
+    // Search state
+    const [searchQuery, setSearchQuery] = useState('');
+    const [globalSearch, setGlobalSearch] = useState(false);
+    const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
+    const [showInStock, setShowInStock] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
+    const [searchHistory, setSearchHistory] = useState<string[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [priceStats, setPriceStats] = useState<{ min_price: number; max_price: number } | null>(null);
 
     const { addItem, getTotalItems } = useCartStore();
 
@@ -49,6 +59,70 @@ export default function CatalogPage() {
     useEffect(() => {
         loadAllProducts();
     }, [schoolSlug]);
+
+    // Load search history from localStorage on mount
+    useEffect(() => {
+        const history = localStorage.getItem(`search_history_${schoolSlug}`);
+        if (history) {
+            try {
+                setSearchHistory(JSON.parse(history));
+            } catch (e) {
+                console.error('Failed to load search history:', e);
+            }
+        }
+    }, [schoolSlug]);
+
+    // Load price stats when school is loaded
+    useEffect(() => {
+        if (school) {
+            productsApi.getStats(school.id)
+                .then(stats => {
+                    setPriceStats(stats);
+                    setPriceRange([stats.min_price, stats.max_price]);
+                })
+                .catch(err => console.error('Failed to load price stats:', err));
+        }
+    }, [school]);
+
+    // Debounced search effect
+    useEffect(() => {
+        if (!school) return;
+
+        const timer = setTimeout(async () => {
+            if (searchQuery.trim().length > 0) {
+                setIsSearching(true);
+                try {
+                    const results = await productsApi.search(school.id, {
+                        query: searchQuery,
+                        category: filter !== 'all' ? filter : undefined,
+                        size: sizeFilter !== 'all' ? sizeFilter : undefined,
+                        min_price: priceRange[0],
+                        max_price: priceRange[1],
+                        in_stock: showInStock || undefined,
+                        global_search: globalSearch
+                    });
+
+                    // Update products with search results
+                    setProducts(results);
+                    setGlobalProducts([]); // Clear global products when searching
+
+                    // Save to search history
+                    const newHistory = [searchQuery, ...searchHistory.filter(q => q !== searchQuery)].slice(0, 10);
+                    setSearchHistory(newHistory);
+                    localStorage.setItem(`search_history_${schoolSlug}`, JSON.stringify(newHistory));
+                } catch (error) {
+                    console.error('Search error:', error);
+                } finally {
+                    setIsSearching(false);
+                }
+            } else if (searchQuery.length === 0) {
+                // Clear search - reload all products
+                loadAllProducts();
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [searchQuery, filter, sizeFilter, priceRange, showInStock, globalSearch, school]);
 
     const loadAllProducts = async () => {
         try {
@@ -236,6 +310,157 @@ export default function CatalogPage() {
                 </div>
             </header>
 
+            {/* Search Bar Section */}
+            <div className="bg-white border-b border-surface-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                    <div className="mb-4 space-y-4">
+                        {/* Main Search Input */}
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Buscar productos por nombre, descripción..."
+                                className="w-full pl-12 pr-12 py-3 text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent shadow-sm"
+                            />
+                            {isSearching && (
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                    <div className="animate-spin w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full" />
+                                </div>
+                            )}
+                            {searchQuery && !isSearching && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Search Options Row */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <button
+                                onClick={() => setShowFilters(!showFilters)}
+                                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                <SlidersHorizontal className="w-4 h-4" />
+                                <span className="text-sm font-medium">Filtros Avanzados</span>
+                                {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+
+                            <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={globalSearch}
+                                    onChange={(e) => setGlobalSearch(e.target.checked)}
+                                    className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
+                                />
+                                <Globe className="w-4 h-4 text-gray-600" />
+                                <span className="text-sm font-medium">Buscar en todos los colegios</span>
+                            </label>
+
+                            {searchQuery && (
+                                <div className="text-sm text-gray-600">
+                                    {allProducts.length} resultado{allProducts.length !== 1 ? 's' : ''}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Search History */}
+                        {!searchQuery && searchHistory.length > 0 && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <Clock className="w-4 h-4 text-gray-400" />
+                                <span className="text-xs text-gray-500">Búsquedas recientes:</span>
+                                {searchHistory.slice(0, 5).map((query, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setSearchQuery(query)}
+                                        className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                                    >
+                                        {query}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Advanced Filters Panel */}
+                    {showFilters && priceStats && (
+                        <div className="mb-4 p-6 border border-gray-200 rounded-xl bg-gray-50 space-y-6">
+                            {/* Price Range Slider */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                                    Rango de Precio
+                                </label>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+                                        <span>${priceRange[0].toLocaleString()}</span>
+                                        <span>${priceRange[1].toLocaleString()}</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">Precio Mínimo</label>
+                                            <input
+                                                type="range"
+                                                min={priceStats.min_price}
+                                                max={priceStats.max_price}
+                                                value={priceRange[0]}
+                                                onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">Precio Máximo</label>
+                                            <input
+                                                type="range"
+                                                min={priceStats.min_price}
+                                                max={priceStats.max_price}
+                                                value={priceRange[1]}
+                                                onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Stock Filter */}
+                            <div>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={showInStock}
+                                        onChange={(e) => setShowInStock(e.target.checked)}
+                                        className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
+                                    />
+                                    <Package className="w-4 h-4 text-gray-600" />
+                                    <span className="text-sm font-medium text-gray-700">Solo productos en stock</span>
+                                </label>
+                            </div>
+
+                            {/* Clear Filters Button */}
+                            <button
+                                onClick={() => {
+                                    if (priceStats) {
+                                        setPriceRange([priceStats.min_price, priceStats.max_price]);
+                                    }
+                                    setShowInStock(false);
+                                    setSearchQuery('');
+                                    setFilter('all');
+                                    setSizeFilter('all');
+                                    setGlobalSearch(false);
+                                }}
+                                className="w-full px-4 py-2 text-sm font-medium text-brand-600 border border-brand-600 rounded-lg hover:bg-brand-50 transition-colors"
+                            >
+                                Limpiar todos los filtros
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Category Filters */}
             {categories.length > 1 && (
                 <div className="bg-white border-b border-surface-200">
@@ -313,7 +538,39 @@ export default function CatalogPage() {
                     </div>
                 ) : filteredProducts.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-xl border border-surface-200">
-                        <p className="text-slate-600">No hay productos disponibles</p>
+                        {searchQuery ? (
+                            <>
+                                <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                                    No se encontraron productos
+                                </h3>
+                                <p className="text-gray-500 mb-4">
+                                    No hay resultados para "{searchQuery}"
+                                    {globalSearch && ' en ningún colegio'}
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        setSearchQuery('');
+                                        setGlobalSearch(false);
+                                    }}
+                                    className="text-brand-600 hover:text-brand-700 font-medium"
+                                >
+                                    Limpiar búsqueda
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                                    No hay productos disponibles
+                                </h3>
+                                <p className="text-gray-500">
+                                    {filter !== 'all' || sizeFilter !== 'all'
+                                        ? 'Intenta cambiar los filtros para ver más productos'
+                                        : 'No hay productos en el catálogo actualmente'}
+                                </p>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

@@ -149,6 +149,126 @@ export const productsApi = {
     apiClient.get<Product>(`/schools/${schoolId}/products/${productId}`),
   listGlobal: (params?: { with_inventory?: boolean; limit?: number }) =>
     apiClient.get<Product[]>('/global/products', { params }),
+
+  // Search products with filters
+  search: async (schoolId: string, params: {
+    query?: string;
+    category?: string;
+    size?: string;
+    min_price?: number;
+    max_price?: number;
+    in_stock?: boolean;
+    global_search?: boolean;
+  }): Promise<Product[]> => {
+    const { global_search, query, category, size, min_price, max_price, in_stock } = params;
+
+    // If no search query, just use the regular list endpoint with filters
+    if (!query || query.trim().length === 0) {
+      const response = await apiClient.get<Product[]>('/products', {
+        params: {
+          school_id: schoolId,
+          with_stock: true,
+          is_active: true
+        }
+      });
+      let results = response.data;
+
+      // Apply client-side filters since backend doesn't support all filters in search
+      if (category && category !== 'all') {
+        const categoryLower = category.toLowerCase();
+        results = results.filter(p => {
+          const name = p.name.toLowerCase();
+          if (categoryLower === 'camisas') return name.includes('camisa') || name.includes('blusa') || name.includes('camiseta');
+          if (categoryLower === 'chompas') return name.includes('chompa');
+          if (categoryLower === 'pantalones') return name.includes('pantalon') || name.includes('falda');
+          if (categoryLower === 'sudaderas') return name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta');
+          if (categoryLower === 'yomber') return name.includes('yomber');
+          if (categoryLower === 'calzado') return name.includes('zapato') || name.includes('tennis') || name.includes('media') || name.includes('jean');
+          return false;
+        });
+      }
+
+      if (size && size !== 'all') {
+        results = results.filter(p => p.size === size);
+      }
+
+      if (min_price !== undefined || max_price !== undefined) {
+        results = results.filter(p => {
+          const price = p.price;
+          if (min_price !== undefined && price < min_price) return false;
+          if (max_price !== undefined && price > max_price) return false;
+          return true;
+        });
+      }
+
+      if (in_stock) {
+        results = results.filter(p => (p.stock ?? p.stock_quantity ?? p.inventory_quantity ?? 0) > 0);
+      }
+
+      return results;
+    }
+
+    // Use backend search endpoint if query exists
+    const url = global_search
+      ? '/global/products/search'
+      : `/schools/${schoolId}/products/search/by-term`;
+
+    const response = await apiClient.get<Product[]>(url, {
+      params: { q: query, limit: 100 }
+    });
+    let results = response.data;
+
+    // Apply client-side filters to search results
+    if (category && category !== 'all') {
+      const categoryLower = category.toLowerCase();
+      results = results.filter(p => {
+        const name = p.name.toLowerCase();
+        if (categoryLower === 'camisas') return name.includes('camisa') || name.includes('blusa') || name.includes('camiseta');
+        if (categoryLower === 'chompas') return name.includes('chompa');
+        if (categoryLower === 'pantalones') return name.includes('pantalon') || name.includes('falda');
+        if (categoryLower === 'sudaderas') return name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta');
+        if (categoryLower === 'yomber') return name.includes('yomber');
+        if (categoryLower === 'calzado') return name.includes('zapato') || name.includes('tennis') || name.includes('media') || name.includes('jean');
+        return false;
+      });
+    }
+
+    if (size && size !== 'all') {
+      results = results.filter(p => p.size === size);
+    }
+
+    if (min_price !== undefined || max_price !== undefined) {
+      results = results.filter(p => {
+        const price = p.price;
+        if (min_price !== undefined && price < min_price) return false;
+        if (max_price !== undefined && price > max_price) return false;
+        return true;
+      });
+    }
+
+    if (in_stock) {
+      results = results.filter(p => (p.stock ?? p.stock_quantity ?? p.inventory_quantity ?? 0) > 0);
+    }
+
+    return results;
+  },
+
+  // Get price statistics for a school's products
+  getStats: async (schoolId: string): Promise<{ min_price: number; max_price: number }> => {
+    const response = await apiClient.get<Product[]>('/products', {
+      params: { school_id: schoolId, with_stock: true }
+    });
+    const products = response.data;
+
+    if (products.length === 0) {
+      return { min_price: 0, max_price: 100000 };
+    }
+
+    return {
+      min_price: Math.min(...products.map(p => p.price)),
+      max_price: Math.max(...products.map(p => p.price))
+    };
+  },
 };
 
 // Clients (Web Portal Registration)
