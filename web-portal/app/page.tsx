@@ -63,9 +63,9 @@ export default function Home() {
       <div className="bg-gradient-to-r from-primary to-primary-light text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Logo" className="h-12 w-auto" />
-              <span className="text-2xl font-bold font-display text-brand-500">Uniformes Consuelo Rios</span>
+            <div className="flex items-center gap-4">
+              <img src="/logo.png" alt="Uniformes Consuelo Rios" className="h-16 sm:h-20 w-auto" />
+              <span className="text-xl sm:text-2xl font-bold font-display text-brand-500 hidden sm:block">Uniformes Consuelo Rios</span>
             </div>
 
             {/* Auth Section */}
