@@ -108,8 +108,8 @@ class Client(Base):
 
     @property
     def can_login(self) -> bool:
-        """Check if client can login to web portal"""
-        return self.is_web_client and self.is_verified and self.password_hash is not None
+        """Check if client can login to web portal (WEB or REGULAR with password)"""
+        return self.is_verified and self.password_hash is not None
 
 
 class ClientStudent(Base):

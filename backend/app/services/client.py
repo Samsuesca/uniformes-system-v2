@@ -58,6 +58,7 @@ class ClientService(BaseService[Client]):
     ) -> Client:
         """
         Create a new regular client (by staff).
+        If email provided, sends activation link.
 
         Args:
             client_data: Client creation data
@@ -73,6 +74,13 @@ class ClientService(BaseService[Client]):
         client_dict['code'] = code
         client_dict['client_type'] = ClientType.REGULAR
 
+        # Generate activation token if email provided
+        activation_token = None
+        if client_data.email:
+            activation_token = secrets.token_urlsafe(32)
+            client_dict['verification_token'] = activation_token
+            client_dict['verification_token_expires'] = datetime.utcnow() + timedelta(days=7)
+
         # Create the client
         client = await self.create(client_dict)
 
@@ -83,6 +91,12 @@ class ClientService(BaseService[Client]):
 
         # Refresh to load relationships
         await self.db.refresh(client, ['students'])
+
+        # Send activation email (async, don't block on failure)
+        if client.email and activation_token:
+            from app.services.email import send_activation_email
+            send_activation_email(client.email, activation_token, client.name)
+
         return client
 
     async def register_web_client(

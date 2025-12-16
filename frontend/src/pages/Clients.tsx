@@ -2,6 +2,7 @@
  * Clients Page - List and manage clients with full CRUD
  */
 import { useEffect, useState } from 'react';
+import toast, { Toaster } from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { Users, Plus, Search, AlertCircle, Loader2, Mail, Phone, User, Edit2, Trash2, X, Save } from 'lucide-react';
 import { clientService } from '../services/clientService';
@@ -148,8 +149,19 @@ export default function Clients() {
 
       if (modalMode === 'create') {
         await clientService.createClient(schoolId, dataToSend);
+
+        // Notify if activation email was sent
+        if (dataToSend.email) {
+          toast.success(
+            `Cliente creado. Email de activación enviado a ${dataToSend.email}`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success('Cliente creado exitosamente');
+        }
       } else if (selectedClient) {
         await clientService.updateClient(schoolId, selectedClient.id, dataToSend);
+        toast.success('Cliente actualizado exitosamente');
       }
 
       handleCloseModal();
@@ -187,6 +199,7 @@ export default function Clients() {
 
   return (
     <Layout>
+      <Toaster position="top-right" />
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Clientes</h1>

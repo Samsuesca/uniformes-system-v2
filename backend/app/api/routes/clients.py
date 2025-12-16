@@ -9,10 +9,11 @@ This module provides endpoints for:
 """
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Query, Depends
+from sqlalchemy import select
 
 from app.api.dependencies import DatabaseSession, CurrentUser, get_current_user
 from app.models.user import UserRole, User
-from app.models.client import ClientType
+from app.models.client import ClientType, Client
 from app.schemas.client import (
     ClientCreate,
     ClientUpdate,
@@ -871,4 +872,64 @@ async def confirm_email_verification(
         "message": "Email verificado exitosamente",
         "email": email,
         "verified": True
+    }
+
+
+@web_router.post("/activate-account")
+async def activate_account(
+    data: dict,  # {token: str, password: str}
+    db: DatabaseSession
+):
+    """
+    Activate a REGULAR client account using token from activation email.
+    Sets password and marks as verified.
+    """
+    token = data.get("token")
+    password = data.get("password")
+
+    if not token or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token y contraseña son requeridos"
+        )
+
+    # Validate password strength
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña debe tener al menos 8 caracteres"
+        )
+
+    # Find client by token
+    result = await db.execute(
+        select(Client).where(
+            Client.verification_token == token,
+            Client.verification_token_expires > datetime.utcnow(),
+            Client.client_type == ClientType.REGULAR
+        )
+    )
+    client = result.scalar_one_or_none()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido o expirado. Solicita un nuevo enlace de activación."
+        )
+
+    # Set password and verify
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    client.password_hash = pwd_context.hash(password)
+    client.is_verified = True
+    client.verification_token = None  # Clear token after use
+    client.verification_token_expires = None
+
+    await db.commit()
+    await db.refresh(client)
+
+    return {
+        "message": "Cuenta activada exitosamente",
+        "email": client.email,
+        "name": client.name
     }

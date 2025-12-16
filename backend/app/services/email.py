@@ -160,3 +160,79 @@ def send_password_reset_email(email: str, code: str, name: str = "Usuario") -> b
     except Exception as e:
         print(f"Error sending password reset email: {e}")
         return False
+
+
+def send_activation_email(email: str, token: str, name: str) -> bool:
+    """
+    Send account activation email to REGULAR client with token link.
+    Token expires in 7 days.
+    """
+    if not settings.RESEND_API_KEY:
+        print(f"[DEV] Activation link for {name} ({email}): {settings.FRONTEND_URL}/activar-cuenta/{token}")
+        return True
+
+    try:
+        resend.api_key = settings.RESEND_API_KEY
+
+        activation_link = f"{settings.FRONTEND_URL}/activar-cuenta/{token}"
+
+        params = {
+            "from": settings.EMAIL_FROM,
+            "to": [email],
+            "subject": "¡Tu cuenta en Uniformes Consuelo Rios está lista!",
+            "html": f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                </head>
+                <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+                    <div style="max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <!-- Header -->
+                        <div style="background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%); padding: 40px 20px; text-align: center;">
+                            <h1 style="color: #C9A227; margin: 0; font-size: 28px;">Uniformes Consuelo Rios</h1>
+                        </div>
+
+                        <!-- Content -->
+                        <div style="padding: 40px 30px; background-color: #f9fafb;">
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0;">¡Hola {name}!</h2>
+
+                            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
+                                Hemos creado una cuenta para ti en nuestro portal web. Ahora puedes consultar el estado de tus pedidos en línea cuando quieras.
+                            </p>
+
+                            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 30px 0;">
+                                Para activar tu cuenta y elegir una contraseña, haz clic en el botón:
+                            </p>
+
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{activation_link}"
+                                   style="display: inline-block; background-color: #C9A227; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">
+                                    Activar Mi Cuenta
+                                </a>
+                            </div>
+
+                            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+                                Este enlace expira en 7 días. Si no solicitaste esta cuenta, puedes ignorar este mensaje.
+                            </p>
+                        </div>
+
+                        <!-- Footer -->
+                        <div style="background-color: #1f2937; padding: 20px; text-align: center;">
+                            <p style="color: #9ca3af; margin: 0; font-size: 12px;">
+                                © 2025 Uniformes Consuelo Rios. Todos los derechos reservados.
+                            </p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            """
+        }
+
+        resend.Emails.send(params)
+        print(f"✅ Activation email sent to {email}")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error sending activation email to {email}: {e}")
+        return False
