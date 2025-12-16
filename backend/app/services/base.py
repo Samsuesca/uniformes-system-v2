@@ -244,17 +244,14 @@ class SchoolIsolatedService(BaseService[ModelType]):
         if not update_data:
             return existing
 
-        await self.db.execute(
-            update(self.model)
-            .where(
-                self.model.id == id,
-                self.model.school_id == school_id
-            )
-            .values(**update_data)
-        )
-        await self.db.flush()
+        # Apply updates directly to the object
+        for field, value in update_data.items():
+            setattr(existing, field, value)
 
-        return await self.get(id, school_id)
+        await self.db.flush()
+        await self.db.refresh(existing)
+
+        return existing
 
     async def delete(self, id: UUID, school_id: UUID) -> bool:
         """Delete record ensuring school_id isolation"""
