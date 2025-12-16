@@ -38,7 +38,7 @@ from app.services.email import send_verification_email, send_welcome_email
 
 # In-memory store for verification codes (in production, use Redis)
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 phone_verification_codes: dict[str, tuple[str, datetime]] = {}
 email_verification_codes: dict[str, tuple[str, datetime]] = {}
 verified_emails: dict[str, datetime] = {}  # email -> expiry_time
@@ -46,7 +46,7 @@ verified_emails: dict[str, datetime] = {}  # email -> expiry_time
 
 def cleanup_expired_data():
     """Remove expired verification codes and verified emails"""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()  # Use utcnow() to match existing code
 
     # Clean expired verification codes
     expired_codes = [email for email, (_, expiry) in email_verification_codes.items() if expiry < now]
@@ -476,7 +476,7 @@ async def register_web_client(
 
     # Check if email was verified via OTP
     email = registration_data.email.lower().strip()
-    email_verified = email in verified_emails and verified_emails[email] > datetime.now(timezone.utc)
+    email_verified = email in verified_emails and verified_emails[email] > datetime.utcnow()
 
     try:
         client = await client_service.register_web_client(registration_data)
@@ -865,7 +865,7 @@ async def confirm_email_verification(
     del email_verification_codes[email]
 
     # Mark email as verified for 30 minutes (time to complete registration)
-    verified_emails[email] = datetime.now(timezone.utc) + timedelta(minutes=30)
+    verified_emails[email] = datetime.utcnow() + timedelta(minutes=30)
 
     return {
         "message": "Email verificado exitosamente",
