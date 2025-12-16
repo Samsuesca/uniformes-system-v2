@@ -807,8 +807,8 @@ async def reject_payment(
     school_id: UUID,
     order_id: UUID,
     rejection_notes: str = Query(..., description="Reason for rejection"),
-    db: DatabaseSession = Depends(),
-    current_user: CurrentUser = Depends()
+    db: DatabaseSession,
+    current_user: CurrentUser
 ):
     """
     Reject payment proof for an order.
