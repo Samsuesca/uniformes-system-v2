@@ -160,9 +160,9 @@ export default function Home() {
               // Map school slug to logo filename
               const getSchoolLogo = (slug: string) => {
                 const logoMap: Record<string, string> = {
-                  'caracas': 'caracas.jpg',
-                  'el-pinal': 'pinal.jpeg',
-                  'alfonso-lopez-pumarejo': 'pumarejo.jpeg',
+                  'instituci-n-educativa-caracas': 'caracas.jpg',
+                  'instituci-n-educativa-el-pinal': 'pinal.jpeg',
+                  'instituci-n-educativa-alfonso-l-pez-pumarejo': 'pumarejo.jpeg',
                 };
                 return logoMap[slug] || null;
               };
