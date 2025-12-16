@@ -14,6 +14,8 @@ from app.models.contact import ContactType, ContactStatus
 
 class ContactBase(BaseModel):
     """Base schema for Contact"""
+    model_config = ConfigDict(use_enum_values=True)
+
     name: str = Field(..., min_length=2, max_length=150)
     email: EmailStr
     phone: Optional[str] = Field(None, max_length=20)
