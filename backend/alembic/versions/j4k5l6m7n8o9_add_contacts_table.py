@@ -18,18 +18,26 @@ depends_on = None
 
 
 def upgrade():
-    # Create ContactType enum
+    # Create ContactType enum (IF NOT EXISTS)
     op.execute("""
-        CREATE TYPE contacttype AS ENUM (
-            'inquiry', 'request', 'complaint', 'claim', 'suggestion'
-        )
+        DO $$ BEGIN
+            CREATE TYPE contacttype AS ENUM (
+                'inquiry', 'request', 'complaint', 'claim', 'suggestion'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
-    # Create ContactStatus enum
+    # Create ContactStatus enum (IF NOT EXISTS)
     op.execute("""
-        CREATE TYPE contactstatus AS ENUM (
-            'pending', 'in_review', 'resolved', 'closed'
-        )
+        DO $$ BEGIN
+            CREATE TYPE contactstatus AS ENUM (
+                'pending', 'in_review', 'resolved', 'closed'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
     # Create contacts table
