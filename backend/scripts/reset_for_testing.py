@@ -40,10 +40,12 @@ async def reset_database():
             print("🔄 INICIANDO RESET DE BASE DE DATOS PARA PRUEBAS")
             print("="*60 + "\n")
 
-            # 1. Eliminar sale_items y sale_changes primero (dependencias)
+            # 1. Eliminar sale_changes ANTES de sale_items (sale_changes tiene FK a sale_items)
+            print("🔄 Eliminando cambios/devoluciones...")
+            await db.execute(text("DELETE FROM sale_changes"))
+
             print("📦 Eliminando items de ventas...")
             await db.execute(text("DELETE FROM sale_items"))
-            await db.execute(text("DELETE FROM sale_changes"))
 
             # 2. Eliminar ventas
             print("🛒 Eliminando ventas...")
