@@ -16,12 +16,15 @@ import {
   Building2,
   ArrowRight,
   RefreshCw,
-  DollarSign
+  DollarSign,
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { dashboardService } from '../services/dashboardService';
 import { saleService } from '../services/saleService';
 import { productService } from '../services/productService';
+import { contactService, type Contact } from '../services/contactService';
 import type { AggregatedDashboardStats, SchoolStats } from '../services/dashboardService';
 import type { SaleListItem, Product } from '../types/api';
 
@@ -42,6 +45,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<AggregatedDashboardStats | null>(null);
   const [recentSales, setRecentSales] = useState<SaleListItem[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+  const [recentContacts, setRecentContacts] = useState<Contact[]>([]);
+  const [unreadContactsCount, setUnreadContactsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,14 +74,20 @@ export default function Dashboard() {
         code: s.code
       }));
 
-      const [aggregatedStats, salesData, productsData] = await Promise.all([
+      const [aggregatedStats, salesData, productsData, contactsData] = await Promise.all([
         dashboardService.getAggregatedStats(schoolsForStats),
         saleService.getAllSales({ limit: 5 }).catch(() => []),
-        productService.getAllProducts({ with_stock: true, limit: 100 }).catch(() => [])
+        productService.getAllProducts({ with_stock: true, limit: 100 }).catch(() => []),
+        contactService.getContacts({ page: 1, page_size: 5, unread_only: false }).catch(() => ({ items: [], total: 0, page: 1, page_size: 5, total_pages: 0 }))
       ]);
 
       setStats(aggregatedStats);
       setRecentSales(salesData);
+      setRecentContacts(contactsData.items);
+
+      // Count unread contacts
+      const unreadCount = contactsData.items.filter(c => !c.is_read).length;
+      setUnreadContactsCount(unreadCount);
 
       // Filter low stock products
       const lowStock = productsData.filter(p => {
@@ -284,7 +295,7 @@ export default function Dashboard() {
       )}
 
       {/* Recent Activity Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Sales */}
         <div className="bg-white rounded-xl shadow-sm border border-surface-200 p-6 overflow-hidden">
           <div className="flex items-center justify-between mb-4">
@@ -403,6 +414,74 @@ export default function Dashboard() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Recent PQRS Contacts */}
+        <div className="bg-white rounded-xl shadow-sm border border-surface-200 p-6 overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+              <MessageSquare className="w-5 h-5 mr-2 text-blue-600" />
+              Mensajes PQRS
+            </h3>
+            <button
+              onClick={() => navigate('/contacts')}
+              className="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+            >
+              Ver todos
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+            </div>
+          ) : recentContacts.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <MessageSquare className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p>No hay mensajes PQRS</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentContacts.map((contact) => (
+                <div
+                  key={contact.id}
+                  onClick={() => navigate('/contacts')}
+                  className="flex items-center justify-between py-3 px-3 -mx-3 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-800 truncate">
+                        {contact.name}
+                      </span>
+                      {!contact.is_read && (
+                        <span className="flex-shrink-0 w-2 h-2 bg-blue-600 rounded-full"></span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 truncate">
+                      {contact.subject}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 ml-4">
+                    {contact.is_read ? (
+                      <span className="text-xs text-gray-400">Leído</span>
+                    ) : (
+                      <Mail className="w-4 h-4 text-blue-600" />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {unreadContactsCount > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
+                <Mail className="w-4 h-4" />
+                <span className="font-medium">{unreadContactsCount} mensaje{unreadContactsCount !== 1 ? 's' : ''} sin leer</span>
+              </div>
             </div>
           )}
         </div>
