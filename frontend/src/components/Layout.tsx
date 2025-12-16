@@ -28,7 +28,8 @@ import {
   Wifi,
   WifiOff,
   Globe,
-  MessageSquare
+  MessageSquare,
+  Wallet
 } from 'lucide-react';
 import { useConfigStore } from '../stores/configStore';
 
@@ -52,6 +53,7 @@ const navigation: NavItem[] = [
   { name: 'Encargos', path: '/orders', icon: FileText },
   { name: 'Pedidos Web', path: '/web-orders', icon: Globe },
   { name: 'PQRS', path: '/contacts', icon: MessageSquare },
+  { name: 'Cuentas de Pago', path: '/payment-accounts', icon: Wallet },
   { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true },
   { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true },
   { name: 'Configuración', path: '/settings', icon: Settings },

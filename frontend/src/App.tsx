@@ -19,6 +19,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
 import ContactsManagement from './pages/ContactsManagement';
+import PaymentAccounts from './pages/PaymentAccounts';
 
 // Protected Route component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -184,6 +185,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ContactsManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payment-accounts"
+          element={
+            <ProtectedRoute>
+              <PaymentAccounts />
             </ProtectedRoute>
           }
         />
