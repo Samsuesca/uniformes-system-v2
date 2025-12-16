@@ -233,10 +233,18 @@ export default function CatalogPage() {
 
     const filteredProducts = allProducts.filter(p => {
         const name = p.name.toLowerCase();
+        const description = (p.description || '').toLowerCase();
         const filterLower = filter.toLowerCase();
 
         // Check if product is global (exists in globalProducts array)
         const isGlobalProduct = globalProducts.some(gp => gp.id === p.id);
+
+        // Filter by search query (client-side text filtering when searching)
+        let searchMatch = true;
+        if (searchQuery.trim().length > 0) {
+            const query = searchQuery.toLowerCase();
+            searchMatch = name.includes(query) || description.includes(query) || (p.code || '').toLowerCase().includes(query);
+        }
 
         // Filter by category
         let categoryMatch = true;
@@ -273,7 +281,7 @@ export default function CatalogPage() {
             stockMatch = stock > 0;
         }
 
-        return categoryMatch && sizeMatch && priceMatch && stockMatch;
+        return searchMatch && categoryMatch && sizeMatch && priceMatch && stockMatch;
     });
 
     const handleAddToCart = (product: Product, isOrder: boolean = false) => {
