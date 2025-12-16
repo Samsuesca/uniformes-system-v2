@@ -91,6 +91,11 @@ export const apiClient = {
         throw new Error(errorData.detail || `HTTP ${response.status}`);
       }
 
+      // Handle 204 No Content (DELETE responses)
+      if (response.status === 204) {
+        return { data: {} as T, status: response.status };
+      }
+
       const responseData = await response.json();
       return { data: responseData as T, status: response.status };
     } catch (error) {
