@@ -68,7 +68,7 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   'transport', 'maintenance', 'marketing', 'taxes', 'bank_fees', 'other'
 ];
 
-const PAYMENT_METHODS: AccPaymentMethod[] = ['cash', 'transfer', 'card', 'credit', 'other'];
+const PAYMENT_METHODS: AccPaymentMethod[] = ['cash', 'nequi', 'transfer', 'card', 'credit', 'other'];
 
 export default function Accounting() {
   // Note: School store available for future filtering in reports
@@ -184,11 +184,15 @@ export default function Accounting() {
           globalAccountingService.getGlobalCashBalances(),
           globalAccountingService.getPendingGlobalExpenses()
         ]);
-        // Map global cash data to local CashBalancesResponse type
+        // Map global cash data to local CashBalancesResponse type (includes all 4 accounts)
         setCashBalances({
           caja: cashData.caja,
           banco: cashData.banco,
-          total_liquid: cashData.total_liquid
+          total_liquid: cashData.total_liquid,
+          caja_menor: cashData.caja_menor,
+          caja_mayor: cashData.caja_mayor,
+          nequi: cashData.nequi,
+          total_cash: cashData.total_cash
         });
         setPendingExpenses(pendingData);
 
@@ -712,81 +716,116 @@ export default function Accounting() {
         </div>
       )}
 
-      {/* Cash Balances (Caja/Banco) */}
+      {/* Cash Balances (4 Accounts + Total) */}
       {cashBalances && (
         <div className="mb-8">
           <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-blue-600" />
             Saldos Actuales
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Caja */}
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-5">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {/* Caja Menor */}
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1">
-                    <Wallet className="w-4 h-4" />
-                    Caja (Efectivo)
+                  <p className="text-xs font-medium text-emerald-700 flex items-center gap-1">
+                    <Wallet className="w-3 h-3" />
+                    Caja Menor
                   </p>
-                  <p className="text-2xl font-bold text-emerald-800 mt-1">
-                    {cashBalances.caja ? formatCurrency(cashBalances.caja.balance) : '$0'}
+                  <p className="text-xl font-bold text-emerald-800 mt-1">
+                    {cashBalances.caja_menor ? formatCurrency(cashBalances.caja_menor.balance) : '$0'}
                   </p>
                 </div>
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-emerald-700" />
-                  </div>
-                  <button
-                    onClick={() => handleEditBalance('caja')}
-                    className="text-xs text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
-                    title="Editar balance de Caja"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Editar
-                  </button>
+                <button
+                  onClick={() => handleEditBalance('caja')}
+                  className="text-emerald-600 hover:text-emerald-800 p-1"
+                  title="Editar balance"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Caja Mayor */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-green-700 flex items-center gap-1">
+                    <PiggyBank className="w-3 h-3" />
+                    Caja Mayor
+                  </p>
+                  <p className="text-xl font-bold text-green-800 mt-1">
+                    {cashBalances.caja_mayor ? formatCurrency(cashBalances.caja_mayor.balance) : '$0'}
+                  </p>
                 </div>
+                <button
+                  onClick={() => handleEditBalance('caja')}
+                  className="text-green-600 hover:text-green-800 p-1"
+                  title="Editar balance"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Nequi */}
+            <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-xl border border-pink-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-pink-700 flex items-center gap-1">
+                    <CreditCard className="w-3 h-3" />
+                    Nequi
+                  </p>
+                  <p className="text-xl font-bold text-pink-800 mt-1">
+                    {cashBalances.nequi ? formatCurrency(cashBalances.nequi.balance) : '$0'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleEditBalance('banco')}
+                  className="text-pink-600 hover:text-pink-800 p-1"
+                  title="Editar balance"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
               </div>
             </div>
 
             {/* Banco */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-blue-700 flex items-center gap-1">
-                    <Landmark className="w-4 h-4" />
+                  <p className="text-xs font-medium text-blue-700 flex items-center gap-1">
+                    <Landmark className="w-3 h-3" />
                     Banco
                   </p>
-                  <p className="text-2xl font-bold text-blue-800 mt-1">
+                  <p className="text-xl font-bold text-blue-800 mt-1">
                     {cashBalances.banco ? formatCurrency(cashBalances.banco.balance) : '$0'}
                   </p>
                 </div>
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
-                    <CreditCard className="w-5 h-5 text-blue-700" />
-                  </div>
-                  <button
-                    onClick={() => handleEditBalance('banco')}
-                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                    title="Editar balance de Banco"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Editar
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleEditBalance('banco')}
+                  className="text-blue-600 hover:text-blue-800 p-1"
+                  title="Editar balance"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
               </div>
             </div>
 
             {/* Total Líquido */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-5">
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-purple-700">Total Líquido</p>
-                  <p className="text-2xl font-bold text-purple-800 mt-1">
+                  <p className="text-xs font-medium text-purple-700 flex items-center gap-1">
+                    <Calculator className="w-3 h-3" />
+                    Total Líquido
+                  </p>
+                  <p className="text-xl font-bold text-purple-800 mt-1">
                     {formatCurrency(cashBalances.total_liquid)}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-purple-200 rounded-full flex items-center justify-center">
-                  <Calculator className="w-5 h-5 text-purple-700" />
+                <div className="w-8 h-8 bg-purple-200 rounded-full flex items-center justify-center">
+                  <DollarSign className="w-4 h-4 text-purple-700" />
                 </div>
               </div>
             </div>
