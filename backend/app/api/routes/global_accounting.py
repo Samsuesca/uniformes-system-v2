@@ -1203,13 +1203,17 @@ async def get_global_patrimony_summary(
         totals_by_type.get(AccountType.LIABILITY_LONG, 0)
     )
 
+    # Calculate total banco (nequi + banco_cuenta)
+    total_banco = nequi_balance + banco_balance
+
     return {
         "assets": {
             "caja": total_cash,  # caja_menor + caja_mayor
+            "banco": total_banco,  # nequi + banco_cuenta
             "caja_menor": caja_menor_balance,
             "caja_mayor": caja_mayor_balance,
             "nequi": nequi_balance,
-            "banco": banco_balance,
+            "banco_cuenta": banco_balance,
             "total_liquid": total_liquid,
             "inventory": inventory_value,
             "receivables": pending_receivables,

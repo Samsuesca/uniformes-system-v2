@@ -420,12 +420,26 @@ class PatrimonyService:
 
         net_patrimony = total_assets - total_liabilities
 
+        # Calculate Caja (Caja Menor + Caja Mayor) and Banco (Nequi + Banco)
+        caja_menor_balance = Decimal(str(cash_and_bank.get("caja_menor", {}).get("balance", 0) if cash_and_bank.get("caja_menor") else 0))
+        caja_mayor_balance = Decimal(str(cash_and_bank.get("caja_mayor", {}).get("balance", 0) if cash_and_bank.get("caja_mayor") else 0))
+        nequi_balance = Decimal(str(cash_and_bank.get("nequi", {}).get("balance", 0) if cash_and_bank.get("nequi") else 0))
+        banco_balance = Decimal(str(cash_and_bank.get("banco", {}).get("balance", 0) if cash_and_bank.get("banco") else 0))
+
+        total_caja = caja_menor_balance + caja_mayor_balance  # Efectivo total
+        total_banco = nequi_balance + banco_balance  # Digital total
+
         return {
             "assets": {
                 "cash_and_bank": {
-                    "caja": cash_and_bank.get("caja"),
-                    "banco": cash_and_bank.get("banco"),
-                    "total": float(total_liquid)
+                    "caja": float(total_caja),  # Caja Menor + Caja Mayor
+                    "banco": float(total_banco),  # Nequi + Banco
+                    "total": float(total_liquid),
+                    # Detailed breakdown
+                    "caja_menor": float(caja_menor_balance),
+                    "caja_mayor": float(caja_mayor_balance),
+                    "nequi": float(nequi_balance),
+                    "banco_cuenta": float(banco_balance)
                 },
                 "inventory": {
                     "total_units": inventory["total_units"],

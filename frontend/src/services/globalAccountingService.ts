@@ -533,10 +533,11 @@ export const payGlobalReceivable = async (
 export interface GlobalPatrimonySummary {
   assets: {
     caja: number;  // caja_menor + caja_mayor
+    banco: number;  // nequi + banco_cuenta
     caja_menor: number;
     caja_mayor: number;
     nequi: number;
-    banco: number;
+    banco_cuenta: number;
     total_liquid: number;
     inventory: number;
     receivables: number;
