@@ -84,7 +84,7 @@ export default function CatalogPage() {
         }
     }, [school]);
 
-    // Debounced search effect
+    // Debounced search effect - ONLY when searchQuery changes
     useEffect(() => {
         if (!school) return;
 
@@ -115,14 +115,11 @@ export default function CatalogPage() {
                 } finally {
                     setIsSearching(false);
                 }
-            } else if (searchQuery.length === 0) {
-                // Clear search - reload all products
-                loadAllProducts();
             }
         }, 300);
 
         return () => clearTimeout(timer);
-    }, [searchQuery, filter, sizeFilter, priceRange, showInStock, globalSearch, school]);
+    }, [searchQuery, globalSearch]);
 
     const loadAllProducts = async () => {
         try {
@@ -260,7 +257,20 @@ export default function CatalogPage() {
         // Filter by size
         const sizeMatch = sizeFilter === 'all' || p.size === sizeFilter;
 
-        return categoryMatch && sizeMatch;
+        // Filter by price range (only if priceStats loaded and range changed from default)
+        let priceMatch = true;
+        if (priceStats && (priceRange[0] !== priceStats.min_price || priceRange[1] !== priceStats.max_price)) {
+            priceMatch = p.price >= priceRange[0] && p.price <= priceRange[1];
+        }
+
+        // Filter by stock (only if checkbox is checked)
+        let stockMatch = true;
+        if (showInStock) {
+            const stock = p.stock ?? p.stock_quantity ?? p.inventory_quantity ?? 0;
+            stockMatch = stock > 0;
+        }
+
+        return categoryMatch && sizeMatch && priceMatch && stockMatch;
     });
 
     const handleAddToCart = (product: Product, isOrder: boolean = false) => {
