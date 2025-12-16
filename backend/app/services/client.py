@@ -115,9 +115,9 @@ class ClientService(BaseService[Client]):
         Raises:
             ValueError: If email already exists
         """
-        # Check if email already exists
+        # Check if email already exists (only check active clients)
         existing = await self.get_by_email(registration_data.email)
-        if existing:
+        if existing and existing.is_active:
             raise ValueError("Email already registered")
 
         # Generate code and verification token
