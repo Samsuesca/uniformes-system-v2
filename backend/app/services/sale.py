@@ -519,9 +519,11 @@ class SaleService(SchoolIsolatedService[Sale]):
             )
 
         # 3. Create accounting transaction if there's a price adjustment
-        if change.price_adjustment != 0 and payment_method != PaymentMethod.CREDIT:
-            # Map PaymentMethod to AccPaymentMethod
-            acc_payment_method = AccPaymentMethod(payment_method.value)
+        # Convert payment_method to string for comparison (handles both enum and string)
+        payment_method_str = payment_method.value if hasattr(payment_method, 'value') else str(payment_method)
+        if change.price_adjustment != 0 and payment_method_str != 'credit':
+            # Map to AccPaymentMethod (accepts string value like 'cash', 'nequi', etc.)
+            acc_payment_method = AccPaymentMethod(payment_method_str)
 
             if change.price_adjustment > 0:
                 # Customer pays more → INCOME
