@@ -197,6 +197,11 @@ class ClientService(BaseService[Client]):
         client = await self.get_by_email(email)
         if not client:
             return None
+
+        # Check if client is active
+        if not client.is_active:
+            return None
+
         # Allow both WEB and REGULAR clients with password_hash to login
         if not client.password_hash:
             return None
