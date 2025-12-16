@@ -3,7 +3,7 @@
  *
  * Admin page to view, respond to, and manage contact messages from the web portal.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Layout from '../components/Layout';
 import ContactDetailModal from '../components/ContactDetailModal';
 import {
@@ -50,19 +50,7 @@ export default function ContactsManagement() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (availableSchools.length === 0) {
-      loadSchools();
-    }
-    loadContacts();
-  }, []);
-
-  // Reload when filters change
-  useEffect(() => {
-    loadContacts();
-  }, [statusFilter, typeFilter, schoolFilter, unreadOnly]);
-
-  const loadContacts = async () => {
+  const loadContacts = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -84,7 +72,18 @@ export default function ContactsManagement() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolFilter, statusFilter, typeFilter, unreadOnly, searchTerm]);
+
+  useEffect(() => {
+    if (availableSchools.length === 0) {
+      loadSchools();
+    }
+  }, [availableSchools.length, loadSchools]);
+
+  // Load contacts on mount and when filters change
+  useEffect(() => {
+    loadContacts();
+  }, [loadContacts]);
 
   const handleViewContact = async (contact: Contact) => {
     setSelectedContact(contact);

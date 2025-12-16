@@ -37,7 +37,9 @@ export default function SoportePage() {
 
     try {
       // Call backend API to submit contact message
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/contacts/submit`, {
+      const apiUrl = 'https://uniformesconsuelo.com/api/v1/contacts/submit';
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -55,7 +57,9 @@ export default function SoportePage() {
       });
 
       if (!response.ok) {
-        throw new Error('Error al enviar el mensaje');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('API Error:', response.status, errorData);
+        throw new Error(errorData.detail || 'Error al enviar el mensaje');
       }
 
       setSuccess(true);

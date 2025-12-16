@@ -4,7 +4,7 @@
  * API client for PQRS (Peticiones, Quejas, Reclamos, Sugerencias) system.
  * Handles contact messages from web portal and admin responses.
  */
-import api from './api';
+import apiClient from '../utils/api-client';
 import type { AxiosResponse } from 'axios';
 
 export interface Contact {
@@ -56,7 +56,7 @@ class ContactService {
    * Requiere autenticación (admin/superuser)
    */
   async getContacts(params: ContactListParams = {}): Promise<ContactListResponse> {
-    const response: AxiosResponse<ContactListResponse> = await api.get('/contacts', { params });
+    const response: AxiosResponse<ContactListResponse> = await apiClient.get('/contacts', { params });
     return response.data;
   }
 
@@ -66,7 +66,7 @@ class ContactService {
    * Requiere autenticación (admin/superuser)
    */
   async getContact(contactId: string): Promise<Contact> {
-    const response: AxiosResponse<Contact> = await api.get(`/contacts/${contactId}`);
+    const response: AxiosResponse<Contact> = await apiClient.get(`/contacts/${contactId}`);
     return response.data;
   }
 
@@ -82,7 +82,7 @@ class ContactService {
       is_read?: boolean;
     }
   ): Promise<Contact> {
-    const response: AxiosResponse<Contact> = await api.put(`/contacts/${contactId}`, data);
+    const response: AxiosResponse<Contact> = await apiClient.put(`/contacts/${contactId}`, data);
     return response.data;
   }
 
@@ -91,7 +91,7 @@ class ContactService {
    * Requiere autenticación (admin/superuser)
    */
   async getStats(): Promise<ContactStats> {
-    const response: AxiosResponse<ContactStats> = await api.get('/contacts/stats/summary');
+    const response: AxiosResponse<ContactStats> = await apiClient.get('/contacts/stats/summary');
     return response.data;
   }
 }
