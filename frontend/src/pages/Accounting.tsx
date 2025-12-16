@@ -19,7 +19,9 @@ import {
 } from '../services/accountingService';
 import {
   globalAccountingService,
-  type GlobalPatrimonySummary
+  type GlobalPatrimonySummary,
+  type GlobalBalanceGeneralSummary,
+  type GlobalBalanceGeneralDetailed
 } from '../services/globalAccountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
@@ -168,12 +170,13 @@ export default function Accounting() {
           setCashBalances(null);
         }
       } else if (activeTab === 'balance') {
+        // Use global accounting services for Balance General (business-wide)
         const [summary, detailed] = await Promise.all([
-          accountingService.getBalanceGeneralSummary(schoolId),
-          accountingService.getBalanceGeneralDetailed(schoolId)
+          globalAccountingService.getGlobalBalanceGeneralSummary(),
+          globalAccountingService.getGlobalBalanceGeneralDetailed()
         ]);
-        setBalanceSummary(summary);
-        setBalanceDetailed(detailed);
+        setBalanceSummary(summary as unknown as BalanceGeneralSummary);
+        setBalanceDetailed(detailed as unknown as BalanceGeneralDetailed);
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
         // Use global accounting services for CxC and CxP
         const [receivables, payables] = await Promise.all([

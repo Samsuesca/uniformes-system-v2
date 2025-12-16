@@ -113,32 +113,47 @@ async def list_all_products(
             min_stock_map[inv.product_id] = inv.min_stock_alert
 
     # Get pending orders information for each product
+    # Match by garment_type + size + color (not product_id) because web orders
+    # don't have product_id assigned until approved
     pending_orders_map = {}
     if products:
-        product_ids = [p.id for p in products]
-        # Get pending order items (where order is not delivered/cancelled and item is not delivered/cancelled)
-        pending_statuses = [OrderStatus.PENDING, OrderStatus.IN_PRODUCTION, OrderStatus.READY]
-        pending_item_statuses = [OrderItemStatus.PENDING, OrderItemStatus.IN_PRODUCTION, OrderItemStatus.READY]
+        # Only count items that are truly pending (not yet fulfilled from stock)
+        # PENDING = not yet processed
+        # IN_PRODUCTION = being made (no stock available)
+        # READY/DELIVERED = already fulfilled, should NOT count
+        pending_item_statuses = [OrderItemStatus.PENDING, OrderItemStatus.IN_PRODUCTION]
 
-        pending_orders_query = await db.execute(
-            select(
-                OrderItem.product_id,
-                func.sum(OrderItem.quantity).label('total_qty'),
-                func.count(func.distinct(OrderItem.order_id)).label('order_count')
+        # For each product, find matching order items by garment_type + size + color
+        for product in products:
+            # Build query to find matching order items in same school
+            matching_query = await db.execute(
+                select(
+                    func.sum(OrderItem.quantity).label('total_qty'),
+                    func.count(func.distinct(OrderItem.order_id)).label('order_count')
+                )
+                .join(Order, OrderItem.order_id == Order.id)
+                .where(
+                    Order.school_id == product.school_id,
+                    OrderItem.garment_type_id == product.garment_type_id,
+                    OrderItem.item_status.in_(pending_item_statuses),
+                    # Match size (handle NULL)
+                    or_(
+                        OrderItem.size == product.size,
+                        (OrderItem.size.is_(None)) & (product.size is None)
+                    ),
+                    # Match color (handle NULL)
+                    or_(
+                        OrderItem.color == product.color,
+                        (OrderItem.color.is_(None)) & (product.color is None)
+                    )
+                )
             )
-            .join(Order, OrderItem.order_id == Order.id)
-            .where(
-                OrderItem.product_id.in_(product_ids),
-                Order.status.in_(pending_statuses),
-                OrderItem.item_status.in_(pending_item_statuses)
-            )
-            .group_by(OrderItem.product_id)
-        )
-        for row in pending_orders_query:
-            pending_orders_map[row.product_id] = {
-                'qty': int(row.total_qty or 0),
-                'count': int(row.order_count or 0)
-            }
+            row = matching_query.first()
+            if row and (row.total_qty or 0) > 0:
+                pending_orders_map[product.id] = {
+                    'qty': int(row.total_qty or 0),
+                    'count': int(row.order_count or 0)
+                }
 
     return [
         ProductListResponse(
