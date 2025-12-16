@@ -38,9 +38,25 @@ from app.services.email import send_verification_email, send_welcome_email
 
 # In-memory store for verification codes (in production, use Redis)
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 phone_verification_codes: dict[str, tuple[str, datetime]] = {}
 email_verification_codes: dict[str, tuple[str, datetime]] = {}
+verified_emails: dict[str, datetime] = {}  # email -> expiry_time
+
+
+def cleanup_expired_data():
+    """Remove expired verification codes and verified emails"""
+    now = datetime.now(timezone.utc)
+
+    # Clean expired verification codes
+    expired_codes = [email for email, (_, expiry) in email_verification_codes.items() if expiry < now]
+    for email in expired_codes:
+        del email_verification_codes[email]
+
+    # Clean expired verified emails
+    expired_verified = [email for email, expiry in verified_emails.items() if expiry < now]
+    for email in expired_verified:
+        del verified_emails[email]
 
 
 # =============================================================================
@@ -453,13 +469,27 @@ async def register_web_client(
     If email already exists, returns the existing client.
     This allows repeat customers to place orders without issues.
     """
+    # Clean expired data
+    cleanup_expired_data()
+
     client_service = ClientService(db)
+
+    # Check if email was verified via OTP
+    email = registration_data.email.lower().strip()
+    email_verified = email in verified_emails and verified_emails[email] > datetime.now(timezone.utc)
 
     try:
         client = await client_service.register_web_client(registration_data)
+
+        # Update is_verified if email was confirmed via OTP
+        if email_verified:
+            client.is_verified = True
+            # Remove from verified emails list
+            del verified_emails[email]
+
         await db.commit()
 
-        # TODO: Send verification email
+        # TODO: Send welcome email
 
         return ClientResponse.model_validate(client)
 
@@ -756,6 +786,9 @@ async def send_email_verification(
     Uses Resend to send emails (3,000/month free).
     In dev mode without API key, code is logged to console.
     """
+    # Clean expired data
+    cleanup_expired_data()
+
     email = data.email.lower().strip()
     name = data.name or "Usuario"
 
@@ -798,6 +831,9 @@ async def confirm_email_verification(
     """
     Verify the email with the code sent.
     """
+    # Clean expired data
+    cleanup_expired_data()
+
     email = data.email.lower().strip()
     code = data.code
 
@@ -827,6 +863,9 @@ async def confirm_email_verification(
 
     # Code is valid - remove from store
     del email_verification_codes[email]
+
+    # Mark email as verified for 30 minutes (time to complete registration)
+    verified_emails[email] = datetime.now(timezone.utc) + timedelta(minutes=30)
 
     return {
         "message": "Email verificado exitosamente",
