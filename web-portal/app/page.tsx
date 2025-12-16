@@ -143,6 +143,40 @@ export default function Home() {
           </div>
         </div>
 
+        {/* General Products Card */}
+        <div className="mb-8">
+          <button
+            onClick={() => router.push('/productos-generales')}
+            className="relative w-full max-w-md mx-auto bg-white rounded-2xl border-2 border-purple-200 p-8 hover:shadow-xl hover:border-purple-400 transition-all duration-300 hover:-translate-y-1 block"
+          >
+            {/* Badge "Por Encargo" */}
+            <div className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+              Por Encargo
+            </div>
+
+            {/* Icono */}
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+              <Package className="w-10 h-10 text-purple-600" />
+            </div>
+
+            {/* Título */}
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Productos Generales
+            </h3>
+
+            {/* Subtítulo */}
+            <p className="text-sm text-gray-600 mb-4">
+              Uniformes disponibles por encargo
+            </p>
+
+            {/* CTA */}
+            <span className="inline-flex items-center text-purple-600 font-semibold">
+              Ver catálogo
+              <ArrowRight className="ml-2 w-5 h-5" />
+            </span>
+          </button>
+        </div>
+
         {/* Schools Grid */}
         {loading ? (
           <div className="text-center py-12">
