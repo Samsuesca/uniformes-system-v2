@@ -25,7 +25,7 @@ export function getEnvironmentType(apiUrl: string): EnvironmentType {
   if (apiUrl === ENVIRONMENTS.LAN || apiUrl.startsWith('http://192.168.')) {
     return 'lan';
   }
-  if (apiUrl === ENVIRONMENTS.CLOUD || apiUrl.includes('uniformes-system.com')) {
+  if (apiUrl === ENVIRONMENTS.CLOUD || apiUrl.includes('uniformesconsuelorios.com')) {
     return 'production';
   }
   return 'custom';

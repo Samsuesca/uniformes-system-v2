@@ -10,7 +10,7 @@
 export const ENVIRONMENTS = {
   LOCAL: 'http://localhost:8000',
   LAN: 'http://192.168.18.48:8000',  // Mac's IP on local network
-  CLOUD: 'http://104.156.247.226',   // Vultr VPS (Miami)
+  CLOUD: 'https://api.uniformesconsuelorios.com',   // Production API
 } as const;
 
 export type EnvironmentKey = keyof typeof ENVIRONMENTS;
