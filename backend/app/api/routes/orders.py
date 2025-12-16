@@ -639,7 +639,7 @@ async def upload_payment_proof(
     order_id: UUID,
     file: UploadFile = File(...),
     payment_notes: str = Query(None, description="Optional payment notes"),
-    db: DatabaseSession = Depends()
+    db: DatabaseSession
 ):
     """
     Upload payment proof (receipt/screenshot) for an order.
