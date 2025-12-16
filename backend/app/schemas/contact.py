@@ -4,10 +4,10 @@ Contact Schemas
 Pydantic schemas for Contact model validation and serialization.
 Used for PQRS (Peticiones, Quejas, Reclamos, Sugerencias) system.
 """
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from uuid import UUID
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 from app.models.contact import ContactType, ContactStatus
 
@@ -23,6 +23,14 @@ class ContactBase(BaseModel):
     subject: str = Field(..., min_length=5, max_length=200)
     message: str = Field(..., min_length=10)
     school_id: Optional[UUID] = None
+
+    @field_validator('contact_type', mode='before')
+    @classmethod
+    def normalize_contact_type(cls, v: Union[str, ContactType]) -> Union[str, ContactType]:
+        """Normalize contact type to lowercase if it's a string"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 
 class ContactCreate(ContactBase):
