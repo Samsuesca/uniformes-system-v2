@@ -6,9 +6,12 @@ Two types of endpoints:
 2. School-specific: /schools/{school_id}/orders - Original endpoints for specific school
 """
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi import APIRouter, HTTPException, status, Query, Depends, UploadFile, File
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload, joinedload
+import os
+import shutil
+from pathlib import Path
 
 from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole
@@ -626,3 +629,104 @@ async def create_web_order(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@web_router.post(
+    "/{order_id}/upload-payment-proof",
+    summary="Upload payment proof for order"
+)
+async def upload_payment_proof(
+    order_id: UUID,
+    file: UploadFile = File(...),
+    payment_notes: str = Query(None, description="Optional payment notes"),
+    db: DatabaseSession = Depends()
+):
+    """
+    Upload payment proof (receipt/screenshot) for an order.
+
+    Public endpoint - allows clients to upload their payment proof
+    after creating an order.
+
+    Accepted file types: .jpg, .jpeg, .png, .pdf
+    Max file size: 5MB
+
+    Args:
+        order_id: ID of the order
+        file: Payment proof file (image or PDF)
+        payment_notes: Optional notes about the payment
+        db: Database session
+
+    Returns:
+        dict: Success message with file URL
+
+    Raises:
+        HTTPException: 404 if order not found
+        HTTPException: 400 if file type invalid or too large
+    """
+    # Validate file type
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".pdf"}
+    file_ext = Path(file.filename).suffix.lower()
+
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tipo de archivo no permitido. Solo se aceptan: {', '.join(allowed_extensions)}"
+        )
+
+    # Check file size (5MB max)
+    max_size = 5 * 1024 * 1024  # 5MB in bytes
+    file.file.seek(0, 2)  # Seek to end
+    file_size = file.file.tell()
+    file.file.seek(0)  # Reset to beginning
+
+    if file_size > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo es muy grande. Tamaño máximo: 5MB"
+        )
+
+    # Find the order
+    query = select(Order).where(Order.id == order_id)
+    result = await db.execute(query)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pedido no encontrado"
+        )
+
+    # Create upload directory if it doesn't exist
+    upload_dir = Path("/var/www/uniformes-system-v2/uploads/payment-proofs")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate unique filename
+    import uuid as uuid_lib
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_filename = f"{order.code}_{timestamp}_{uuid_lib.uuid4().hex[:8]}{file_ext}"
+    file_path = upload_dir / unique_filename
+
+    # Save file
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar el archivo: {str(e)}"
+        )
+
+    # Update order with payment proof URL
+    file_url = f"/uploads/payment-proofs/{unique_filename}"
+    order.payment_proof_url = file_url
+    if payment_notes:
+        order.payment_notes = payment_notes
+
+    await db.commit()
+
+    return {
+        "message": "Comprobante de pago subido exitosamente",
+        "file_url": file_url,
+        "order_code": order.code
+    }
