@@ -785,3 +785,15 @@ class ClientService(BaseService[Client]):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def soft_delete(self, client_id: UUID) -> None:
+        """
+        Soft delete a client by setting is_active=False.
+
+        Args:
+            client_id: Client UUID to soft delete
+        """
+        client = await self.get(client_id)
+        if client:
+            client.is_active = False
+            await self.db.flush()
