@@ -6,7 +6,7 @@ import Layout from '../components/Layout';
 import {
   Calculator, TrendingUp, TrendingDown, DollarSign, Plus,
   Loader2, AlertCircle, Receipt, X, Building2, Users, Wallet,
-  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle, PiggyBank
+  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle, PiggyBank, Pencil
 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import {
@@ -99,6 +99,9 @@ export default function Accounting() {
   const [selectedExpense, setSelectedExpense] = useState<ExpenseListItem | null>(null);
   const [selectedReceivable, setSelectedReceivable] = useState<AccountsReceivableListItem | null>(null);
   const [selectedPayable, setSelectedPayable] = useState<AccountsPayableListItem | null>(null);
+  const [showEditBalanceModal, setShowEditBalanceModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<'caja' | 'banco' | null>(null);
+  const [newBalanceValue, setNewBalanceValue] = useState<number>(0);
 
   // Form states
   const [expenseForm, setExpenseForm] = useState<Partial<ExpenseCreate>>({
@@ -317,6 +320,36 @@ export default function Accounting() {
     }
   };
 
+  const handleEditBalance = (account: 'caja' | 'banco') => {
+    setEditingAccount(account);
+    const currentBalance = account === 'caja'
+      ? (cashBalances?.caja?.balance || 0)
+      : (cashBalances?.banco?.balance || 0);
+    setNewBalanceValue(currentBalance);
+    setShowEditBalanceModal(true);
+  };
+
+  const handleSaveBalance = async () => {
+    if (!editingAccount) return;
+    try {
+      setSubmitting(true);
+      const accountCode = editingAccount === 'caja' ? '1101' : '1102';
+      await globalAccountingService.setGlobalAccountBalance(
+        accountCode,
+        newBalanceValue,
+        `Ajuste manual de ${editingAccount === 'caja' ? 'Caja' : 'Banco'}`
+      );
+      setShowEditBalanceModal(false);
+      setEditingAccount(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error updating balance:', err);
+      setError(getErrorMessage(err, 'Error al actualizar balance'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const resetExpenseForm = () => {
     setExpenseForm({
       category: 'other',
@@ -487,8 +520,18 @@ export default function Accounting() {
                     {cashBalances.caja ? formatCurrency(cashBalances.caja.balance) : '$0'}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-emerald-700" />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-10 h-10 bg-emerald-200 rounded-full flex items-center justify-center">
+                    <DollarSign className="w-5 h-5 text-emerald-700" />
+                  </div>
+                  <button
+                    onClick={() => handleEditBalance('caja')}
+                    className="text-xs text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
+                    title="Editar balance de Caja"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Editar
+                  </button>
                 </div>
               </div>
             </div>
@@ -505,8 +548,18 @@ export default function Accounting() {
                     {cashBalances.banco ? formatCurrency(cashBalances.banco.balance) : '$0'}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-blue-700" />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-blue-700" />
+                  </div>
+                  <button
+                    onClick={() => handleEditBalance('banco')}
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    title="Editar balance de Banco"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Editar
+                  </button>
                 </div>
               </div>
             </div>
@@ -1415,6 +1468,76 @@ export default function Accounting() {
       {activeTab === 'patrimony' && renderPatrimony()}
 
       {/* ===================== MODALS ===================== */}
+
+      {/* Edit Balance Modal (Caja/Banco) */}
+      {showEditBalanceModal && editingAccount && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold">
+                Editar Balance de {editingAccount === 'caja' ? 'Caja' : 'Banco'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowEditBalanceModal(false);
+                  setEditingAccount(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Balance Actual
+                </label>
+                <p className="text-lg font-semibold text-gray-800">
+                  {editingAccount === 'caja'
+                    ? formatCurrency(cashBalances?.caja?.balance || 0)
+                    : formatCurrency(cashBalances?.banco?.balance || 0)}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nuevo Balance
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newBalanceValue}
+                  onChange={(e) => setNewBalanceValue(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ingrese el nuevo balance"
+                />
+              </div>
+              <p className="text-sm text-gray-500">
+                Este ajuste quedará registrado en el historial de la cuenta.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => {
+                  setShowEditBalanceModal(false);
+                  setEditingAccount(null);
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveBalance}
+                disabled={submitting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Expense Modal */}
       {showExpenseModal && (
