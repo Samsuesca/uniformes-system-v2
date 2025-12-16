@@ -72,12 +72,12 @@ async def submit_contact(
         name=contact_data.name,
         email=contact_data.email,
         phone=contact_data.phone,
-        contact_type=contact_data.contact_type,
+        contact_type=contact_data.contact_type.value if isinstance(contact_data.contact_type, ContactType) else contact_data.contact_type,
         subject=contact_data.subject,
         message=contact_data.message,
         school_id=contact_data.school_id,
         client_id=contact_data.client_id,
-        status=ContactStatus.PENDING,
+        status=ContactStatus.PENDING.value,
         is_read=False
     )
 
