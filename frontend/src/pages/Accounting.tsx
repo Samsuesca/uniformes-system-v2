@@ -6,7 +6,7 @@ import Layout from '../components/Layout';
 import {
   Calculator, TrendingUp, TrendingDown, DollarSign, Plus,
   Loader2, AlertCircle, Receipt, X, Building2, Users, Wallet,
-  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle
+  ChevronRight, ChevronDown, Landmark, CreditCard, Clock, CheckCircle, PiggyBank
 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import {
@@ -17,6 +17,10 @@ import {
   getCashBalances,
   type CashBalancesResponse
 } from '../services/accountingService';
+import {
+  globalAccountingService,
+  type GlobalPatrimonySummary
+} from '../services/globalAccountingService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
 import type {
@@ -30,9 +34,24 @@ import type {
 } from '../types/api';
 
 // Tabs
-type TabType = 'dashboard' | 'balance' | 'receivables' | 'payables';
+type TabType = 'dashboard' | 'balance' | 'receivables' | 'payables' | 'patrimony';
 
 // Expense categories and payment methods
+// Helper to extract error message from API response
+const getErrorMessage = (err: any, defaultMsg: string): string => {
+  const detail = err.response?.data?.detail;
+  if (!detail) return defaultMsg;
+  if (typeof detail === 'string') return detail;
+  // FastAPI validation errors are arrays of objects
+  if (Array.isArray(detail)) {
+    return detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join(', ');
+  }
+  // If it's an object with a message property
+  if (typeof detail === 'object' && detail.msg) return detail.msg;
+  if (typeof detail === 'object' && detail.message) return detail.message;
+  return defaultMsg;
+};
+
 const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   'rent', 'utilities', 'payroll', 'supplies', 'inventory',
   'transport', 'maintenance', 'marketing', 'taxes', 'bank_fees', 'other'
@@ -60,6 +79,9 @@ export default function Accounting() {
 
   // Cash balances (Caja/Banco)
   const [cashBalances, setCashBalances] = useState<CashBalancesResponse | null>(null);
+
+  // Global Patrimony data
+  const [patrimony, setPatrimony] = useState<GlobalPatrimonySummary | null>(null);
 
   // UI states
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -158,10 +180,14 @@ export default function Accounting() {
         setReceivablesPayables(rpSummary);
         setReceivablesList(receivables);
         setPayablesList(payables);
+      } else if (activeTab === 'patrimony') {
+        // Load global patrimony summary (business-wide)
+        const patrimonyData = await globalAccountingService.getGlobalPatrimonySummary();
+        setPatrimony(patrimonyData);
       }
     } catch (err: any) {
       console.error('Error loading accounting data:', err);
-      setError(err.response?.data?.detail || 'Error al cargar datos de contabilidad');
+      setError(getErrorMessage(err, 'Error al cargar datos de contabilidad'));
     } finally {
       setLoading(false);
     }
@@ -177,7 +203,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error creating expense:', err);
-      setError(err.response?.data?.detail || 'Error al crear gasto');
+      setError(getErrorMessage(err, 'Error al crear gasto'));
     } finally {
       setSubmitting(false);
     }
@@ -197,7 +223,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error paying expense:', err);
-      setError(err.response?.data?.detail || 'Error al registrar pago');
+      setError(getErrorMessage(err, 'Error al registrar pago'));
     } finally {
       setSubmitting(false);
     }
@@ -213,7 +239,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error creating balance account:', err);
-      setError(err.response?.data?.detail || 'Error al crear cuenta');
+      setError(getErrorMessage(err, 'Error al crear cuenta'));
     } finally {
       setSubmitting(false);
     }
@@ -229,7 +255,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error creating receivable:', err);
-      setError(err.response?.data?.detail || 'Error al crear cuenta por cobrar');
+      setError(getErrorMessage(err, 'Error al crear cuenta por cobrar'));
     } finally {
       setSubmitting(false);
     }
@@ -249,7 +275,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error paying receivable:', err);
-      setError(err.response?.data?.detail || 'Error al registrar cobro');
+      setError(getErrorMessage(err, 'Error al registrar cobro'));
     } finally {
       setSubmitting(false);
     }
@@ -265,7 +291,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error creating payable:', err);
-      setError(err.response?.data?.detail || 'Error al crear cuenta por pagar');
+      setError(getErrorMessage(err, 'Error al crear cuenta por pagar'));
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +311,7 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error paying payable:', err);
-      setError(err.response?.data?.detail || 'Error al registrar pago');
+      setError(getErrorMessage(err, 'Error al registrar pago'));
     } finally {
       setSubmitting(false);
     }
@@ -362,7 +388,8 @@ export default function Accounting() {
           { id: 'dashboard', label: 'Dashboard', icon: Calculator },
           { id: 'balance', label: 'Balance General', icon: Landmark },
           { id: 'receivables', label: 'Cuentas por Cobrar', icon: Users },
-          { id: 'payables', label: 'Cuentas por Pagar', icon: Building2 }
+          { id: 'payables', label: 'Cuentas por Pagar', icon: Building2 },
+          { id: 'patrimony', label: 'Patrimonio', icon: PiggyBank }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1157,6 +1184,152 @@ export default function Accounting() {
     </>
   );
 
+  // Render Patrimony Tab
+  const renderPatrimony = () => (
+    <>
+      {patrimony ? (
+        <div className="space-y-6">
+          {/* Summary Card */}
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100 text-sm font-medium">Patrimonio Neto</p>
+                <p className="text-4xl font-bold mt-1">{formatCurrency(patrimony.net_patrimony)}</p>
+                <p className="text-blue-100 text-sm mt-2">
+                  Activos - Pasivos = Patrimonio
+                </p>
+              </div>
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                <PiggyBank className="w-8 h-8" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Assets Card */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Activos</h3>
+                  <p className="text-2xl font-bold text-green-600">{formatCurrency(patrimony.assets.total)}</p>
+                </div>
+              </div>
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Caja</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.caja)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Banco</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.banco)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Total Líquido</span>
+                  </div>
+                  <span className="font-medium text-blue-600">{formatCurrency(patrimony.assets.total_liquid)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Activos Fijos</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.fixed_assets)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Otros Activos</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.assets.other_assets)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Liabilities Card */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <TrendingDown className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Pasivos</h3>
+                  <p className="text-2xl font-bold text-red-600">{formatCurrency(patrimony.liabilities.total)}</p>
+                </div>
+              </div>
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Cuentas por Pagar Pendientes</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.liabilities.pending_payables)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Gastos Pendientes</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.liabilities.pending_expenses)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Pasivos Corrientes</span>
+                  </div>
+                  <span className="font-medium text-orange-600">{formatCurrency(patrimony.liabilities.current)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Pasivos Largo Plazo</span>
+                  </div>
+                  <span className="font-medium text-gray-800">{formatCurrency(patrimony.liabilities.long_term)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Equation Card */}
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-6">
+            <h4 className="text-sm font-medium text-gray-500 mb-4">Ecuación Patrimonial</h4>
+            <div className="flex items-center justify-center gap-4 flex-wrap">
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Activos</p>
+                <p className="text-xl font-bold text-green-600">{formatCurrency(patrimony.assets.total)}</p>
+              </div>
+              <span className="text-2xl text-gray-400">−</span>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Pasivos</p>
+                <p className="text-xl font-bold text-red-600">{formatCurrency(patrimony.liabilities.total)}</p>
+              </div>
+              <span className="text-2xl text-gray-400">=</span>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Patrimonio</p>
+                <p className="text-xl font-bold text-blue-600">{formatCurrency(patrimony.net_patrimony)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <span className="ml-3 text-gray-600">Cargando patrimonio...</span>
+        </div>
+      )}
+    </>
+  );
+
   // Render action button based on current tab
   const renderActionButton = () => {
     if (activeTab === 'dashboard') {
@@ -1239,6 +1412,7 @@ export default function Accounting() {
       {activeTab === 'balance' && renderBalanceGeneral()}
       {activeTab === 'receivables' && renderReceivables()}
       {activeTab === 'payables' && renderPayables()}
+      {activeTab === 'patrimony' && renderPatrimony()}
 
       {/* ===================== MODALS ===================== */}
 

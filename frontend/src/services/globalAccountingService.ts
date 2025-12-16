@@ -51,7 +51,7 @@ export const initializeGlobalAccounts = async (
   cajaInitialBalance: number = 0,
   bancoInitialBalance: number = 0
 ): Promise<{ message: string; accounts: Record<string, string> }> => {
-  const response = await apiClient.post(
+  const response = await apiClient.post<{ message: string; accounts: Record<string, string> }>(
     `${BASE_URL}/initialize-accounts`,
     null,
     { params: { caja_initial_balance: cajaInitialBalance, banco_initial_balance: bancoInitialBalance } }
@@ -71,7 +71,14 @@ export const setGlobalAccountBalance = async (
   new_balance: number;
   adjustment: number;
 }> => {
-  const response = await apiClient.post(
+  const response = await apiClient.post<{
+    message: string;
+    account_id: string;
+    account_name: string;
+    old_balance: number;
+    new_balance: number;
+    adjustment: number;
+  }>(
     `${BASE_URL}/set-balance`,
     null,
     { params: { account_code: accountCode, new_balance: newBalance, description: description || 'Ajuste de balance inicial' } }

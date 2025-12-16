@@ -527,7 +527,7 @@ export const initializeDefaultAccounts = async (
   cajaInitialBalance: number = 0,
   bancoInitialBalance: number = 0
 ): Promise<{ message: string; accounts: Record<string, string> }> => {
-  const response = await apiClient.post(
+  const response = await apiClient.post<{ message: string; accounts: Record<string, string> }>(
     `${BASE_URL}/${schoolId}/accounting/initialize-default-accounts`,
     null,
     { params: { caja_initial_balance: cajaInitialBalance, banco_initial_balance: bancoInitialBalance } }
@@ -636,7 +636,7 @@ export const setInitialBalance = async (
   accountCode: string,
   initialBalance: number
 ): Promise<{ message: string; account_id: string; account_name: string; new_balance: number }> => {
-  const response = await apiClient.post(
+  const response = await apiClient.post<{ message: string; account_id: string; account_name: string; new_balance: number }>(
     `${BASE_URL}/${schoolId}/accounting/patrimony/set-initial-balance`,
     null,
     { params: { account_code: accountCode, initial_balance: initialBalance } }
@@ -656,7 +656,7 @@ export const createDebt = async (
     description?: string;
   }
 ): Promise<{ message: string; debt_id: string; name: string; amount: number; creditor: string; is_long_term: boolean }> => {
-  const response = await apiClient.post(
+  const response = await apiClient.post<{ message: string; debt_id: string; name: string; amount: number; creditor: string; is_long_term: boolean }>(
     `${BASE_URL}/${schoolId}/accounting/patrimony/debts`,
     null,
     { params: data }
@@ -678,7 +678,7 @@ export const createFixedAsset = async (
     useful_life_years?: number;
   }
 ): Promise<{ message: string; asset_id: string; name: string; value: number }> => {
-  const response = await apiClient.post(
+  const response = await apiClient.post<{ message: string; asset_id: string; name: string; value: number }>(
     `${BASE_URL}/${schoolId}/accounting/patrimony/fixed-assets`,
     null,
     { params: data }

@@ -360,7 +360,7 @@ async def get_global_balance_general_summary(
     total_liabilities = sum(
         totals.get(at, 0) for at in [
             AccountType.LIABILITY_CURRENT,
-            AccountType.LIABILITY_LONG_TERM,
+            AccountType.LIABILITY_LONG,
             AccountType.LIABILITY_OTHER
         ]
     )
@@ -1005,9 +1005,14 @@ async def get_global_patrimony_summary(
     )
     pending_expenses = float(result.scalar() or 0)
 
+    # Extract balance values from cash_balances dict objects
+    caja_balance = float(cash_balances["caja"]["balance"]) if cash_balances["caja"] else 0
+    banco_balance = float(cash_balances["banco"]["balance"]) if cash_balances["banco"] else 0
+    total_liquid = float(cash_balances["total_liquid"])
+
     total_assets = (
-        cash_balances["caja"] +
-        cash_balances["banco"] +
+        caja_balance +
+        banco_balance +
         totals_by_type.get(AccountType.ASSET_FIXED, 0) +
         totals_by_type.get(AccountType.ASSET_OTHER, 0)
     )
@@ -1016,14 +1021,14 @@ async def get_global_patrimony_summary(
         pending_payables +
         pending_expenses +
         totals_by_type.get(AccountType.LIABILITY_CURRENT, 0) +
-        totals_by_type.get(AccountType.LIABILITY_LONG_TERM, 0)
+        totals_by_type.get(AccountType.LIABILITY_LONG, 0)
     )
 
     return {
         "assets": {
-            "caja": cash_balances["caja"],
-            "banco": cash_balances["banco"],
-            "total_liquid": cash_balances["total_liquid"],
+            "caja": caja_balance,
+            "banco": banco_balance,
+            "total_liquid": total_liquid,
             "fixed_assets": totals_by_type.get(AccountType.ASSET_FIXED, 0),
             "other_assets": totals_by_type.get(AccountType.ASSET_OTHER, 0),
             "total": total_assets
@@ -1032,7 +1037,7 @@ async def get_global_patrimony_summary(
             "pending_payables": pending_payables,
             "pending_expenses": pending_expenses,
             "current": totals_by_type.get(AccountType.LIABILITY_CURRENT, 0),
-            "long_term": totals_by_type.get(AccountType.LIABILITY_LONG_TERM, 0),
+            "long_term": totals_by_type.get(AccountType.LIABILITY_LONG, 0),
             "total": total_liabilities
         },
         "net_patrimony": total_assets - total_liabilities
