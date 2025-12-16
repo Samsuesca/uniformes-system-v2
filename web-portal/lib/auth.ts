@@ -18,7 +18,7 @@ export async function getPublicToken(): Promise<string> {
     // Login as public-viewer
     const response = await axios.post(`${API_BASE_URL}/api/v1/auth/login`, {
       username: 'public-viewer',
-      password: 'PublicView2025!'
+      password: 'Public2025'
     });
 
     // Backend returns { token: { access_token, ... }, user: {...} }
