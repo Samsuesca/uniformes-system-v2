@@ -342,12 +342,18 @@ class OrderService(SchoolIsolatedService[Order]):
         school_id: UUID,
         new_status: OrderStatus
     ) -> Order | None:
-        """Update order status"""
-        return await self.update(
+        """Update order status and sync item statuses"""
+        order = await self.update(
             order_id,
             school_id,
             {"status": new_status}
         )
+
+        # Sync item statuses when order is marked as DELIVERED
+        if order and new_status == OrderStatus.DELIVERED:
+            await self._sync_item_statuses_from_order(order_id, school_id, new_status)
+
+        return order
 
     async def update_order(
         self,
@@ -371,7 +377,13 @@ class OrderService(SchoolIsolatedService[Order]):
             # No updates, just return the order
             return await self.get(order_id, school_id)
 
-        return await self.update(order_id, school_id, update_data)
+        order = await self.update(order_id, school_id, update_data)
+
+        # Sync item statuses if status was changed to DELIVERED
+        if order and 'status' in update_data and update_data['status'] == OrderStatus.DELIVERED:
+            await self._sync_item_statuses_from_order(order_id, school_id, OrderStatus.DELIVERED)
+
+        return order
 
     async def create_web_order(
         self,
@@ -671,6 +683,35 @@ class OrderService(SchoolIsolatedService[Order]):
             order.status = OrderStatus.IN_PRODUCTION
         else:
             order.status = OrderStatus.PENDING
+
+        await self.db.flush()
+
+    async def _sync_item_statuses_from_order(
+        self,
+        order_id: UUID,
+        school_id: UUID,
+        new_order_status: OrderStatus
+    ) -> None:
+        """
+        Synchronize all item statuses when order status changes to DELIVERED.
+
+        This provides reverse synchronization (order → items), complementing
+        the existing _sync_order_status_from_items() (items → order).
+
+        Rule: If order is marked as DELIVERED, all active items become DELIVERED.
+        """
+        if new_order_status != OrderStatus.DELIVERED:
+            return  # Only sync when order becomes DELIVERED
+
+        order = await self.get_order_with_items(order_id, school_id)
+        if not order:
+            return
+
+        for item in order.items:
+            # Only update items that are not already finalized
+            if item.item_status not in [OrderItemStatus.DELIVERED, OrderItemStatus.CANCELLED]:
+                item.item_status = OrderItemStatus.DELIVERED
+                item.status_updated_at = datetime.utcnow()
 
         await self.db.flush()
 

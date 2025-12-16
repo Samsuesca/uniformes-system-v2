@@ -26,7 +26,20 @@
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && cd frontend && npm run build && sudo systemctl restart nginx\")",
       "Bash(ssh root@104.156.247.226 \"tail -500 /var/log/uniformes/backend.log 2>/dev/null | grep -i ''422\\|validation\\|unprocessable'' | tail -20\")",
       "Bash(npx tsc:*)",
-      "Bash(ssh root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api\")"
+      "Bash(ssh root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"sudo -u postgres psql -d uniformes_db -c \"\"ALTER TYPE acc_payment_method_enum ADD VALUE IF NOT EXISTS ''NEQUI'';\"\"\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"sudo -u postgres psql -d uniformes_db -c \"\"SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = ''payment_method_enum'');\"\"\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"sudo systemctl restart uniformes-api && sleep 2 && sudo systemctl status uniformes-api | head -15\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"journalctl -u uniformes-api -n 10 --no-pager\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && cd backend && source venv/bin/activate && pip install -r requirements.txt --quiet && sudo systemctl restart uniformes-api && sleep 2 && sudo systemctl status uniformes-api | head -15\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && sudo systemctl restart uniformes-api && sleep 2 && sudo systemctl status uniformes-api | head -10\")",
+      "Bash(ssh root@104.156.247.226:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(ls:*)",
+      "Bash(echo:*)",
+      "Bash(/bin/echo:*)"
     ],
     "deny": [],
     "ask": []

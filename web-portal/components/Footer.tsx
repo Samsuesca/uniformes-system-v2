@@ -24,9 +24,12 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
           <div>
-            <h3 className="text-lg font-bold text-primary font-display mb-3">
-              Uniformes Consuelo Rios
-            </h3>
+            <div className="flex items-center gap-3 mb-3">
+              <img src="/logo.png" alt="Logo" className="h-10 w-auto" />
+              <h3 className="text-lg font-bold text-primary font-display">
+                Uniformes Consuelo Rios
+              </h3>
+            </div>
             <p className="text-sm text-slate-600">
               Uniformes escolares de calidad, confeccionados con los mejores materiales.
             </p>

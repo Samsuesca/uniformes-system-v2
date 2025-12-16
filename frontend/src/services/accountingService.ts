@@ -265,6 +265,7 @@ export function getExpenseCategoryColor(category: ExpenseCategory): string {
 export function getPaymentMethodLabel(method: string): string {
   const labels: Record<string, string> = {
     cash: 'Efectivo',
+    nequi: 'Nequi',
     transfer: 'Transferencia',
     card: 'Tarjeta',
     credit: 'Crédito',
@@ -507,18 +508,93 @@ export function getAccountTypeCategory(accountType: AccountType): 'assets' | 'li
 export interface CashBalanceInfo {
   id: string;
   name: string;
+  code?: string;
   balance: number;
   last_updated: string | null;
 }
 
 export interface CashBalancesResponse {
+  // Legacy fields (for backward compatibility)
   caja: CashBalanceInfo | null;
   banco: CashBalanceInfo | null;
   total_liquid: number;
+  // New 4-account structure
+  caja_menor?: CashBalanceInfo | null;
+  caja_mayor?: CashBalanceInfo | null;
+  nequi?: CashBalanceInfo | null;
+  total_cash?: number;
+}
+
+// Caja Menor / Liquidation types
+export interface CajaMenorSummary {
+  caja_menor_balance: number;
+  caja_mayor_balance: number;
+  today_liquidations: number;
+  today_entries_count: number;
+  date: string;
+}
+
+export interface LiquidationResult {
+  success: boolean;
+  message: string;
+  caja_menor_balance: number;
+  caja_mayor_balance: number;
+  amount_liquidated: number;
+}
+
+export interface LiquidationHistoryItem {
+  id: string;
+  date: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  reference: string;
+  created_at: string;
 }
 
 export const getCashBalances = async (schoolId: string): Promise<CashBalancesResponse> => {
   const response = await apiClient.get<CashBalancesResponse>(`${BASE_URL}/${schoolId}/accounting/cash-balances`);
+  return response.data;
+};
+
+// Caja Menor functions
+export const getCajaMenorBalance = async (schoolId: string): Promise<CashBalanceInfo> => {
+  const response = await apiClient.get<CashBalanceInfo>(`${BASE_URL}/${schoolId}/accounting/caja-menor/balance`);
+  return response.data;
+};
+
+export const getCajaMenorSummary = async (schoolId: string): Promise<CajaMenorSummary> => {
+  const response = await apiClient.get<CajaMenorSummary>(`${BASE_URL}/${schoolId}/accounting/caja-menor/summary`);
+  return response.data;
+};
+
+export const liquidateCajaMenor = async (
+  schoolId: string,
+  amount: number,
+  notes?: string
+): Promise<LiquidationResult> => {
+  const response = await apiClient.post<LiquidationResult>(
+    `${BASE_URL}/${schoolId}/accounting/caja-menor/liquidate`,
+    null,
+    { params: { amount, notes } }
+  );
+  return response.data;
+};
+
+export const getLiquidationHistory = async (
+  schoolId: string,
+  options?: { startDate?: string; endDate?: string; limit?: number }
+): Promise<LiquidationHistoryItem[]> => {
+  const response = await apiClient.get<LiquidationHistoryItem[]>(
+    `${BASE_URL}/${schoolId}/accounting/caja-menor/liquidation-history`,
+    {
+      params: {
+        start_date: options?.startDate,
+        end_date: options?.endDate,
+        limit: options?.limit || 50
+      }
+    }
+  );
   return response.data;
 };
 
@@ -744,6 +820,11 @@ export const accountingService = {
   // Cash Balances (Caja/Banco)
   getCashBalances,
   initializeDefaultAccounts,
+  // Caja Menor / Liquidation
+  getCajaMenorBalance,
+  getCajaMenorSummary,
+  liquidateCajaMenor,
+  getLiquidationHistory,
   // Patrimony (Patrimonio)
   getPatrimonySummary,
   getInventoryValuation,

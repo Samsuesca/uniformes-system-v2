@@ -58,13 +58,14 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-yellow-50 flex flex-col">
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+      <div className="bg-gradient-to-r from-primary to-primary-light text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div className="text-2xl font-bold font-display">
-              Uniformes Escolares
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Logo" className="h-12 w-auto" />
+              <span className="text-2xl font-bold font-display text-brand-500">Uniformes Consuelo Rios</span>
             </div>
 
             {/* Auth Section */}
@@ -96,7 +97,7 @@ export default function Home() {
                 ) : (
                   <button
                     onClick={() => setShowLoginModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                    className="flex items-center gap-2 px-4 py-2 bg-brand-500 text-primary rounded-lg hover:bg-brand-400 transition-colors font-semibold"
                   >
                     <User className="w-4 h-4" />
                     <span>Iniciar Sesión</span>
@@ -111,7 +112,7 @@ export default function Home() {
           <h1 className="text-4xl md:text-5xl font-bold font-display mb-4">
             Encuentra todo lo necesario para ti
           </h1>
-          <p className="text-xl text-blue-100 mb-2">
+          <p className="text-xl text-brand-300 mb-2">
             Calidad y los mejores precios
           </p>
         </div>
@@ -159,16 +160,16 @@ export default function Home() {
               <button
                 key={school.id}
                 onClick={() => handleSchoolSelect(school.slug)}
-                className="group bg-white rounded-2xl border-2 border-gray-200 p-8 hover:shadow-2xl hover:border-blue-400 hover:-translate-y-2 transition-all duration-300 text-left"
+                className="group bg-white rounded-2xl border-2 border-gray-200 p-8 hover:shadow-2xl hover:border-brand-500 hover:-translate-y-2 transition-all duration-300 text-left"
               >
                 <div className="text-center">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mx-auto mb-4 group-hover:from-blue-500 group-hover:to-indigo-500 transition-all">
-                    <SchoolIcon className="w-10 h-10 text-blue-600 group-hover:text-white transition-colors" />
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 flex items-center justify-center mx-auto mb-4 group-hover:from-primary group-hover:to-primary-light transition-all">
+                    <SchoolIcon className="w-10 h-10 text-brand-600 group-hover:text-brand-400 transition-colors" />
                   </div>
                   <h3 className="text-xl font-bold text-gray-800 font-display mb-2">
                     {school.name}
                   </h3>
-                  <div className="flex items-center justify-center gap-2 text-blue-600 font-semibold group-hover:gap-3 transition-all">
+                  <div className="flex items-center justify-center gap-2 text-brand-600 font-semibold group-hover:gap-3 transition-all">
                     <span>Ver catálogo</span>
                     <ArrowRight className="w-5 h-5" />
                   </div>
@@ -214,8 +215,8 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <User className="w-8 h-8 text-blue-600" />
+              <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <User className="w-8 h-8 text-brand-600" />
               </div>
               <h2 className="text-2xl font-bold text-gray-800 font-display">
                 Iniciar Sesión
@@ -238,7 +239,7 @@ export default function Home() {
                     setLoginForm({ ...loginForm, email: e.target.value });
                     clearError();
                   }}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                   placeholder="tu@email.com"
                 />
               </div>
@@ -256,7 +257,7 @@ export default function Home() {
                       setLoginForm({ ...loginForm, password: e.target.value });
                       clearError();
                     }}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all pr-12"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all pr-12"
                     placeholder="Tu contraseña"
                   />
                   <button
@@ -278,7 +279,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-primary text-white rounded-xl hover:bg-primary-light transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {authLoading ? 'Iniciando...' : 'Iniciar Sesión'}
               </button>
@@ -289,7 +290,7 @@ export default function Home() {
                   setShowLoginModal(false);
                   router.push('/recuperar-password');
                 }}
-                className="w-full text-sm text-blue-600 hover:text-blue-700 mt-3"
+                className="w-full text-sm text-brand-600 hover:text-brand-700 mt-3"
               >
                 ¿Olvidaste tu contraseña?
               </button>

@@ -24,20 +24,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add 'nequi' value to payment_method_enum (sales)
+    # Add 'NEQUI' value to payment_method_enum (sales)
     # PostgreSQL requires ALTER TYPE ... ADD VALUE
+    # Note: Enum values must be UPPERCASE to match Python enum names
     op.execute("""
         DO $$ BEGIN
-            ALTER TYPE payment_method_enum ADD VALUE IF NOT EXISTS 'nequi';
+            ALTER TYPE payment_method_enum ADD VALUE IF NOT EXISTS 'NEQUI';
         EXCEPTION
             WHEN duplicate_object THEN null;
         END $$;
     """)
 
-    # Add 'nequi' value to acc_payment_method_enum (accounting)
+    # Add 'NEQUI' value to acc_payment_method_enum (accounting)
     op.execute("""
         DO $$ BEGIN
-            ALTER TYPE acc_payment_method_enum ADD VALUE IF NOT EXISTS 'nequi';
+            ALTER TYPE acc_payment_method_enum ADD VALUE IF NOT EXISTS 'NEQUI';
         EXCEPTION
             WHEN duplicate_object THEN null;
         END $$;

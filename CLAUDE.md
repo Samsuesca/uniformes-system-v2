@@ -1,542 +1,363 @@
-# 🤖 Claude AI - Contexto del Proyecto
+# Claude AI - Contexto del Proyecto
 
-Este archivo contiene información importante para que Claude Code pueda asistir efectivamente en el desarrollo del proyecto **Uniformes System v2.0**.
+Este archivo contiene informacion importante para que Claude Code pueda asistir efectivamente en el desarrollo del proyecto **Uniformes System v2.0**.
 
 ---
 
-## 📋 Información del Proyecto
+## Informacion del Proyecto
 
-### Descripción General
-Sistema de gestión de uniformes profesional con arquitectura **multi-tenant** (múltiples colegios), diseñado para manejar inventario, ventas, encargos personalizados y contabilidad integrada.
+### Descripcion General
+Sistema de gestion de uniformes profesional con arquitectura **multi-tenant** (multiples colegios), disenado para manejar inventario, ventas, encargos personalizados y **contabilidad global del negocio**.
 
-### Características Principales
-- **Multi-Colegio**: Un solo sistema gestiona múltiples instituciones con datos completamente aislados
-- **Aplicación Nativa**: Desktop app multiplataforma (Windows, macOS, Linux) usando Tauri
+### Caracteristicas Principales
+- **Multi-Colegio**: Un solo sistema gestiona multiples instituciones
+- **Contabilidad Global**: Un negocio, una caja, un banco - los colegios son fuentes de ingreso
+- **Aplicacion Nativa**: Desktop app multiplataforma (Windows, macOS, Linux) usando Tauri
+- **Portal Web**: Sistema de pedidos online para padres de familia
 - **API REST**: Backend robusto con FastAPI y PostgreSQL
-- **Inventario Inteligente**: Control de stock por colegio, tallas, tipos de prenda
-- **Ventas y Encargos**: POS completo con pedidos personalizados y medidas
-- **Cambios y Devoluciones**: Sistema completo de gestión de cambios con ajuste automático de inventario
-- **Contabilidad**: Movimientos automáticos, gastos, cuentas por pagar
+- **Cloud Deployment**: Servidor VPS en produccion
 
 ---
 
-## 🏗️ Arquitectura
+## Arquitectura Contable (IMPORTANTE)
 
-### Stack Tecnológico
+### Concepto Clave: Contabilidad del NEGOCIO, no por Colegio
+
+El negocio "Uniformes Consuelo Rios" tiene:
+- **UNA SOLA Caja** (efectivo fisico en la tienda)
+- **UNA SOLA cuenta bancaria**
+- **UN SOLO balance general**
+- **Gastos compartidos** (luz, agua, salarios, proveedores)
+
+Los colegios son **fuentes de ingreso** - categorias para saber de donde viene el dinero, pero todo va a la misma caja/banco.
+
+### school_id en Contabilidad
+
+| Modelo | school_id | Razon |
+|--------|-----------|-------|
+| `BalanceAccount` | NULL (global) | Caja y Banco son del negocio |
+| `BalanceEntry` | NULL (global) | Entradas de auditoria globales |
+| `Expense` | OPCIONAL | Mayoría globales, algunos por colegio |
+| `AccountsPayable` | OPCIONAL | Proveedores del negocio |
+| `AccountsReceivable` | OPCIONAL | CxC pueden filtrar por origen |
+| `Transaction` | OPCIONAL | Para saber origen de ingreso |
+| `DailyCashRegister` | NULL (global) | Una caja diaria para todo |
+
+### Endpoints Globales (sin school_id)
+
+```
+GET  /global/accounting/cash-balances     # Saldos Caja y Banco
+GET  /global/accounting/expenses          # Gastos del negocio
+POST /global/accounting/expenses          # Crear gasto
+GET  /global/accounting/receivables-payables  # CxC y CxP
+POST /global/accounting/receivables       # Crear CxC
+POST /global/accounting/payables          # Crear CxP
+GET  /global/accounting/balance-accounts  # Cuentas contables
+POST /global/accounting/balance-accounts  # Crear cuenta
+```
+
+### AccountType Enum (valores en minuscula)
+
+```python
+class AccountType(str, Enum):
+    asset_current = "asset_current"      # Activo Corriente (Caja, Banco)
+    asset_fixed = "asset_fixed"          # Activo Fijo (Equipos, Maquinaria)
+    liability_current = "liability_current"  # Pasivo Corriente
+    liability_long = "liability_long"    # Pasivo Largo Plazo
+    equity = "equity"                    # Patrimonio
+    income = "income"                    # Ingresos
+    expense = "expense"                  # Gastos
+```
+
+---
+
+## Stack Tecnologico
 
 **Backend:**
 - Python 3.10+
 - FastAPI 0.104.1
 - SQLAlchemy 2.0.23 (async)
 - PostgreSQL 15
-- Redis 7
 - Alembic (migraciones)
 - Pydantic v2
 
-**Frontend:**
+**Frontend (Tauri Desktop):**
 - Tauri (Rust + WebView)
 - React 18 + TypeScript
 - Tailwind CSS
 - Zustand (estado)
-- Axios + React Query
-- Vite
+- Axios
 
-**DevOps:**
-- Docker + Docker Compose
-- PostgreSQL y Redis containerizados
+**Portal Web (Next.js):**
+- Next.js 14 (App Router)
+- TypeScript
+- Tailwind CSS
 
----
-
-## 🗄️ Base de Datos (Multi-Tenant)
-
-### Arquitectura Multi-Tenant
-Cada tabla tiene `school_id` que aísla los datos por colegio.
-
-### Tablas Principales
-
-**Nivel 1: Sistema**
-- `users` - Usuarios del sistema
-- `user_school_roles` - Roles por colegio (many-to-many)
-
-**Nivel 2: Tenants**
-- `schools` - Instituciones educativas (tenants)
-
-**Nivel 3: Catálogos (por colegio)**
-- `garment_types` - Tipos de prendas
-- `products` - Productos/SKUs individuales
-- `inventory` - Stock disponible
-
-**Nivel 4: Operaciones (por colegio)**
-- `clients` - Base de clientes
-- `sales` + `sale_items` - Ventas
-- `sale_changes` - Cambios y devoluciones de ventas
-- `orders` + `order_items` - Encargos personalizados
-
-**Características de la BD:**
-- UUIDs como primary keys
-- Índices en foreign keys y campos frecuentes
-- Constraints únicos por colegio (`school_id + code`)
-- Check constraints (validación de precios, cantidades)
-- JSONB para datos flexibles (settings, custom_measurements)
-- Timestamps automáticos (created_at, updated_at)
-- Soft deletes (is_active)
-- Cascade delete para aislamiento de datos
-
-### Migraciones
-1. **ID**: `4093d4173dee`
-   - **Descripción**: Initial multi-tenant schema
-   - **Estado**: Aplicada ✅
-
-2. **ID**: `d868decca943`
-   - **Descripción**: Add sale_changes table
-   - **Estado**: Aplicada ✅
-   - **Tablas**: `sale_changes` (sistema de cambios/devoluciones)
-   - **Enums**: `change_type_enum`, `change_status_enum`
+**Infraestructura:**
+- VPS: 104.156.247.226 (Vultr)
+- Dominio: uniformesconsuelo.com
+- SSL: Certbot/Let's Encrypt
+- Nginx: Reverse proxy
+- Systemd: Servicios backend
 
 ---
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 uniformes-system-v2/
 ├── backend/
 │   ├── app/
-│   │   ├── api/
-│   │   │   ├── dependencies.py  # ✅ Auth & permissions
-│   │   │   └── routes/          # ✅ REST endpoints (8 routers)
-│   │   ├── core/                # ✅ Configuration
-│   │   ├── db/                  # ✅ Database session
-│   │   ├── models/              # ✅ SQLAlchemy models (complete)
-│   │   ├── schemas/             # ✅ Pydantic schemas (complete)
-│   │   ├── services/            # ✅ Business logic (8 services)
-│   │   └── main.py              # ✅ FastAPI app
-│   ├── alembic/                 # ✅ Migrations (2 applied)
-│   ├── tests/                   # ❌ Tests (TODO)
-│   ├── requirements.txt         # Dependencies
-│   ├── seed_data.py             # ✅ Seed script
-│   └── venv/                    # Virtual environment
+│   │   ├── api/routes/
+│   │   │   ├── accounting.py         # Contabilidad por colegio
+│   │   │   ├── global_accounting.py  # Contabilidad GLOBAL
+│   │   │   ├── sales.py
+│   │   │   ├── orders.py
+│   │   │   ├── products.py
+│   │   │   └── ...
+│   │   ├── models/
+│   │   │   ├── accounting.py  # BalanceAccount, Expense, CxC, CxP
+│   │   │   └── ...
+│   │   ├── services/
+│   │   │   ├── accounting.py
+│   │   │   ├── balance_integration.py
+│   │   │   └── ...
+│   │   └── schemas/
+│   │       └── accounting.py  # Pydantic schemas
+│   └── alembic/               # Migraciones
 │
-├── frontend/
+├── frontend/                  # App Tauri (desktop)
 │   ├── src/
-│   │   ├── components/          # ✅ Layout component
-│   │   ├── pages/               # ✅ 6 pages (Dashboard, Products, etc.)
-│   │   ├── stores/              # ✅ authStore (Zustand)
-│   │   ├── types/               # ✅ TypeScript interfaces
-│   │   ├── utils/               # ✅ API client (Axios)
-│   │   ├── App.tsx              # ✅ Router + protected routes
-│   │   └── main.tsx             # ✅ Entry point
-│   ├── src-tauri/               # Tauri configuration
-│   └── package.json
+│   │   ├── pages/
+│   │   │   ├── Accounting.tsx     # Vista contabilidad GLOBAL
+│   │   │   ├── Sales.tsx
+│   │   │   ├── Products.tsx
+│   │   │   └── ...
+│   │   ├── services/
+│   │   │   ├── globalAccountingService.ts  # API global
+│   │   │   ├── accountingService.ts        # API por colegio
+│   │   │   └── ...
+│   │   └── stores/
+│   │       └── authStore.ts
+│   └── src-tauri/
 │
-├── docker/
-│   └── docker-compose.dev.yml   # PostgreSQL + Redis
+├── web-portal/               # Portal padres (Next.js)
+│   ├── app/
+│   │   └── [school_slug]/    # Rutas por colegio
+│   └── lib/
 │
-├── docs/
-│   ├── SETUP.md                 # Installation guide
-│   ├── DATABASE.md              # DB architecture
-│   ├── GIT_WORKFLOW.md          # Git workflow
-│   ├── SALE_CHANGES.md          # ✅ Sale changes system docs
-│   └── claude/                  # Claude-specific docs
-│
-└── .claude/
-    ├── settings.local.json
-    └── CLAUDE.md                # This file
+└── docs/
 ```
 
 ---
 
-## 🎯 Estado Actual del Desarrollo
+## Estado Actual del Desarrollo
 
-### ✅ Completado
+### Completado
 
-1. **Configuración Inicial**
-   - Proyecto estructurado
-   - Docker configurado (PostgreSQL + Redis)
-   - Git/GitHub configurado
-   - Branches: main, develop, feature/*
+**Infraestructura Cloud:**
+- VPS configurado y operativo
+- SSL/HTTPS funcionando
+- Nginx como reverse proxy
+- Backend como servicio systemd
+- Dominio uniformesconsuelo.com
 
-2. **Base de Datos**
-   - Modelos SQLAlchemy completos (15 modelos)
-   - Arquitectura multi-tenant diseñada e implementada
-   - Alembic configurado
-   - 2 migraciones aplicadas
-   - 13 tablas creadas en PostgreSQL (incluye `sale_changes`)
+**Backend API:**
+- Autenticacion JWT
+- Multi-tenancy (school_id)
+- Sistema de ventas completo
+- Sistema de cambios/devoluciones
+- Contabilidad global (endpoints /global/*)
+- Balance de cuentas CRUD
+- Activos fijos y pasivos
+- CxC y CxP globales
+- Gastos del negocio
+- Integracion automatica ventas → contabilidad
 
-3. **Backend API (95% completo)**
-   - ✅ Schemas Pydantic (107 schemas con validación)
-   - ✅ CRUD services (8 servicios, ~95 métodos)
-   - ✅ Endpoints REST (43+ endpoints)
-   - ✅ Autenticación JWT (login, roles, permisos)
-   - ✅ Sistema multi-tenancy (filtrado automático por school_id)
-   - ✅ Sistema de cambios/devoluciones completo
-   - ✅ Gestión de inventario con reservas
-   - ✅ Auto-códigos (VNT-YYYY-NNNN, ENC-YYYY-NNNN, etc.)
+**Frontend Desktop (Tauri):**
+- Login funcional
+- Dashboard
+- Gestion de productos
+- Sistema de ventas completo
+- Cambios y devoluciones
+- Contabilidad GLOBAL (independiente del selector de colegio)
+- Balance de cuentas (Activos, Pasivos, Patrimonio)
+- Gastos del negocio
+- CxC y CxP
+- Impresion de recibos
 
-4. **Frontend (85% completo)**
-   - ✅ Login funcional con JWT
-   - ✅ Dashboard con bienvenida personalizada
-   - ✅ 7 páginas de navegación (Dashboard, Products, Clients, Sales, SaleDetail, SaleChanges, Orders, Settings)
-   - ✅ Layout con sidebar colapsable
-   - ✅ Routing protegido
-   - ✅ API client con interceptores
-   - ✅ authStore (Zustand) con persistencia
-   - ✅ Sistema de ventas completo (lista, detalle, impresión)
-   - ✅ Sistema de cambios/devoluciones UI completo
-   - ✅ Gestión de productos con stock en tiempo real
-   - ✅ Validación de stock al crear ventas
-   - ✅ Impresión de recibos con Tauri
-   - ⚠️ Algunas páginas aún son placeholders (Clients, Orders, Settings)
+**Portal Web:**
+- Catalogo de productos por colegio
+- Carrito de compras
+- Sistema de pedidos web
+- Verificacion telefonica
 
-5. **Documentación**
-   - README.md actualizado
-   - SETUP.md (guía de instalación)
-   - DATABASE.md (arquitectura de BD)
-   - GIT_WORKFLOW.md (workflow Git)
-   - SALE_CHANGES.md (sistema de cambios completo)
-   - LICENSE (MIT)
+### Pendiente (TODO)
 
-6. **Seed Data**
-   - Script seed_data.py funcional
-   - Crea superuser: admin/Admin123
-   - Crea colegio demo con configuración
+**Alta Prioridad:**
+- [ ] Pagina de Reportes con filtros por colegio
+- [ ] Dashboard con estadisticas reales
+- [ ] Conectar paginas Clients y Orders con API
 
-### ❌ Pendiente (TODO)
-
-1. **Backend (5%)**
-   - [ ] Tests unitarios
-   - [ ] Reportes y analytics
-   - [ ] Exportación a Excel/PDF
-   - [ ] Webhooks y notificaciones
-
-2. **Frontend (30%)**
-   - [ ] Tablas con datos reales de la API
-   - [ ] Formularios CRUD funcionales
-   - [ ] Gestión de cambios/devoluciones UI
-   - [ ] Reportes y gráficos
-   - [ ] Manejo completo de errores
-   - [ ] Loading states
-
-3. **Features**
-   - [ ] Sistema de reportes avanzados
-   - [ ] Dashboard con stats reales
-   - [ ] Notificaciones en tiempo real
-   - [ ] Exportación masiva
-   - [ ] CI/CD pipeline
+**Media Prioridad:**
+- [ ] Sistema de encargos personalizados UI
+- [ ] Exportacion a Excel/PDF
+- [ ] Tests unitarios
+- [ ] Notificaciones
 
 ---
 
-## 🔄 Sistema de Cambios y Devoluciones
+## Base de Datos
 
-### Arquitectura
+### Tablas Principales
 
-El sistema de cambios permite gestionar devoluciones y cambios de productos ya vendidos con las siguientes características:
+**Sistema:**
+- `users`, `user_school_roles`
 
-**Tipos de Cambios:**
-- `size_change`: Cambio de talla (ej: T14 → T16)
-- `product_change`: Cambio a producto diferente
-- `return`: Devolución sin reemplazo (reembolso)
-- `defect`: Cambio por producto defectuoso
+**Tenants:**
+- `schools`
 
-**Estados:**
-- `PENDING`: Creado, pendiente de aprobación
-- `APPROVED`: Aprobado, inventario ajustado
-- `REJECTED`: Rechazado, sin cambios
+**Catalogos (por colegio):**
+- `garment_types`, `products`, `inventory`
 
-**Flujo de Trabajo:**
-1. **SELLER** crea solicitud → Sistema valida stock y calcula precio
-2. Estado → `PENDING`
-3. **ADMIN** aprueba o rechaza
-4. Si aprobado → Ajuste automático de inventario (+1 devuelto, -1 nuevo)
-5. Estado → `APPROVED` o `REJECTED`
+**Operaciones (por colegio):**
+- `clients`, `sales`, `sale_items`, `sale_changes`
+- `orders`, `order_items`
+- `web_orders`, `web_order_items`
 
-**Endpoints:**
-```
-POST   /schools/{id}/sales/{id}/changes           # Crear cambio (SELLER+)
-GET    /schools/{id}/sales/{id}/changes           # Listar cambios (VIEWER+)
-PATCH  /schools/{id}/sales/{id}/changes/{id}/approve  # Aprobar (ADMIN+)
-PATCH  /schools/{id}/sales/{id}/changes/{id}/reject   # Rechazar (ADMIN+)
-```
+**Contabilidad (GLOBAL - school_id nullable):**
+- `balance_accounts` - Cuentas contables
+- `balance_entries` - Movimientos/Auditoria
+- `expenses` - Gastos del negocio
+- `accounts_receivable` - Cuentas por cobrar
+- `accounts_payable` - Cuentas por pagar
+- `transactions` - Transacciones
+- `daily_cash_registers` - Caja diaria
 
-**Lógica de Negocio Clave:**
-```python
-# Cálculo automático de ajuste de precio
-price_adjustment = (new_price * new_qty) - (original_price * returned_qty)
+### Migraciones Aplicadas
 
-# Para returns (devoluciones)
-price_adjustment = -(original_price * returned_qty)  # Reembolso
-
-# Ajuste de inventario al aprobar
-inventory.adjust_stock(original_product, +returned_qty, "Devolución")
-inventory.adjust_stock(new_product, -new_qty, "Entrega")
-```
-
-**Modelo de Datos:**
-- Tabla: `sale_changes`
-- Enums: `change_type_enum`, `change_status_enum`
-- Relaciones: `sale_id`, `original_item_id`, `new_product_id`, `user_id`
-- Auditoría: Completa con created_at, updated_at, user_id
-
-Ver [docs/SALE_CHANGES.md](../docs/SALE_CHANGES.md) para documentación completa.
+1. `4093d4173dee` - Initial multi-tenant schema
+2. `d868decca943` - Add sale_changes table
+3. `xxx_global_accounting` - school_id nullable en contabilidad
+4. Multiples migraciones de ajustes contables
 
 ---
 
-## 🔑 Convenciones del Proyecto
+## Servicios Frontend
 
-### Git Workflow
+### globalAccountingService.ts (USAR PARA CONTABILIDAD)
 
-**Branches:**
-- `main` - Producción (protegida)
-- `develop` - Desarrollo activo
-- `feature/*` - Nuevas funcionalidades
-- `bugfix/*` - Corrección de bugs
-- `hotfix/*` - Parches urgentes
+```typescript
+// Saldos de caja y banco
+getCashBalances(): Promise<CashBalancesResponse>
 
-**Commits:**
+// Gastos
+getExpenses(params): Promise<PaginatedResponse<Expense>>
+createExpense(data): Promise<Expense>
+
+// CxC y CxP
+getReceivablesPayables(): Promise<ReceivablesPayablesResponse>
+createReceivable(data): Promise<AccountsReceivable>
+createPayable(data): Promise<AccountsPayable>
+
+// Cuentas de balance
+getBalanceAccounts(params): Promise<BalanceAccount[]>
+createBalanceAccount(data): Promise<BalanceAccount>
+updateBalanceAccount(id, data): Promise<BalanceAccount>
+deleteBalanceAccount(id): Promise<void>
 ```
-feat:     Nueva funcionalidad
-fix:      Corrección de bug
-docs:     Documentación
-style:    Formateo
-refactor: Refactorización
-test:     Tests
-chore:    Mantenimiento
+
+### accountingService.ts (por colegio - para reportes)
+
+```typescript
+// Para reportes especificos de un colegio
+getSchoolTransactions(schoolId, params)
+getSchoolReceivables(schoolId)
 ```
-
-### Código
-
-**Python (Backend):**
-- PEP 8 style guide
-- Type hints obligatorios
-- Docstrings en funciones públicas
-- Async/await para operaciones I/O
-- SQLAlchemy 2.0 style (Mapped, mapped_column)
-
-**TypeScript (Frontend):**
-- ESLint + Prettier
-- Functional components + hooks
-- Props typing
-- Naming: PascalCase para componentes, camelCase para funciones
-
-### Base de Datos
-
-**Naming:**
-- Tablas: plural, snake_case (`users`, `sale_items`)
-- Columnas: snake_case (`created_at`, `school_id`)
-- Constraints: prefijo + descripción (`uq_school_product_code`, `chk_price_positive`)
-
-**Migraciones:**
-- Descriptivas: `"Add user authentication tables"`
-- Siempre revisar antes de aplicar
-- NUNCA editar migraciones aplicadas
 
 ---
 
-## 🚀 Comandos Útiles
+## Comandos Utiles
 
-### Desarrollo Diario
+### Desarrollo Local
 
 ```bash
-# Terminal 1: Docker services
-docker-compose -f docker/docker-compose.dev.yml up -d postgres redis
-
-# Terminal 2: Backend
-cd backend
-source venv/bin/activate
+# Backend
+cd backend && source venv/bin/activate
 uvicorn app.main:app --reload
 
-# Terminal 3: Frontend
-cd frontend
-npm run tauri:dev
+# Frontend Tauri
+cd frontend && npm run tauri:dev
+
+# Portal Web
+cd web-portal && npm run dev
 ```
 
-### Base de Datos
+### Servidor (VPS)
 
 ```bash
-# Ver tablas
-docker exec docker-postgres-1 psql -U uniformes_user -d uniformes_db -c "\dt"
+# Deploy
+ssh root@104.156.247.226 "cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api"
 
-# Crear migración
-cd backend
-source venv/bin/activate
-alembic revision --autogenerate -m "Description"
+# Ver logs
+ssh root@104.156.247.226 "tail -100 /var/log/uniformes/backend.log"
 
-# Aplicar migración
-alembic upgrade head
-
-# Revertir migración
-alembic downgrade -1
+# Restart servicios
+ssh root@104.156.247.226 "systemctl restart uniformes-api"
 ```
 
 ### Git
 
 ```bash
-# Nueva feature
 git checkout develop
 git pull origin develop
-git checkout -b feature/nombre-descriptivo
-
-# Commit y push
-git add .
-git commit -m "feat: descripción"
-git push -u origin feature/nombre-descriptivo
-
-# Merge a develop
-git checkout develop
-git merge --no-ff feature/nombre-descriptivo
-git push origin develop
+git checkout -b feature/nombre
+# ... cambios ...
+git add . && git commit -m "feat: descripcion"
+git push -u origin feature/nombre
 ```
 
 ---
 
-## 🔒 Archivos Sensibles
+## Notas para Claude
 
-### NUNCA commitear:
-- `.env` (passwords reales)
-- `venv/`, `node_modules/`
-- `__pycache__/`, `*.pyc`
-- `.DS_Store`
-- Certificados, keys, credentials
+### Al Asistir en Contabilidad
 
-### SÍ commitear:
-- `.env.example` (plantilla sin secretos)
-- `requirements.txt`, `package.json`
-- `alembic/versions/*.py` (migraciones)
-- Documentación
+1. **NUNCA** hacer contabilidad dependiente del selector de colegio del header
+2. Usar `globalAccountingService` para operaciones contables
+3. Los endpoints son `/global/accounting/*` (sin school_id en URL)
+4. `school_id` es OPCIONAL en gastos, CxC, CxP - para filtrar/reportes
+5. AccountType enum usa valores **minuscula**: `asset_fixed`, no `ASSET_FIXED`
 
----
+### Convenciones de Codigo
 
-## 📚 Referencias Importantes
+**Python:**
+- Async/await obligatorio
+- Type hints en todo
+- SQLAlchemy 2.0 style
 
-### Documentación
-- FastAPI: https://fastapi.tiangolo.com
-- SQLAlchemy 2.0: https://docs.sqlalchemy.org/en/20/
-- Alembic: https://alembic.sqlalchemy.org
-- Tauri: https://tauri.app
-- React: https://react.dev
+**TypeScript:**
+- Functional components + hooks
+- Zustand para estado global
+- Types estrictos
 
-### Proyecto
-- **GitHub**: https://github.com/Samsuesca/uniformes-system-v2
-- **Issues**: https://github.com/Samsuesca/uniformes-system-v2/issues
-- **Branches**: https://github.com/Samsuesca/uniformes-system-v2/branches
+### Metodos de Pago
+
+```typescript
+type PaymentMethod = 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
+```
 
 ---
 
-## 💡 Notas para Claude
-
-### Al Asistir en el Proyecto
-
-1. **Siempre considerar multi-tenancy**: Cada query debe filtrar por `school_id`
-2. **Usar async/await**: Todo el backend es asíncrono
-3. **Type safety**: Python con type hints, TypeScript en frontend
-4. **Seguir convenciones**: Git commits, naming, estructura de archivos
-5. **Probar antes de commitear**: Verificar que funcione localmente
-
-### Contexto del Sistema Antiguo
-
-El usuario tenía un sistema anterior con PostgreSQL (script SQL disponible en GitHub). Este v2.0 es una reescritura completa con arquitectura moderna y multi-tenant.
-
-**Diferencias clave vs sistema antiguo:**
-- Antiguo: Un solo colegio implícito
-- Nuevo: Multi-colegio explícito con `school_id`
-- Antiguo: IDs seriales (integers)
-- Nuevo: UUIDs
-- Antiguo: Sync queries
-- Nuevo: Async/await
-
-### Decisiones de Diseño Importantes
-
-**Sistema de Cambios/Devoluciones:**
-- **Razón**: En la versión anterior usaba triggers PostgreSQL. En v2.0 usamos lógica en servicios Python para mejor control, testing y mantenimiento.
-- **Enfoque**: Workflow con aprobación (PENDING → APPROVED/REJECTED) en vez de automático
-- **Validación**: Stock se valida al crear Y al aprobar (por si cambió entre medio)
-- **Transacciones**: Todos los ajustes de inventario son atómicos
-
-**Multi-Tenancy:**
-- `school_id` en TODAS las tablas de negocio
-- Services base (`SchoolIsolatedService`) fuerzan filtrado automático
-- Endpoints requieren `school_id` en URL
-- Dependency injection valida acceso del usuario al colegio
-
-**Códigos Auto-generados:**
-- Formato: `PREFIX-YYYY-NNNN` (ej: VNT-2025-0001)
-- Secuencial por año y por colegio
-- Generados en servicios, no triggers
-
-### Próximos pasos sugeridos
-
-**Alta prioridad:**
-1. ✅ ~~Schemas Pydantic~~ (completado)
-2. ✅ ~~CRUD services~~ (completado)
-3. ✅ ~~Autenticación JWT~~ (completado)
-4. ✅ ~~Frontend básico~~ (login + navegación)
-5. ✅ ~~Sistema de ventas UI completo~~ (completado)
-6. ✅ ~~UI para gestión de cambios/devoluciones~~ (completado)
-7. Conectar páginas pendientes con API (Clients, Orders)
-8. Tests unitarios para servicios críticos
-
-**Media prioridad:**
-9. Dashboard con stats reales
-10. Reportes y exportación
-11. Notificaciones
-12. Sistema de encargos personalizados UI
-
----
-
-## 🐛 Troubleshooting Común
-
-**Backend no inicia:**
-- Verificar PostgreSQL: `docker ps`
-- Ver logs: `docker logs docker-postgres-1`
-- Reiniciar: `docker-compose -f docker/docker-compose.dev.yml restart`
-
-**Frontend no compila:**
-- Verificar Rust: `rustc --version`
-- Cargar Rust: `source ~/.cargo/env`
-- Reinstalar deps: `rm -rf node_modules && npm install`
-
-**Migración falla:**
-- Verificar conexión a BD
-- Revisar modelos por errores de sintaxis
-- Verificar que imports estén en `models/__init__.py`
-
----
-
-## 📞 Información del Desarrollador
+## Informacion del Desarrollador
 
 - **Nombre**: Angel Samuel Suesca Rios
 - **GitHub**: https://github.com/Samsuesca
-- **Email**: suescapsam@gmail.com
+- **Servidor**: 104.156.247.226
+- **Dominio**: uniformesconsuelo.com
 
 ---
 
-**Última actualización**: 2025-11-12
-**Versión del proyecto**: v2.0.0-dev
-**Estado**: **FASE 1 COMPLETADA** - Listo para cloud deployment
-
-**Cambios recientes (2025-11-12):**
-- ✅ **FASE 1 TESTING COMPLETADA CON ÉXITO** 🎉
-  - Sistema distribuido funcionando: Mac (servidor) ↔ Windows (cliente)
-  - App Tauri compilada y operativa en Windows
-  - Testing completo de red local (LAN)
-  - Venta real creada desde Windows: VNT-2025-0007
-  - Backend en Mac (IP: 192.168.18.48:8000)
-  - Cliente Windows (IP: 192.168.18.43)
-- ✅ Sistema de entornos multi-ambiente
-  - LOCAL / LAN / CLOUD configurables
-  - Store de configuración con persistencia (Zustand)
-  - UI de Settings para cambiar servidor
-- ✅ Iconos generados para todas las plataformas
-  - 50 archivos de iconos (Windows, macOS, iOS, Android)
-  - icon.ico para Windows ✅
-  - icon.icns para macOS ✅
-- ✅ Documentación completa de Fase 1
-  - PHASE1_TESTING.md: Guía paso a paso
-  - PHASE1_RESULTS.md: Resultados y métricas
-  - NEXT_SESSION_PLAN.md: Plan para configurar datos reales
-  - DEPLOYMENT_ARCHITECTURE.md: Roadmap 4 fases
-
-**Próximos pasos:**
-- Configurar datos reales para "Uniformes Consuelo Rios"
-- FASE 2: Cloud Deployment (VPS + Dominio + SSL)
-- FASE 3: Builds finales multi-plataforma
-- FASE 4: Web portal para clientes
+**Ultima actualizacion**: 2025-12-16
+**Version del proyecto**: v2.0.0
+**Estado**: **EN PRODUCCION** - Cloud deployment activo

@@ -11,30 +11,37 @@ export default {
         display: ['Outfit', 'sans-serif'],
       },
       colors: {
-        // Premium Blue Palette
+        // Gold Palette - Brand Colors (from logo)
         brand: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb', // Main Brand Color
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-          950: '#172554',
+          50: '#fefce8',
+          100: '#fef9c3',
+          200: '#fef08a',
+          300: '#fde047',
+          400: '#facc15',
+          500: '#D4AF37', // Gold
+          600: '#C9A227', // Main Brand Color (logo gold)
+          700: '#A78B1F',
+          800: '#854d0e',
+          900: '#713f12',
+          950: '#422006',
         },
-        // Deep Navy for Sidebar/Headers
+        // Deep Black for Sidebar/Headers (from logo)
         primary: {
-          DEFAULT: '#0f172a', // Slate 900
-          light: '#1e293b',   // Slate 800
+          DEFAULT: '#1A1A1A', // Rich Black
+          light: '#2D2D2D',   // Lighter Black
+          dark: '#0D0D0D',    // Darker Black
         },
         // Surface colors for backgrounds
         surface: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
+          50: '#fafafa',
+          100: '#f5f5f5',
+          200: '#e5e5e5',
+        },
+        // Accent gold for highlights
+        gold: {
+          light: '#E8D48A',
+          DEFAULT: '#C9A227',
+          dark: '#8B7019',
         }
       }
     },
