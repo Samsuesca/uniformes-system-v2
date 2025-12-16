@@ -31,6 +31,7 @@ export interface ClientOrder {
   created_at: string;
   delivery_date?: string;
   items_count: number;
+  payment_proof_url?: string;
   items: {
     id: string;
     quantity: number;
