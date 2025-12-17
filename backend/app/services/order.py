@@ -521,8 +521,6 @@ class OrderService(SchoolIsolatedService[Order]):
 
                     # If no garment_type_id provided, create a generic one for custom products
                     if not item_data.garment_type_id:
-                        from app.models.garment_type import GarmentType
-
                         # Try to find or create a generic "Producto Personalizado" garment type
                         generic_gt_result = await self.db.execute(
                             select(GarmentType).where(
