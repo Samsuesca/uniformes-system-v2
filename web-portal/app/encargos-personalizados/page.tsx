@@ -185,12 +185,12 @@ export default function CustomOrdersPage() {
       }
     });
 
-    // Clear custom products
+    // Clear custom products and school name
     setCustomProducts([]);
+    setSchoolName('');
 
-    // Navigate to cart
-    alert('Productos agregados al carrito exitosamente');
-    router.push('/encargos-personalizados/cart');
+    // Show success message
+    alert('✅ Productos agregados al carrito exitosamente!\n\nHaz clic en el ícono del carrito 🛒 (arriba a la derecha) para proceder al checkout.');
   };
 
   const getFilteredSchools = () => {
@@ -236,7 +236,14 @@ export default function CustomOrdersPage() {
               </p>
             </div>
             <button
-              onClick={() => router.push('/')}
+              onClick={() => {
+                // Navigate to checkout with the temp school slug
+                if (getTotalItems() > 0) {
+                  router.push('/encargos-personalizados/checkout');
+                } else {
+                  alert('El carrito está vacío');
+                }
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors relative"
             >
               <ShoppingCart className="w-5 h-5" />
