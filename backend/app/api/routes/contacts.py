@@ -94,8 +94,8 @@ async def submit_contact(
     summary="Get contacts by email (PUBLIC)"
 )
 async def get_contacts_by_email(
-    email: str = Query(..., description="Email address to search for"),
-    db: DatabaseSession
+    db: DatabaseSession,
+    email: str = Query(..., description="Email address to search for")
 ):
     """
     Public endpoint para que los usuarios consulten sus propios mensajes de contacto.
