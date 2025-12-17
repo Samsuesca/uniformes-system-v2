@@ -18,7 +18,7 @@ class ContactBase(BaseModel):
 
     name: str = Field(..., min_length=2, max_length=150)
     email: EmailStr
-    phone: Optional[str] = Field(None, max_length=20)
+    phone: Optional[str] = Field(None, pattern=r"^\d{10}$")
     contact_type: ContactType
     subject: str = Field(..., min_length=5, max_length=200)
     message: str = Field(..., min_length=10)
