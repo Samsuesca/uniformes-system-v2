@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Mail, Phone, MapPin, Send, MessageSquare, AlertCircle, HelpCircle, MessageCircle, Clock, Wrench, Search, Eye, CheckCircle, XCircle, HourglassIcon } from 'lucide-react';
+import { useClientAuth } from '@/lib/clientAuth';
 
 type ContactStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
 
@@ -22,6 +23,7 @@ interface Contact {
 
 export default function SoportePage() {
   const router = useRouter();
+  const { client, isAuthenticated } = useClientAuth();
   const [activeTab, setActiveTab] = useState<'new' | 'my-pqrs'>('new');
 
   // Form state
@@ -43,6 +45,19 @@ export default function SoportePage() {
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+
+  // Auto-populate form data if user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && client) {
+      setFormData(prev => ({
+        ...prev,
+        name: client.name,
+        email: client.email,
+        phone: client.phone || '',
+      }));
+      setSearchEmail(client.email);
+    }
+  }, [isAuthenticated, client]);
 
   // Map form types to backend ContactType enum
   const mapTypeToBackend = (type: string): string => {
@@ -78,18 +93,18 @@ export default function SoportePage() {
           subject: formData.subject,
           message: formData.message,
           school_id: null,
-          client_id: null
+          client_id: client?.id || null  // Include client_id if authenticated
         })
       });
 
      if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('API Error:', response.status, errorData);
-        
+
         // Si el error es una lista de validaciones de Pydantic (array)
         if (Array.isArray(errorData.detail)) {
             // Unimos los mensajes de error para mostrarlos al usuario
-            const messages = errorData.detail.map((err: any) => 
+            const messages = errorData.detail.map((err: any) =>
                 `El campo ${err.loc[1]} tiene un error: ${err.msg}`
             ).join('. ');
             throw new Error(messages);
@@ -101,16 +116,27 @@ export default function SoportePage() {
 
       setSuccess(true);
 
-      // Reset form after 3 seconds
+      // Reset form after 3 seconds (but keep user data if authenticated)
       setTimeout(() => {
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          type: 'consulta',
-          subject: '',
-          message: '',
-        });
+        if (isAuthenticated && client) {
+          // Keep user data, only reset message fields
+          setFormData(prev => ({
+            ...prev,
+            type: 'consulta',
+            subject: '',
+            message: '',
+          }));
+        } else {
+          // Clear all fields for non-authenticated users
+          setFormData({
+            name: '',
+            email: '',
+            phone: '',
+            type: 'consulta',
+            subject: '',
+            message: '',
+          });
+        }
         setSuccess(false);
       }, 3000);
 
@@ -153,6 +179,15 @@ export default function SoportePage() {
       setLoadingContacts(false);
     }
   };
+
+  // Auto-load PQRS when switching to "Mis PQRS" tab if authenticated
+  useEffect(() => {
+    if (activeTab === 'my-pqrs' && isAuthenticated && client && client.email) {
+      // Automatically fetch PQRS for authenticated user
+      handleSearchContacts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isAuthenticated, client]);
 
   const getStatusBadge = (status: ContactStatus) => {
     const badges = {
@@ -444,26 +479,34 @@ export default function SoportePage() {
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                       Nombre Completo *
+                      {isAuthenticated && (
+                        <span className="ml-2 text-xs text-green-600 font-normal">(Auto-completado)</span>
+                      )}
                     </label>
                     <input
                       type="text"
                       required
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                      disabled={isAuthenticated}
+                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                       Email *
+                      {isAuthenticated && (
+                        <span className="ml-2 text-xs text-green-600 font-normal">(Auto-completado)</span>
+                      )}
                     </label>
                     <input
                       type="email"
                       required
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                      disabled={isAuthenticated}
+                      className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -471,12 +514,16 @@ export default function SoportePage() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     Teléfono
+                    {isAuthenticated && formData.phone && (
+                      <span className="ml-2 text-xs text-green-600 font-normal">(Auto-completado)</span>
+                    )}
                   </label>
                   <input
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                    disabled={isAuthenticated && !!formData.phone}
+                    className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -534,49 +581,74 @@ export default function SoportePage() {
         ) : (
           /* My PQRS Tab */
           <div className="max-w-4xl mx-auto">
-            {/* Search Section */}
-            <div className="bg-white rounded-xl border border-surface-200 p-8 mb-6">
-              <h2 className="text-2xl font-bold text-primary font-display mb-2">
-                Consultar mis PQRS
-              </h2>
-              <p className="text-slate-600 mb-6">
-                Ingresa tu correo electrónico para ver el estado de tus solicitudes
-              </p>
+            {/* Search Section - Only show if not authenticated */}
+            {!isAuthenticated && (
+              <div className="bg-white rounded-xl border border-surface-200 p-8 mb-6">
+                <h2 className="text-2xl font-bold text-primary font-display mb-2">
+                  Consultar mis PQRS
+                </h2>
+                <p className="text-slate-600 mb-6">
+                  Ingresa tu correo electrónico para ver el estado de tus solicitudes
+                </p>
 
-              <div className="flex gap-4">
-                <input
-                  type="email"
-                  value={searchEmail}
-                  onChange={(e) => setSearchEmail(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearchContacts()}
-                  placeholder="tu@email.com"
-                  className="flex-1 px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
-                />
-                <button
-                  onClick={handleSearchContacts}
-                  disabled={loadingContacts}
-                  className="px-6 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {loadingContacts ? (
-                    <>Buscando...</>
-                  ) : (
-                    <>
-                      <Search className="w-5 h-5" />
-                      Buscar
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {contactsError && (
-                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-red-800">
-                    <AlertCircle className="w-5 h-5" />
-                    <span className="font-semibold">{contactsError}</span>
-                  </div>
+                <div className="flex gap-4">
+                  <input
+                    type="email"
+                    value={searchEmail}
+                    onChange={(e) => setSearchEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchContacts()}
+                    placeholder="tu@email.com"
+                    className="flex-1 px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                  />
+                  <button
+                    onClick={handleSearchContacts}
+                    disabled={loadingContacts}
+                    className="px-6 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {loadingContacts ? (
+                      <>Buscando...</>
+                    ) : (
+                      <>
+                        <Search className="w-5 h-5" />
+                        Buscar
+                      </>
+                    )}
+                  </button>
                 </div>
-              )}
-            </div>
+
+                {contactsError && (
+                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-800">
+                      <AlertCircle className="w-5 h-5" />
+                      <span className="font-semibold">{contactsError}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Authenticated User Info */}
+            {isAuthenticated && client && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                  <h3 className="text-lg font-bold text-green-900">
+                    Mostrando tus PQRS
+                  </h3>
+                </div>
+                <p className="text-sm text-green-800">
+                  Cuenta: <span className="font-semibold">{client.name}</span> ({client.email})
+                </p>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {loadingContacts && (
+              <div className="bg-white rounded-xl border border-surface-200 p-12 text-center">
+                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-brand-200 border-t-brand-600 mb-4"></div>
+                <p className="text-slate-600">Cargando tus PQRS...</p>
+              </div>
+            )}
 
             {/* Results Section */}
             {myContacts.length > 0 && (
