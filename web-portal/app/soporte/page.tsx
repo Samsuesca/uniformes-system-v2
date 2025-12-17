@@ -56,9 +56,20 @@ export default function SoportePage() {
         })
       });
 
-      if (!response.ok) {
+     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('API Error:', response.status, errorData);
+        
+        // Si el error es una lista de validaciones de Pydantic (array)
+        if (Array.isArray(errorData.detail)) {
+            // Unimos los mensajes de error para mostrarlos al usuario
+            const messages = errorData.detail.map((err: any) => 
+                `El campo ${err.loc[1]} tiene un error: ${err.msg}`
+            ).join('. ');
+            throw new Error(messages);
+        }
+
+        // Si es un error genérico (string)
         throw new Error(errorData.detail || 'Error al enviar el mensaje');
       }
 
@@ -166,7 +177,7 @@ export default function SoportePage() {
                 </p>
                 <div className="space-y-2">
                   <a
-                    href="https://wa.me/573015687810?text=Hola, necesito soporte técnico"
+                    href="https://wa.me/573015687810?text=Hola, necesito soporte técnico con la web de uniformes"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-green-600 hover:text-green-700 font-medium"
@@ -215,7 +226,7 @@ export default function SoportePage() {
                   <div>
                     <h3 className="font-semibold text-slate-700 mb-1">Ubicación</h3>
                     <p className="text-slate-600 text-sm">
-                      Bogotá, Colombia
+                      Medellin, Colombia
                     </p>
                   </div>
                 </div>
@@ -232,14 +243,6 @@ export default function SoportePage() {
                 <p><span className="font-medium">Sábados:</span> 9:00 AM - 2:00 PM</p>
                 <p><span className="font-medium">Domingos:</span> Cerrado</p>
               </div>
-            </div>
-
-            <div className="bg-green-50 rounded-xl border border-green-200 p-6">
-              <h3 className="font-bold text-green-900 mb-2">Respuesta Rápida</h3>
-              <p className="text-sm text-green-800">
-                Para una respuesta más rápida, contáctanos por WhatsApp.
-                Normalmente respondemos en menos de 2 horas durante horario de atención.
-              </p>
             </div>
           </div>
 
@@ -354,10 +357,13 @@ export default function SoportePage() {
                   <input
                     type="text"
                     required
+                    minLength={5}  // <--- Validación mínima de caracteres
                     value={formData.subject}
                     onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                     className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                    placeholder="Ej: Duda sobre tallas"
                   />
+                  <p className="text-xs text-slate-500 mt-1">Mínimo 5 caracteres</p> {/* <--- Texto de ayuda opcional */}
                 </div>
 
                 <div>
@@ -366,12 +372,14 @@ export default function SoportePage() {
                   </label>
                   <textarea
                     required
+                    minLength={10} // <--- CAMBIO CRÍTICO: Validador de HTML5
                     rows={6}
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all resize-none"
                     placeholder="Describe tu consulta, petición, queja, reclamo o sugerencia..."
                   />
+                  <p className="text-xs text-slate-500 mt-1">Mínimo 10 caracteres</p> {/* <--- Texto de ayuda opcional */}
                 </div>
 
                 <button
