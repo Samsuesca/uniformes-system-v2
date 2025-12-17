@@ -92,9 +92,11 @@ export default function UploadPaymentProofModal({
         throw new Error(errorData.detail || 'Error al subir el comprobante');
       }
 
+      console.log('[UploadModal] Upload successful, calling onUploadSuccess');
       setSuccess(true);
       setTimeout(() => {
         onUploadSuccess();
+        console.log('[UploadModal] onUploadSuccess callback executed');
         handleClose();
       }, 2000);
 

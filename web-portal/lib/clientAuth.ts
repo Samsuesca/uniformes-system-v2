@@ -114,26 +114,34 @@ export const useClientAuth = create<ClientAuthStore>()(
       getOrders: async (): Promise<ClientOrder[]> => {
         const { client } = get();
         if (!client) {
+          console.log('[ClientAuth] No client, returning []');
           return [];
         }
 
+        // Add timestamp to prevent any browser caching
+        const timestamp = Date.now();
+        const url = `${API_BASE_URL}/api/v1/portal/clients/me/orders?client_id=${client.id}&_t=${timestamp}`;
+        console.log('[ClientAuth] Fetching orders from:', url);
+
         try {
-          const response = await fetch(
-            `${API_BASE_URL}/api/v1/portal/clients/me/orders?client_id=${client.id}`,
-            {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              cache: 'no-store', // Disable caching to always get fresh data
-            }
-          );
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            },
+            cache: 'no-store',
+          });
 
           if (!response.ok) {
             throw new Error('Error al obtener pedidos');
           }
 
-          return await response.json();
+          const orders = await response.json();
+          console.log('[ClientAuth] Orders received:', orders);
+          return orders;
         } catch (error) {
           console.error('Error fetching orders:', error);
           return [];

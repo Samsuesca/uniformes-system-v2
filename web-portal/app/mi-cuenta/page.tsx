@@ -34,12 +34,14 @@ export default function MiCuentaPage() {
   }, [mounted, isAuthenticated]);
 
   const loadOrders = async () => {
+    console.log('[MiCuenta] loadOrders() called');
     setLoading(true);
     try {
       const ordersList = await getOrders();
+      console.log('[MiCuenta] Orders loaded:', ordersList.length, ordersList);
       setOrders(ordersList);
     } catch (error) {
-      console.error('Error loading orders:', error);
+      console.error('[MiCuenta] Error loading orders:', error);
     } finally {
       setLoading(false);
     }
@@ -320,8 +322,11 @@ export default function MiCuentaPage() {
           }}
           orderId={selectedOrderForUpload}
           onUploadSuccess={() => {
-            // Reload orders to show updated payment status
+            console.log('[MiCuenta] Upload success callback triggered');
+            // Force immediate reload
             loadOrders();
+            setShowUploadModal(false);
+            setSelectedOrderForUpload(null);
           }}
         />
       )}

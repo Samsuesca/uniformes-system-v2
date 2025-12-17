@@ -262,11 +262,13 @@ export default function WebOrders() {
       setProcessingPaymentProof(true);
       await orderService.approvePayment(selectedOrderSchoolId, selectedOrder.id);
 
-      // Reload order and list
+      // Reload order detail
       const updatedOrder = await orderService.getOrder(selectedOrderSchoolId, selectedOrder.id);
       setSelectedOrder(updatedOrder);
       setShowPaymentProofModal(false);
-      loadOrders();
+
+      // CRITICAL: Reload the full orders list to update table
+      await loadOrders();
     } catch (err) {
       console.error('Error approving payment:', err);
       setError('Error al aprobar el pago');
@@ -285,11 +287,13 @@ export default function WebOrders() {
       setProcessingPaymentProof(true);
       await orderService.rejectPayment(selectedOrderSchoolId, selectedOrder.id, reason);
 
-      // Reload order and list
+      // Reload order detail
       const updatedOrder = await orderService.getOrder(selectedOrderSchoolId, selectedOrder.id);
       setSelectedOrder(updatedOrder);
       setShowPaymentProofModal(false);
-      loadOrders();
+
+      // CRITICAL: Reload the full orders list to update table
+      await loadOrders();
     } catch (err) {
       console.error('Error rejecting payment:', err);
       setError('Error al rechazar el pago');
