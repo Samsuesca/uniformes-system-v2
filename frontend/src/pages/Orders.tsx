@@ -837,11 +837,16 @@ export default function Orders() {
                     </td>
                     {availableSchools.length > 1 && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div className="flex items-center">
-                          <Building2 className="w-4 h-4 mr-2 text-gray-400" />
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-gray-400" />
                           <span className="truncate max-w-[120px]" title={order.school_name || ''}>
                             {order.school_name || 'Sin colegio'}
                           </span>
+                          {order.school_name?.startsWith('+') && (
+                            <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded font-medium whitespace-nowrap">
+                              +Colegio Nuevo
+                            </span>
+                          )}
                         </div>
                       </td>
                     )}

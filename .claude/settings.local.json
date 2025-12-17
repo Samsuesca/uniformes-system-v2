@@ -55,7 +55,8 @@
       "Bash(ssh:*)",
       "Bash(ssh root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api && sleep 3 && systemctl status uniformes-api\")",
       "Bash(from origin 'https://uniformesconsuelorios.com' has been blocked)",
-      "Bash(by CORS policy: No 'Access-Control-Allow-Origin' header\"\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(by CORS policy: No 'Access-Control-Allow-Origin' header\"\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
