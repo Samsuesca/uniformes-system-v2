@@ -143,15 +143,15 @@ export default function Home() {
           </div>
         </div>
 
-        {/* General Products Card */}
+        {/* Custom Orders Card */}
         <div className="mb-8">
           <button
-            onClick={() => router.push('/productos-generales')}
+            onClick={() => router.push('/encargos-personalizados')}
             className="relative w-full max-w-md mx-auto bg-white rounded-2xl border-2 border-purple-200 p-8 hover:shadow-xl hover:border-purple-400 transition-all duration-300 hover:-translate-y-1 block"
           >
-            {/* Badge "Por Encargo" */}
+            {/* Badge "Personalizado" */}
             <div className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-              Por Encargo
+              Personalizado
             </div>
 
             {/* Icono */}
@@ -161,17 +161,17 @@ export default function Home() {
 
             {/* Título */}
             <h3 className="text-xl font-bold text-gray-800 mb-2">
-              Productos Generales
+              Encargos Personalizados
             </h3>
 
             {/* Subtítulo */}
             <p className="text-sm text-gray-600 mb-4">
-              Uniformes disponibles por encargo
+              Crea tu uniforme a medida con tallas y especificaciones únicas
             </p>
 
             {/* CTA */}
             <span className="inline-flex items-center text-purple-600 font-semibold">
-              Ver catálogo
+              Crear encargo
               <ArrowRight className="ml-2 w-5 h-5" />
             </span>
           </button>
