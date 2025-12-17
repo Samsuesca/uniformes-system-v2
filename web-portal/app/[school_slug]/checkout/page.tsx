@@ -237,16 +237,32 @@ export default function CheckoutPage() {
           (sum, item) => sum + (item.product.price * item.quantity), 0
         );
 
+        // Detect custom/quotation items
+        const isCustomOrder = schoolId === 'pending-quotation' ||
+                             schoolItems.some(item => item.product.price === 0 || item.product.school_id === 'pending-quotation');
+
+        // Get custom school name from localStorage if this is a custom order
+        const customSchoolName = isCustomOrder ? localStorage.getItem('custom_order_school_name') : null;
+
         const orderResponse = await ordersApi.createWeb({
-          school_id: schoolId,
+          school_id: isCustomOrder ? null : schoolId,
+          custom_school_name: customSchoolName || undefined,
           client_id: clientId,
-          items: schoolItems.map(item => ({
-            garment_type_id: item.product.garment_type_id,
-            quantity: item.quantity,
-            unit_price: item.product.price,
-            size: item.product.size,
-            gender: item.product.gender,
-          })),
+          items: schoolItems.map(item => {
+            const isCustomItem = item.product.price === 0 || item.product.school_id === 'pending-quotation';
+
+            return {
+              garment_type_id: isCustomItem ? item.product.id : item.product.garment_type_id,
+              quantity: item.quantity,
+              unit_price: item.product.price,
+              size: item.product.size,
+              gender: item.product.gender,
+              order_type: isCustomItem ? 'web_custom' : 'catalog',
+              product_id: isCustomItem ? undefined : item.product.id,
+              needs_quotation: isCustomItem,
+              notes: isCustomItem ? item.product.description : undefined,
+            };
+          }),
           notes: formData.notes || undefined,
         });
 

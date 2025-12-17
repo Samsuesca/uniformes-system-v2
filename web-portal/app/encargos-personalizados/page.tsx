@@ -36,7 +36,6 @@ interface CustomProduct {
   size?: string;
   gender: string;
   quantity: number;
-  unitPrice: number;
   customMeasurements?: string;
   notes?: string;
 }
@@ -46,7 +45,8 @@ export default function CustomOrdersPage() {
   const { addItem, getTotalItems } = useCartStore();
 
   const [schools, setSchools] = useState<School[]>([]);
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
+  const [schoolName, setSchoolName] = useState<string>('');
+  const [showSchoolSuggestions, setShowSchoolSuggestions] = useState(false);
   const [customProducts, setCustomProducts] = useState<CustomProduct[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,7 +60,6 @@ export default function CustomOrdersPage() {
     size: '',
     gender: 'unisex',
     quantity: 1,
-    unitPrice: 0,
     customMeasurements: '',
     notes: ''
   });
@@ -102,10 +101,6 @@ export default function CustomOrdersPage() {
       alert('La cantidad debe ser al menos 1');
       return;
     }
-    if (formData.unitPrice <= 0) {
-      alert('El precio debe ser mayor a 0');
-      return;
-    }
 
     // Create custom product
     const newProduct: CustomProduct = {
@@ -116,7 +111,6 @@ export default function CustomOrdersPage() {
       size: formData.size || undefined,
       gender: formData.gender,
       quantity: formData.quantity,
-      unitPrice: formData.unitPrice,
       customMeasurements: formData.customMeasurements || undefined,
       notes: formData.notes || undefined
     };
@@ -131,7 +125,6 @@ export default function CustomOrdersPage() {
       size: '',
       gender: 'unisex',
       quantity: 1,
-      unitPrice: 0,
       customMeasurements: '',
       notes: ''
     });
@@ -145,8 +138,8 @@ export default function CustomOrdersPage() {
 
   const handleAddToCart = () => {
     // Validation
-    if (!selectedSchoolId) {
-      alert('Por favor selecciona un colegio');
+    if (!schoolName.trim()) {
+      alert('Por favor ingresa el nombre del colegio');
       return;
     }
     if (customProducts.length === 0) {
@@ -154,19 +147,23 @@ export default function CustomOrdersPage() {
       return;
     }
 
-    // Get selected school
-    const selectedSchool = schools.find(s => s.id === selectedSchoolId);
-    if (!selectedSchool) {
-      alert('Colegio no encontrado');
-      return;
-    }
+    // Store school name in localStorage for checkout
+    localStorage.setItem('custom_order_school_name', schoolName.trim());
+
+    // Create temporary school object for custom orders
+    const tempSchool: School = {
+      id: 'pending-quotation',
+      name: schoolName.trim(),
+      slug: 'encargos-personalizados',
+      is_active: true
+    };
 
     // Convert custom products to Product format and add to cart
     customProducts.forEach(customProduct => {
       // Create a Product object from custom product
       const product: Product = {
         id: customProduct.id,
-        school_id: selectedSchoolId,
+        school_id: 'pending-quotation', // Special ID for custom orders
         garment_type_id: customProduct.id, // Use custom ID
         name: `${customProduct.garmentType} - ${customProduct.description}`,
         code: customProduct.id,
@@ -178,13 +175,13 @@ export default function CustomOrdersPage() {
         size: customProduct.size,
         gender: customProduct.gender,
         color: customProduct.color,
-        price: customProduct.unitPrice,
+        price: 0, // Price is 0 - needs quotation
         is_active: true
       };
 
       // Add multiple times for quantity
       for (let i = 0; i < customProduct.quantity; i++) {
-        addItem(product, selectedSchool, true); // isOrder = true for custom products
+        addItem(product, tempSchool, true); // isOrder = true for custom products
       }
     });
 
@@ -193,13 +190,14 @@ export default function CustomOrdersPage() {
 
     // Navigate to cart
     alert('Productos agregados al carrito exitosamente');
-    router.push(`/${selectedSchool.slug}/cart`);
+    router.push('/encargos-personalizados/cart');
   };
 
-  const getTotalPrice = () => {
-    return customProducts.reduce((total, product) => {
-      return total + (product.unitPrice * product.quantity);
-    }, 0);
+  const getFilteredSchools = () => {
+    if (!schoolName.trim()) return [];
+    return schools.filter(s =>
+      s.name.toLowerCase().includes(schoolName.toLowerCase())
+    ).slice(0, 5); // Limit to 5 suggestions
   };
 
   const getProductEmoji = (garmentType: string): string => {
@@ -269,27 +267,45 @@ export default function CustomOrdersPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Form */}
           <div className="lg:col-span-2 space-y-6">
-            {/* School Selector */}
+            {/* School Name Input */}
             <div className="bg-white rounded-xl border border-surface-200 p-6">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Colegio <span className="text-red-500">*</span>
+                Nombre del Colegio <span className="text-red-500">*</span>
               </label>
-              {loading ? (
-                <div className="text-sm text-slate-500">Cargando colegios...</div>
-              ) : (
-                <select
-                  value={selectedSchoolId}
-                  onChange={(e) => setSelectedSchoolId(e.target.value)}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={schoolName}
+                  onChange={(e) => {
+                    setSchoolName(e.target.value);
+                    setShowSchoolSuggestions(true);
+                  }}
+                  onFocus={() => setShowSchoolSuggestions(true)}
+                  placeholder="Escribe el nombre del colegio..."
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="">Selecciona un colegio</option>
-                  {schools.map(school => (
-                    <option key={school.id} value={school.id}>
-                      {school.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+                />
+                {/* Autocomplete suggestions */}
+                {showSchoolSuggestions && getFilteredSchools().length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {getFilteredSchools().map((school) => (
+                      <button
+                        key={school.id}
+                        type="button"
+                        onClick={() => {
+                          setSchoolName(school.name);
+                          setShowSchoolSuggestions(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-purple-50 transition-colors"
+                      >
+                        {school.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                💡 Si el colegio no existe en nuestra lista, se creará automáticamente al procesar tu pedido
+              </p>
             </div>
 
             {/* Add Product Button */}
@@ -341,8 +357,8 @@ export default function CustomOrdersPage() {
                             <p>Notas: {product.notes}</p>
                           )}
                         </div>
-                        <p className="text-lg font-bold text-purple-600 mt-2">
-                          ${formatNumber(product.unitPrice)} × {product.quantity} = ${formatNumber(product.unitPrice * product.quantity)}
+                        <p className="text-sm font-semibold text-orange-600 mt-2 bg-orange-50 px-2 py-1 rounded inline-block">
+                          💰 Precio pendiente de cotización
                         </p>
                       </div>
 
@@ -380,17 +396,21 @@ export default function CustomOrdersPage() {
                     {customProducts.reduce((sum, p) => sum + p.quantity, 0)}
                   </span>
                 </div>
-                <div className="border-t border-purple-200 pt-3 flex justify-between">
-                  <span className="font-bold text-purple-900">Total</span>
-                  <span className="text-2xl font-bold text-purple-600 font-display">
-                    ${formatNumber(getTotalPrice())}
-                  </span>
+                <div className="border-t border-purple-200 pt-3">
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                    <p className="text-sm font-semibold text-orange-800 mb-1">
+                      💰 Precio Total
+                    </p>
+                    <p className="text-xs text-orange-700">
+                      El precio se asignará después de la cotización
+                    </p>
+                  </div>
                 </div>
               </div>
 
               <button
                 onClick={handleAddToCart}
-                disabled={customProducts.length === 0 || !selectedSchoolId}
+                disabled={customProducts.length === 0 || !schoolName.trim()}
                 className="w-full py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors font-bold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Agregar al Carrito
@@ -512,33 +532,18 @@ export default function CustomOrdersPage() {
                   </select>
                 </div>
 
-                {/* Quantity and Unit Price (2 columns) */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Cantidad <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formData.quantity}
-                      onChange={(e) => handleFormChange('quantity', parseInt(e.target.value) || 1)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Precio Unitario (COP) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={formData.unitPrice}
-                      onChange={(e) => handleFormChange('unitPrice', parseInt(e.target.value) || 0)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                  </div>
+                {/* Quantity */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Cantidad <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.quantity}
+                    onChange={(e) => handleFormChange('quantity', parseInt(e.target.value) || 1)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
                 </div>
 
                 {/* Custom Measurements */}
@@ -569,17 +574,15 @@ export default function CustomOrdersPage() {
                   />
                 </div>
 
-                {/* Total Preview */}
-                {formData.quantity > 0 && formData.unitPrice > 0 && (
-                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold text-purple-900">Total:</span>
-                      <span className="text-xl font-bold text-purple-600">
-                        ${formatNumber(formData.quantity * formData.unitPrice)}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {/* Quotation Notice */}
+                <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                  <p className="text-sm font-semibold text-orange-800 mb-1">
+                    💰 Información de Precio
+                  </p>
+                  <p className="text-xs text-orange-700">
+                    El precio de este producto se asignará después de una cotización personalizada según tus especificaciones.
+                  </p>
+                </div>
               </div>
 
               {/* Actions */}

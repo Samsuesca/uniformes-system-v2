@@ -399,9 +399,47 @@ class OrderService(SchoolIsolatedService[Order]):
             Created order with items
         """
         from app.models.sale import SaleSource
+        from app.models.school import School
+        import uuid as uuid_lib
+        from slugify import slugify
+
+        # Resolve school_id - handle custom school names
+        school_id = order_data.school_id
+        if order_data.custom_school_name:
+            # Search for existing school (case-insensitive)
+            existing_school_result = await self.db.execute(
+                select(School).where(
+                    func.lower(School.name) == order_data.custom_school_name.lower(),
+                    School.is_active == True
+                )
+            )
+            existing_school = existing_school_result.scalar_one_or_none()
+
+            if existing_school:
+                # School exists, use its ID
+                school_id = existing_school.id
+            else:
+                # Create new school with "+" prefix
+                new_school_name = f"+{order_data.custom_school_name}"
+                new_school_slug = slugify(new_school_name)
+
+                # Generate unique code
+                school_code = f"TEMP-{uuid_lib.uuid4().hex[:8].upper()}"
+
+                new_school = School(
+                    id=uuid_lib.uuid4(),
+                    code=school_code,
+                    name=new_school_name,
+                    slug=new_school_slug,
+                    is_active=False,  # Inactive until verified
+                    settings={"needs_verification": True, "is_custom": True}
+                )
+                self.db.add(new_school)
+                await self.db.flush()
+                school_id = new_school.id
 
         # Generate order code
-        code = await self._generate_order_code(order_data.school_id)
+        code = await self._generate_order_code(school_id)
 
         # Calculate totals
         items_data = []
@@ -474,6 +512,18 @@ class OrderService(SchoolIsolatedService[Order]):
                 else:
                     raise ValueError("Precio requerido para yomber")
 
+            elif order_type == "web_custom":
+                # WEB_CUSTOM: Items from web portal needing quotation
+                needs_quotation = getattr(item_data, 'needs_quotation', False)
+                if needs_quotation:
+                    # Price is 0, will be assigned later
+                    unit_price = Decimal("0") + additional_price
+                elif getattr(item_data, 'unit_price', None):
+                    unit_price = item_data.unit_price + additional_price
+                else:
+                    # Default to 0 for web custom orders
+                    unit_price = Decimal("0") + additional_price
+
             else:  # "custom"
                 if not getattr(item_data, 'unit_price', None):
                     raise ValueError("unit_price requerido para encargos personalizados")
@@ -482,7 +532,7 @@ class OrderService(SchoolIsolatedService[Order]):
             item_subtotal = unit_price * item_data.quantity
 
             items_data.append({
-                "school_id": order_data.school_id,
+                "school_id": school_id,  # Use resolved school_id
                 "garment_type_id": item_data.garment_type_id,
                 "product_id": product_id,
                 "quantity": item_data.quantity,
@@ -507,7 +557,7 @@ class OrderService(SchoolIsolatedService[Order]):
 
         # Create order without user_id (web portal order)
         order = Order(
-            school_id=order_data.school_id,
+            school_id=school_id,  # Use resolved school_id
             client_id=order_data.client_id,
             code=code,
             user_id=None,  # No user for web portal orders
@@ -537,7 +587,7 @@ class OrderService(SchoolIsolatedService[Order]):
         # Si hay anticipo, crear transacción de ingreso + actualizar balance
         if paid_amount > Decimal("0"):
             transaction = Transaction(
-                school_id=order_data.school_id,
+                school_id=school_id,  # Use resolved school_id
                 type=TransactionType.INCOME,
                 amount=paid_amount,
                 payment_method=AccPaymentMethod.TRANSFER,  # Web orders typically via transfer

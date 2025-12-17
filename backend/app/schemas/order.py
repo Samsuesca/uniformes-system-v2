@@ -60,7 +60,7 @@ class OrderItemCreate(BaseSchema):
     garment_type_id: UUID
     quantity: int = Field(..., gt=0)
 
-    # Order type: "catalog" | "yomber" | "custom"
+    # Order type: "catalog" | "yomber" | "custom" | "web_custom"
     order_type: str = Field(default="custom")
 
     # For catalog/yomber orders - select specific product for price
@@ -71,6 +71,9 @@ class OrderItemCreate(BaseSchema):
 
     # Additional services price (mainly for yomber)
     additional_price: Decimal | None = Field(None, ge=0)
+
+    # Flag for items that need quotation (web custom orders)
+    needs_quotation: bool = Field(default=False)
 
     # Common fields
     size: str | None = Field(None, max_length=10)
@@ -84,7 +87,7 @@ class OrderItemCreate(BaseSchema):
     @classmethod
     def validate_order_type(cls, v: str) -> str:
         """Validate order type field"""
-        valid_types = ['catalog', 'yomber', 'custom']
+        valid_types = ['catalog', 'yomber', 'custom', 'web_custom']
         if v not in valid_types:
             raise ValueError(f'Order type must be one of: {", ".join(valid_types)}')
         return v
@@ -146,6 +149,8 @@ class OrderCreate(OrderBase, SchoolIsolatedSchema):
     # Payment proof (for web orders)
     payment_proof_url: str | None = Field(None, max_length=500)
     payment_notes: str | None = None
+    # Custom school name for non-existent schools (web custom orders)
+    custom_school_name: str | None = Field(None, max_length=200)
     # code, status, totals will be auto-generated
 
 

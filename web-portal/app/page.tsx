@@ -143,8 +143,66 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Schools Grid */}
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-200 border-t-brand-600"></div>
+            <p className="mt-4 text-slate-600">Cargando colegios...</p>
+          </div>
+        ) : filteredSchools.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-surface-200">
+            <SchoolIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-600">No se encontraron colegios</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredSchools.map((school) => {
+              // Map school slug to logo filename
+              const getSchoolLogo = (slug: string) => {
+                const logoMap: Record<string, string> = {
+                  'instituci-n-educativa-caracas': 'caracas.jpg',
+                  'instituci-n-educativa-el-pinal': 'pinal.jpeg',
+                  'instituci-n-educativa-alfonso-l-pez-pumarejo': 'pumarejo.jpeg',
+                };
+                return logoMap[slug] || null;
+              };
+
+              const logoFile = getSchoolLogo(school.slug);
+
+              return (
+                <button
+                  key={school.id}
+                  onClick={() => handleSchoolSelect(school.slug)}
+                  className="group bg-white rounded-2xl border-2 border-gray-200 p-8 hover:shadow-2xl hover:border-brand-500 hover:-translate-y-2 transition-all duration-300 text-left"
+                >
+                  <div className="text-center">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 flex items-center justify-center mx-auto mb-4 group-hover:from-primary group-hover:to-primary-light transition-all overflow-hidden">
+                      {logoFile ? (
+                        <img
+                          src={`/school-logos/${logoFile}`}
+                          alt={`Escudo ${school.name}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <SchoolIcon className="w-10 h-10 text-brand-600 group-hover:text-brand-400 transition-colors" />
+                      )}
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800 font-display mb-2">
+                      {school.name}
+                    </h3>
+                    <div className="flex items-center justify-center gap-2 text-brand-600 font-semibold group-hover:gap-3 transition-all">
+                      <span>Ver catálogo</span>
+                      <ArrowRight className="w-5 h-5" />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Custom Orders Card */}
-        <div className="mb-8">
+        <div className="mt-12 mb-8">
           <button
             onClick={() => router.push('/encargos-personalizados')}
             className="relative w-full max-w-md mx-auto bg-white rounded-2xl border-2 border-purple-200 p-8 hover:shadow-xl hover:border-purple-400 transition-all duration-300 hover:-translate-y-1 block"
@@ -234,64 +292,6 @@ export default function Home() {
             </button>
           </div>
         </div>
-
-        {/* Schools Grid */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-200 border-t-brand-600"></div>
-            <p className="mt-4 text-slate-600">Cargando colegios...</p>
-          </div>
-        ) : filteredSchools.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl border border-surface-200">
-            <SchoolIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-600">No se encontraron colegios</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredSchools.map((school) => {
-              // Map school slug to logo filename
-              const getSchoolLogo = (slug: string) => {
-                const logoMap: Record<string, string> = {
-                  'instituci-n-educativa-caracas': 'caracas.jpg',
-                  'instituci-n-educativa-el-pinal': 'pinal.jpeg',
-                  'instituci-n-educativa-alfonso-l-pez-pumarejo': 'pumarejo.jpeg',
-                };
-                return logoMap[slug] || null;
-              };
-
-              const logoFile = getSchoolLogo(school.slug);
-
-              return (
-                <button
-                  key={school.id}
-                  onClick={() => handleSchoolSelect(school.slug)}
-                  className="group bg-white rounded-2xl border-2 border-gray-200 p-8 hover:shadow-2xl hover:border-brand-500 hover:-translate-y-2 transition-all duration-300 text-left"
-                >
-                  <div className="text-center">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 flex items-center justify-center mx-auto mb-4 group-hover:from-primary group-hover:to-primary-light transition-all overflow-hidden">
-                      {logoFile ? (
-                        <img
-                          src={`/school-logos/${logoFile}`}
-                          alt={`Escudo ${school.name}`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <SchoolIcon className="w-10 h-10 text-brand-600 group-hover:text-brand-400 transition-colors" />
-                      )}
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800 font-display mb-2">
-                      {school.name}
-                    </h3>
-                    <div className="flex items-center justify-center gap-2 text-brand-600 font-semibold group-hover:gap-3 transition-all">
-                      <span>Ver catálogo</span>
-                      <ArrowRight className="w-5 h-5" />
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         {/* Contact CTA */}
         <div className="mt-16 bg-white rounded-2xl border border-surface-200 p-8 text-center">

@@ -118,6 +118,9 @@ export interface OrderItem {
   gender?: string;
   custom_measurements?: Record<string, unknown>;
   notes?: string;
+  order_type?: string;
+  product_id?: string;
+  needs_quotation?: boolean;
 }
 
 export interface Order {
@@ -311,7 +314,7 @@ export const clientsApi = {
 // Orders
 export const ordersApi = {
   // Web portal order creation (public endpoint - sin autenticación)
-  createWeb: async (data: { school_id: string; client_id: string; items: OrderItem[]; notes?: string }) => {
+  createWeb: async (data: { school_id?: string | null; client_id: string; items: OrderItem[]; notes?: string; custom_school_name?: string }) => {
     // Use Next.js API proxy to avoid CORS issues
     const response = await fetch('/api/orders/create', {
       method: 'POST',
