@@ -125,6 +125,7 @@ export const useClientAuth = create<ClientAuthStore>()(
               headers: {
                 'Content-Type': 'application/json',
               },
+              cache: 'no-store', // Disable caching to always get fresh data
             }
           );
 
