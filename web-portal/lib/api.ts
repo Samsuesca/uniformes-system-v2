@@ -111,7 +111,7 @@ export interface Client {
 }
 
 export interface OrderItem {
-  garment_type_id: string;
+  garment_type_id?: string; // Optional for web_custom orders
   quantity: number;
   unit_price: number;
   size?: string;
