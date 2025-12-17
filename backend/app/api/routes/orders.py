@@ -59,7 +59,8 @@ async def list_all_orders(
     if not user_school_ids:
         return []
 
-    # Build query
+    # Build query - include custom schools (with "+" prefix) even if user doesn't have explicit access
+    # This allows admins to see orders for new schools created via web portal
     query = (
         select(Order)
         .options(
@@ -67,17 +68,31 @@ async def list_all_orders(
             joinedload(Order.client),
             joinedload(Order.school)
         )
-        .where(Order.school_id.in_(user_school_ids))
+        .where(
+            or_(
+                Order.school_id.in_(user_school_ids),
+                Order.school.has(School.name.like('+%'))  # Include schools with "+" prefix
+            )
+        )
         .order_by(Order.created_at.desc())
     )
 
     # Apply filters
     if school_id:
+        # Check if user has access OR if it's a custom school (with "+" prefix)
         if school_id not in user_school_ids:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No access to this school"
+            # Check if it's a custom school
+            school_check = await db.execute(
+                select(School).where(
+                    School.id == school_id,
+                    School.name.like('+%')
+                )
             )
+            if not school_check.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No access to this school"
+                )
         query = query.where(Order.school_id == school_id)
 
     if status_filter:
