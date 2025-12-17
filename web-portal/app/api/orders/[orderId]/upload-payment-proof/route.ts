@@ -14,19 +14,30 @@ export async function POST(
 ) {
   try {
     const { orderId } = await context.params;
+    console.log('[Upload Proxy] Starting upload for order:', orderId);
 
     // Get the form data from the request
     const formData = await request.formData();
+    console.log('[Upload Proxy] FormData received, keys:', Array.from(formData.keys()));
 
     // Extract notes from FormData if present (backend expects it as query param)
     const notes = formData.get('notes');
+    const file = formData.get('file');
+
+    console.log('[Upload Proxy] Notes:', notes);
+    console.log('[Upload Proxy] File:', file ? `${file.constructor.name}, size: ${(file as File).size}` : 'null');
+
+    if (!file) {
+      console.error('[Upload Proxy] No file in FormData');
+      return NextResponse.json(
+        { detail: 'No se recibió ningún archivo' },
+        { status: 400 }
+      );
+    }
 
     // Create new FormData with only the file
     const backendFormData = new FormData();
-    const file = formData.get('file');
-    if (file) {
-      backendFormData.append('file', file);
-    }
+    backendFormData.append('file', file);
 
     // Get the backend API URL from environment variables
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.uniformesconsuelorios.com';
@@ -37,15 +48,28 @@ export async function POST(
       url += `?payment_notes=${encodeURIComponent(notes.trim())}`;
     }
 
+    console.log('[Upload Proxy] Forwarding to:', url);
+
     // Forward the request to the backend API
     const response = await fetch(url, {
       method: 'POST',
       body: backendFormData,
     });
 
+    console.log('[Upload Proxy] Backend response status:', response.status);
+
     // Handle non-OK responses
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorText = await response.text();
+      console.error('[Upload Proxy] Backend error:', errorText);
+
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { detail: errorText || 'Error al subir el comprobante' };
+      }
+
       return NextResponse.json(
         {
           detail: errorData.detail || 'Error al subir el comprobante',
@@ -57,13 +81,14 @@ export async function POST(
 
     // Return the successful response
     const data = await response.json();
+    console.log('[Upload Proxy] Success:', data);
     return NextResponse.json(data, { status: 200 });
 
   } catch (error) {
-    console.error('Error in payment proof upload proxy:', error);
+    console.error('[Upload Proxy] Exception:', error);
     return NextResponse.json(
       {
-        detail: 'Error interno del servidor al procesar la solicitud'
+        detail: `Error interno del servidor: ${error instanceof Error ? error.message : 'Unknown error'}`
       },
       { status: 500 }
     );
