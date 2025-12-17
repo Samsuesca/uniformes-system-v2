@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from app.core.config import settings
 from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts
@@ -53,6 +55,11 @@ app.include_router(global_accounting.router, prefix=f"{settings.API_V1_STR}")  #
 app.include_router(global_products.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(contacts.router, prefix=f"{settings.API_V1_STR}")  # PQRS Contact messages
 app.include_router(payment_accounts.router, prefix=f"{settings.API_V1_STR}")  # Payment accounts (bank accounts, QR)
+
+# Mount static files for uploads (payment proofs, etc.)
+uploads_dir = Path("/var/www/uniformes-system-v2/uploads")
+uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
 if __name__ == "__main__":
