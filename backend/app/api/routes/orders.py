@@ -115,7 +115,9 @@ async def list_all_orders(
             school_name=order.school.name if order.school else None,
             # Partial delivery tracking
             items_delivered=sum(1 for item in order.items if item.item_status == OrderItemStatus.DELIVERED) if order.items else 0,
-            items_total=len(order.items) if order.items else 0
+            items_total=len(order.items) if order.items else 0,
+            # Payment proof
+            payment_proof_url=order.payment_proof_url
         )
         for order in orders
     ]

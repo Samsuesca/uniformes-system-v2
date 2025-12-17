@@ -214,6 +214,8 @@ class OrderListResponse(BaseSchema):
     # Partial delivery tracking
     items_delivered: int = 0
     items_total: int = 0
+    # Payment proof
+    payment_proof_url: str | None = None
 
 
 # ============================================

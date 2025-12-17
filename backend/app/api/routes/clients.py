@@ -675,6 +675,7 @@ async def get_client_orders(
             "created_at": order.created_at.isoformat() if order.created_at else None,
             "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
             "items_count": len(order.items) if order.items else 0,
+            "payment_proof_url": order.payment_proof_url,  # Add payment proof URL
             "items": [
                 {
                     "id": str(item.id),

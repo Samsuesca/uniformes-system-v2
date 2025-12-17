@@ -432,6 +432,8 @@ export interface OrderListItem {
   // Partial delivery tracking
   items_delivered: number;
   items_total: number;
+  // Payment proof
+  payment_proof_url: string | null;
 }
 
 export interface OrderCreate {
