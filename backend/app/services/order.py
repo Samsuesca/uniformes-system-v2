@@ -577,19 +577,55 @@ class OrderService(SchoolIsolatedService[Order]):
         return order
 
     async def _generate_order_code(self, school_id: UUID) -> str:
-        """Generate order code: ENC-YYYY-NNNN"""
+        """
+        Generate unique order code: ENC-YYYY-NNNN
+
+        Uses MAX() + 1 strategy with retry logic to handle race conditions.
+        If duplicate is detected, retries with incremented sequence.
+        """
         year = datetime.now().year
         prefix = f"ENC-{year}-"
 
-        count = await self.db.execute(
-            select(func.count(Order.id)).where(
+        # Get highest existing sequence number for this year
+        max_code_result = await self.db.execute(
+            select(func.max(Order.code)).where(
                 Order.school_id == school_id,
                 Order.code.like(f"{prefix}%")
             )
         )
+        max_code = max_code_result.scalar_one_or_none()
 
-        sequence = count.scalar_one() + 1
-        return f"{prefix}{sequence:04d}"
+        if max_code:
+            # Extract sequence number from code (e.g., "ENC-2025-0003" -> 3)
+            try:
+                sequence = int(max_code.split('-')[-1]) + 1
+            except (ValueError, IndexError):
+                sequence = 1
+        else:
+            sequence = 1
+
+        # Try up to 10 times to find an unused code
+        for attempt in range(10):
+            code = f"{prefix}{sequence:04d}"
+
+            # Check if this code already exists
+            existing = await self.db.execute(
+                select(func.count(Order.id)).where(
+                    Order.school_id == school_id,
+                    Order.code == code
+                )
+            )
+
+            if existing.scalar_one() == 0:
+                return code
+
+            # Code exists, try next sequence number
+            sequence += 1
+
+        # Fallback: use timestamp-based suffix if all retries fail
+        from time import time
+        timestamp_suffix = int(time() * 1000) % 10000
+        return f"{prefix}{timestamp_suffix:04d}"
 
     async def update_item_status(
         self,
