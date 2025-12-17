@@ -166,6 +166,26 @@ export const orderService = {
     );
     return response.data;
   },
+
+  /**
+   * Approve payment proof for an order
+   */
+  async approvePayment(schoolId: string, orderId: string): Promise<any> {
+    const response = await apiClient.post(`/schools/${schoolId}/orders/${orderId}/approve-payment`);
+    return response.data;
+  },
+
+  /**
+   * Reject payment proof for an order
+   */
+  async rejectPayment(schoolId: string, orderId: string, rejectionNotes: string): Promise<any> {
+    const response = await apiClient.post(
+      `/schools/${schoolId}/orders/${orderId}/reject-payment`,
+      null,
+      { params: { rejection_notes: rejectionNotes } }
+    );
+    return response.data;
+  },
 };
 
 // Types for stock verification
@@ -199,27 +219,3 @@ export interface OrderStockVerification {
   can_fulfill_completely: boolean;
   suggested_action: 'approve_all' | 'partial' | 'produce_all' | 'review';
 }
-
-class OrderService {
-  /**
-   * Approve payment proof for an order
-   */
-  async approvePayment(schoolId: string, orderId: string): Promise<any> {
-    const response = await apiClient.post(`/schools/${schoolId}/orders/${orderId}/approve-payment`);
-    return response.data;
-  }
-
-  /**
-   * Reject payment proof for an order
-   */
-  async rejectPayment(schoolId: string, orderId: string, rejectionNotes: string): Promise<any> {
-    const response = await apiClient.post(
-      `/schools/${schoolId}/orders/${orderId}/reject-payment`,
-      null,
-      { params: { rejection_notes: rejectionNotes } }
-    );
-    return response.data;
-  }
-}
-
-export const orderService = new OrderService();

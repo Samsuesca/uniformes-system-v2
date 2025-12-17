@@ -312,8 +312,8 @@ export const clientsApi = {
 export const ordersApi = {
   // Web portal order creation (public endpoint - sin autenticación)
   createWeb: async (data: { school_id: string; client_id: string; items: OrderItem[]; notes?: string }) => {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const response = await fetch(`${API_BASE_URL}/api/v1/portal/orders/create`, {
+    // Use Next.js API proxy to avoid CORS issues
+    const response = await fetch('/api/orders/create', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
