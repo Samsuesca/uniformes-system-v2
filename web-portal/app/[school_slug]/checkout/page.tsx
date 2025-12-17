@@ -252,7 +252,7 @@ export default function CheckoutPage() {
             const isCustomItem = item.product.price === 0 || item.product.school_id === 'pending-quotation';
 
             return {
-              garment_type_id: isCustomItem ? item.product.id : item.product.garment_type_id,
+              garment_type_id: isCustomItem ? undefined : item.product.garment_type_id,  // Let backend create garment_type for custom items
               quantity: item.quantity,
               unit_price: item.product.price,
               size: item.product.size,

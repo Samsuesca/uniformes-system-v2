@@ -57,7 +57,7 @@ class OrderItemBase(BaseSchema):
 
 class OrderItemCreate(BaseSchema):
     """Schema for creating order item"""
-    garment_type_id: UUID
+    garment_type_id: UUID | None = None  # Optional for web_custom orders with needs_quotation
     quantity: int = Field(..., gt=0)
 
     # Order type: "catalog" | "yomber" | "custom" | "web_custom"
@@ -221,6 +221,8 @@ class OrderListResponse(BaseSchema):
     items_total: int = 0
     # Payment proof
     payment_proof_url: str | None = None
+    # Quotation flag (true if any item needs quotation)
+    needs_quotation: bool = False
 
 
 # ============================================

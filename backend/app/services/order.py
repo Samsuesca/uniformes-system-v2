@@ -518,6 +518,33 @@ class OrderService(SchoolIsolatedService[Order]):
                 if needs_quotation:
                     # Price is 0, will be assigned later
                     unit_price = Decimal("0") + additional_price
+
+                    # If no garment_type_id provided, create a generic one for custom products
+                    if not item_data.garment_type_id:
+                        from app.models.garment_type import GarmentType
+
+                        # Try to find or create a generic "Producto Personalizado" garment type
+                        generic_gt_result = await self.db.execute(
+                            select(GarmentType).where(
+                                GarmentType.school_id == school_id,
+                                GarmentType.name == "Producto Personalizado"
+                            )
+                        )
+                        generic_gt = generic_gt_result.scalar_one_or_none()
+
+                        if not generic_gt:
+                            generic_gt = GarmentType(
+                                id=uuid_lib.uuid4(),
+                                school_id=school_id,
+                                name="Producto Personalizado",
+                                description="Producto personalizado creado desde el portal web",
+                                is_active=True
+                            )
+                            self.db.add(generic_gt)
+                            await self.db.flush()
+
+                        item_data.garment_type_id = generic_gt.id
+
                 elif getattr(item_data, 'unit_price', None):
                     unit_price = item_data.unit_price + additional_price
                 else:
