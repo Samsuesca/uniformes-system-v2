@@ -95,7 +95,7 @@ async def submit_contact(
 )
 async def get_contacts_by_email(
     email: str = Query(..., description="Email address to search for"),
-    db: DatabaseSession = Depends()
+    db: DatabaseSession
 ):
     """
     Public endpoint para que los usuarios consulten sus propios mensajes de contacto.
