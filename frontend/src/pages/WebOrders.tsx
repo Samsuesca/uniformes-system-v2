@@ -1090,7 +1090,7 @@ export default function WebOrders() {
                       <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                       <p className="text-gray-600 mb-4">Archivo PDF</p>
                       <a
-                        href={`${import.meta.env.VITE_API_URL || 'https://api.uniformesconsuelorios.com'}${paymentProofUrl}`}
+                        href={`https://api.uniformesconsuelorios.com${paymentProofUrl}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition inline-block"
@@ -1100,9 +1100,13 @@ export default function WebOrders() {
                     </div>
                   ) : (
                     <img
-                      src={`${import.meta.env.VITE_API_URL || 'https://api.uniformesconsuelorios.com'}${paymentProofUrl}`}
+                      src={`https://api.uniformesconsuelorios.com${paymentProofUrl}`}
                       alt="Comprobante de pago"
                       className="max-w-full max-h-[600px] object-contain rounded"
+                      onError={(e) => {
+                        console.error('Error loading image:', paymentProofUrl);
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5FcnJvciBhbCBjYXJnYXIgaW1hZ2VuPC90ZXh0Pjwvc3ZnPg==';
+                      }}
                     />
                   )}
                 </div>
