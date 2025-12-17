@@ -81,8 +81,8 @@ export default function UploadPaymentProofModal({
         formData.append('notes', notes.trim());
       }
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.uniformesconsuelorios.com';
-      const response = await fetch(`${API_URL}/api/v1/portal/orders/${orderId}/upload-payment-proof`, {
+      // Use Next.js API proxy to avoid CORS issues
+      const response = await fetch(`/api/orders/${orderId}/upload-payment-proof`, {
         method: 'POST',
         body: formData,
       });
