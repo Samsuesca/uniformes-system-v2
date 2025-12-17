@@ -61,6 +61,16 @@ async def list_all_orders(
 
     # Build query - include custom schools (with "+" prefix) even if user doesn't have explicit access
     # This allows admins to see orders for new schools created via web portal
+
+    # First, get custom school IDs (schools with "+" prefix)
+    custom_schools_result = await db.execute(
+        select(School.id).where(School.name.like('+%'))
+    )
+    custom_school_ids = [row[0] for row in custom_schools_result.fetchall()]
+
+    # Combine user's schools with custom schools
+    all_accessible_school_ids = list(set(list(user_school_ids) + custom_school_ids))
+
     query = (
         select(Order)
         .options(
@@ -68,31 +78,18 @@ async def list_all_orders(
             joinedload(Order.client),
             joinedload(Order.school)
         )
-        .where(
-            or_(
-                Order.school_id.in_(user_school_ids),
-                Order.school.has(School.name.like('+%'))  # Include schools with "+" prefix
-            )
-        )
+        .where(Order.school_id.in_(all_accessible_school_ids))
         .order_by(Order.created_at.desc())
     )
 
     # Apply filters
     if school_id:
-        # Check if user has access OR if it's a custom school (with "+" prefix)
-        if school_id not in user_school_ids:
-            # Check if it's a custom school
-            school_check = await db.execute(
-                select(School).where(
-                    School.id == school_id,
-                    School.name.like('+%')
-                )
+        # Check if user has access to this school (either explicitly or via custom school)
+        if school_id not in all_accessible_school_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No access to this school"
             )
-            if not school_check.scalar_one_or_none():
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No access to this school"
-                )
         query = query.where(Order.school_id == school_id)
 
     if status_filter:
