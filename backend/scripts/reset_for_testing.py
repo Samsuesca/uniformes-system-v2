@@ -1,11 +1,19 @@
 """
-Script para resetear la base de datos para pruebas.
+Script para resetear la base de datos para pruebas completas.
 
-Este script:
-1. Elimina todas las ventas, encargos y transacciones
-2. Resetea los balances de Caja y Banco a 0
-3. Elimina gastos, CxC y CxP
-4. Mantiene: colegios, productos, inventario, usuarios
+Este script elimina TODA la información operacional:
+1. Ventas, encargos, pedidos web
+2. Transacciones, gastos, CxC, CxP
+3. Balances (resetea Caja y Banco a 0)
+4. Mensajes de contacto (PQRS)
+5. Cuentas de pago (QR, cuentas bancarias)
+
+MANTIENE:
+- Colegios (schools)
+- Productos e inventario
+- Tipos de prenda (garment_types)
+- Clientes
+- Usuarios
 
 Uso:
     cd backend
@@ -28,7 +36,7 @@ from app.models.accounting import (
 
 
 async def reset_database():
-    """Resetea la base de datos para pruebas."""
+    """Resetea la base de datos para pruebas completas."""
 
     # Crear conexión
     engine = create_async_engine(settings.DATABASE_URL, echo=True)
@@ -36,54 +44,73 @@ async def reset_database():
 
     async with async_session() as db:
         try:
-            print("\n" + "="*60)
-            print("🔄 INICIANDO RESET DE BASE DE DATOS PARA PRUEBAS")
-            print("="*60 + "\n")
+            print("\n" + "="*70)
+            print("🔄 INICIANDO RESET COMPLETO DE BASE DE DATOS")
+            print("="*70 + "\n")
 
-            # 1. Eliminar sale_changes ANTES de sale_items (sale_changes tiene FK a sale_items)
-            print("🔄 Eliminando cambios/devoluciones...")
+            # === PASO 1: ELIMINAR DATOS OPERACIONALES ===
+            print("📋 PASO 1: Eliminando datos operacionales...\n")
+
+            # 1.1. Eliminar sale_changes ANTES de sale_items (FK dependency)
+            print("  🔄 Eliminando cambios/devoluciones de ventas...")
             await db.execute(text("DELETE FROM sale_changes"))
 
-            print("📦 Eliminando items de ventas...")
+            # 1.2. Eliminar items de ventas
+            print("  📦 Eliminando items de ventas...")
             await db.execute(text("DELETE FROM sale_items"))
 
-            # 2. Eliminar ventas
-            print("🛒 Eliminando ventas...")
+            # 1.3. Eliminar ventas
+            print("  🛒 Eliminando ventas...")
             await db.execute(text("DELETE FROM sales"))
 
-            # 3. Eliminar order_items y orders
-            print("📋 Eliminando items de encargos...")
+            # 1.4. Eliminar items de encargos
+            print("  📋 Eliminando items de encargos...")
             await db.execute(text("DELETE FROM order_items"))
 
-            print("📋 Eliminando encargos...")
+            # 1.5. Eliminar encargos (orders incluye web_orders)
+            print("  📋 Eliminando encargos y pedidos web...")
             await db.execute(text("DELETE FROM orders"))
 
-            # 4. Eliminar transacciones contables
-            print("💳 Eliminando transacciones...")
+            # === PASO 2: ELIMINAR DATOS CONTABLES ===
+            print("\n💰 PASO 2: Eliminando datos contables...\n")
+
+            # 2.1. Eliminar transacciones contables
+            print("  💳 Eliminando transacciones...")
             await db.execute(text("DELETE FROM transactions"))
 
-            # 5. Eliminar gastos
-            print("💸 Eliminando gastos...")
+            # 2.2. Eliminar gastos
+            print("  💸 Eliminando gastos...")
             await db.execute(text("DELETE FROM expenses"))
 
-            # 6. Eliminar cuentas por cobrar
-            print("📥 Eliminando cuentas por cobrar...")
+            # 2.3. Eliminar cuentas por cobrar
+            print("  📥 Eliminando cuentas por cobrar...")
             await db.execute(text("DELETE FROM accounts_receivable"))
 
-            # 7. Eliminar cuentas por pagar
-            print("📤 Eliminando cuentas por pagar...")
+            # 2.4. Eliminar cuentas por pagar
+            print("  📤 Eliminando cuentas por pagar...")
             await db.execute(text("DELETE FROM accounts_payable"))
 
-            # 8. Eliminar entradas de balance (historial)
-            print("📊 Eliminando historial de balances...")
+            # 2.5. Eliminar entradas de balance (historial)
+            print("  📊 Eliminando historial de balances...")
             await db.execute(text("DELETE FROM balance_entries"))
 
-            # 9. Eliminar registros de caja diaria
-            print("💰 Eliminando registros de caja diaria...")
+            # 2.6. Eliminar registros de caja diaria
+            print("  💰 Eliminando registros de caja diaria...")
             await db.execute(text("DELETE FROM daily_cash_registers"))
 
-            # 10. Resetear balances de Caja y Banco a 0
-            print("🏦 Reseteando Caja y Banco a $0...")
+            # === PASO 3: ELIMINAR OTROS DATOS ===
+            print("\n🗑️ PASO 3: Eliminando otros datos...\n")
+
+            # 3.1. Eliminar mensajes de contacto (PQRS)
+            print("  📧 Eliminando mensajes de contacto (PQRS)...")
+            await db.execute(text("DELETE FROM contacts"))
+
+            # 3.2. Eliminar cuentas de pago (QR, cuentas bancarias)
+            print("  💳 Eliminando cuentas de pago (QR, cuentas bancarias)...")
+            await db.execute(text("DELETE FROM payment_accounts"))
+
+            # === PASO 4: RESETEAR BALANCES ===
+            print("\n🏦 PASO 4: Reseteando balances de Caja y Banco...\n")
 
             # Obtener cuentas globales (Caja y Banco)
             result = await db.execute(
@@ -97,48 +124,56 @@ async def reset_database():
             for account in global_accounts:
                 old_balance = account.balance
                 account.balance = Decimal("0")
-                print(f"   - {account.name}: ${old_balance} → $0")
+                print(f"  ✓ {account.name}: ${old_balance:,.2f} → $0.00")
 
-                # Crear entrada de reset
+                # Crear entrada de reset en historial
                 entry = BalanceEntry(
                     account_id=account.id,
                     school_id=None,
                     entry_date=date.today(),
                     amount=-old_balance,
                     balance_after=Decimal("0"),
-                    description="Reset para pruebas",
+                    description="Reset completo de base de datos para pruebas",
                     reference="RESET"
                 )
                 db.add(entry)
 
-            # 11. Eliminar cuentas de balance específicas de colegios (activos fijos, deudas, etc.)
-            # Pero mantener las cuentas globales
-            print("🏛️ Eliminando cuentas de balance por colegio...")
-            await db.execute(
+            # === PASO 5: ELIMINAR CUENTAS DE BALANCE POR COLEGIO ===
+            print("\n🏛️ PASO 5: Eliminando cuentas de balance por colegio...\n")
+            print("  (Mantiene cuentas globales: Caja y Banco)")
+            result = await db.execute(
                 text("DELETE FROM balance_accounts WHERE school_id IS NOT NULL")
             )
+            print(f"  ✓ Eliminadas {result.rowcount} cuentas de balance por colegio")
 
-            # Commit de todos los cambios
+            # === COMMIT ===
             await db.commit()
 
-            print("\n" + "="*60)
+            print("\n" + "="*70)
             print("✅ RESET COMPLETADO EXITOSAMENTE")
-            print("="*60)
-            print("\nEstado actual:")
-            print("  - Ventas: 0")
-            print("  - Encargos: 0")
-            print("  - Transacciones: 0")
-            print("  - Gastos: 0")
-            print("  - CxC: 0")
-            print("  - CxP: 0")
-            print("  - Caja: $0")
-            print("  - Banco: $0")
-            print("\nSe mantienen:")
-            print("  - Colegios")
-            print("  - Productos e inventario")
-            print("  - Usuarios")
-            print("  - Clientes")
-            print("\n")
+            print("="*70)
+            print("\n📊 ESTADO ACTUAL DE LA BASE DE DATOS:\n")
+            print("  ❌ ELIMINADO:")
+            print("     • Ventas: 0")
+            print("     • Encargos/Pedidos web: 0")
+            print("     • Transacciones: 0")
+            print("     • Gastos: 0")
+            print("     • Cuentas por cobrar (CxC): 0")
+            print("     • Cuentas por pagar (CxP): 0")
+            print("     • Mensajes de contacto: 0")
+            print("     • Cuentas de pago: 0")
+            print("     • Cuentas de balance por colegio: 0")
+            print("     • Caja: $0.00")
+            print("     • Banco: $0.00")
+            print("\n  ✅ MANTENIDO:")
+            print("     • Colegios (schools)")
+            print("     • Productos e inventario")
+            print("     • Tipos de prenda (garment_types)")
+            print("     • Clientes")
+            print("     • Usuarios")
+            print("\n" + "="*70)
+            print("🎉 La base de datos está lista para pruebas desde cero")
+            print("="*70 + "\n")
 
         except Exception as e:
             await db.rollback()
