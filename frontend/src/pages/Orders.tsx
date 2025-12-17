@@ -950,15 +950,15 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Payment Verification Modal */}
-      {selectedOrderForPayment && (
+      {/* Payment Verification Modal - Not used in Orders (only in WebOrders) */}
+      {/* {selectedOrderForPayment && (
         <PaymentVerificationModal
           order={selectedOrderForPayment}
           onClose={() => setSelectedOrderForPayment(null)}
           onApprove={handleApprovePayment}
           onReject={handleRejectPayment}
         />
-      )}
+      )} */}
 
       {/* Yombers Modal - Confeccionista View */}
       {showYombersModal && (
