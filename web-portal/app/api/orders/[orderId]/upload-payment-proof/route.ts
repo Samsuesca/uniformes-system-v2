@@ -18,13 +18,29 @@ export async function POST(
     // Get the form data from the request
     const formData = await request.formData();
 
+    // Extract notes from FormData if present (backend expects it as query param)
+    const notes = formData.get('notes');
+
+    // Create new FormData with only the file
+    const backendFormData = new FormData();
+    const file = formData.get('file');
+    if (file) {
+      backendFormData.append('file', file);
+    }
+
     // Get the backend API URL from environment variables
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.uniformesconsuelorios.com';
 
+    // Build URL with payment_notes query parameter if provided
+    let url = `${API_URL}/api/v1/portal/orders/${orderId}/upload-payment-proof`;
+    if (notes && typeof notes === 'string' && notes.trim()) {
+      url += `?payment_notes=${encodeURIComponent(notes.trim())}`;
+    }
+
     // Forward the request to the backend API
-    const response = await fetch(`${API_URL}/api/v1/portal/orders/${orderId}/upload-payment-proof`, {
+    const response = await fetch(url, {
       method: 'POST',
-      body: formData,
+      body: backendFormData,
     });
 
     // Handle non-OK responses
