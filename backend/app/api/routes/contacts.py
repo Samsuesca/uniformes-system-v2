@@ -88,6 +88,47 @@ async def submit_contact(
     return ContactResponse.model_validate(contact)
 
 
+@router.get(
+    "/by-email",
+    response_model=list[ContactResponse],
+    summary="Get contacts by email (PUBLIC)"
+)
+async def get_contacts_by_email(
+    email: str = Query(..., description="Email address to search for"),
+    db: DatabaseSession = Depends()
+):
+    """
+    Public endpoint para que los usuarios consulten sus propios mensajes de contacto.
+    NO requiere autenticación - cualquiera con el email puede ver sus PQRS.
+
+    Args:
+        email: Email address to search for
+        db: Database session
+
+    Returns:
+        list[ContactResponse]: List of contact messages for this email
+
+    Example:
+        ```
+        GET /api/v1/contacts/by-email?email=juan@example.com
+        ```
+    """
+    query = (
+        select(Contact)
+        .options(
+            selectinload(Contact.client),
+            selectinload(Contact.school)
+        )
+        .where(Contact.email == email)
+        .order_by(Contact.created_at.desc())
+    )
+
+    result = await db.execute(query)
+    contacts = result.unique().scalars().all()
+
+    return [ContactResponse.model_validate(c) for c in contacts]
+
+
 # ==========================================
 # Endpoints PRIVADOS (admin desktop app)
 # ==========================================

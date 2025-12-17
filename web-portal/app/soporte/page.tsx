@@ -2,10 +2,29 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Mail, Phone, MapPin, Send, MessageSquare, AlertCircle, HelpCircle, MessageCircle, Clock, Wrench } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, MapPin, Send, MessageSquare, AlertCircle, HelpCircle, MessageCircle, Clock, Wrench, Search, Eye, CheckCircle, XCircle, HourglassIcon } from 'lucide-react';
+
+type ContactStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
+
+interface Contact {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  contact_type: string;
+  subject: string;
+  message: string;
+  status: ContactStatus;
+  admin_response: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export default function SoportePage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'new' | 'my-pqrs'>('new');
+
+  // Form state
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -17,6 +36,13 @@ export default function SoportePage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // My PQRS state
+  const [searchEmail, setSearchEmail] = useState('');
+  const [myContacts, setMyContacts] = useState<Contact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [contactsError, setContactsError] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
   // Map form types to backend ContactType enum
   const mapTypeToBackend = (type: string): string => {
@@ -96,6 +122,75 @@ export default function SoportePage() {
     }
   };
 
+  const handleSearchContacts = async () => {
+    if (!searchEmail.trim()) {
+      setContactsError('Por favor ingresa tu correo electrónico');
+      return;
+    }
+
+    setLoadingContacts(true);
+    setContactsError(null);
+    setMyContacts([]);
+
+    try {
+      const response = await fetch(`/api/contacts/by-email?email=${encodeURIComponent(searchEmail)}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al buscar PQRS');
+      }
+
+      const data = await response.json();
+      setMyContacts(data);
+
+      if (data.length === 0) {
+        setContactsError('No se encontraron PQRS para este correo electrónico');
+      }
+    } catch (err: any) {
+      console.error('Error fetching contacts:', err);
+      setContactsError(err.message || 'Error al buscar tus PQRS. Por favor intenta de nuevo.');
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  const getStatusBadge = (status: ContactStatus) => {
+    const badges = {
+      pending: { color: 'bg-yellow-100 text-yellow-800', label: 'Pendiente', icon: HourglassIcon },
+      in_progress: { color: 'bg-blue-100 text-blue-800', label: 'En Progreso', icon: MessageCircle },
+      resolved: { color: 'bg-green-100 text-green-800', label: 'Resuelto', icon: CheckCircle },
+      closed: { color: 'bg-gray-100 text-gray-800', label: 'Cerrado', icon: XCircle },
+    };
+
+    const badge = badges[status];
+    const Icon = badge.icon;
+
+    return (
+      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${badge.color}`}>
+        <Icon className="w-3 h-3" />
+        {badge.label}
+      </span>
+    );
+  };
+
+  const getTypeBadge = (type: string) => {
+    const types: Record<string, { label: string; color: string }> = {
+      inquiry: { label: 'Consulta', color: 'bg-blue-100 text-blue-800' },
+      request: { label: 'Petición', color: 'bg-green-100 text-green-800' },
+      complaint: { label: 'Queja', color: 'bg-yellow-100 text-yellow-800' },
+      claim: { label: 'Reclamo', color: 'bg-red-100 text-red-800' },
+      suggestion: { label: 'Sugerencia', color: 'bg-purple-100 text-purple-800' },
+    };
+
+    const typeInfo = types[type] || { label: type, color: 'bg-gray-100 text-gray-800' };
+
+    return (
+      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${typeInfo.color}`}>
+        {typeInfo.label}
+      </span>
+    );
+  };
+
   const pqrsTypes = [
     { value: 'consulta', label: 'Consulta', icon: HelpCircle, color: 'blue' },
     { value: 'peticion', label: 'Petición', icon: MessageSquare, color: 'green' },
@@ -120,7 +215,7 @@ export default function SoportePage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-primary font-display mb-4">
             Centro de Soporte
           </h1>
@@ -129,8 +224,43 @@ export default function SoportePage() {
           </p>
         </div>
 
-        {/* Quick Contact Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        {/* Tabs */}
+        <div className="flex justify-center mb-8">
+          <div className="inline-flex rounded-lg border border-surface-200 p-1 bg-white">
+            <button
+              onClick={() => setActiveTab('new')}
+              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'new'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4" />
+                Nueva PQRS
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('my-pqrs')}
+              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'my-pqrs'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4" />
+                Mis PQRS
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'new' ? (
+          <>
+            {/* Quick Contact Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
           {/* Business Support */}
           <div className="bg-white rounded-2xl border border-surface-200 p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-start gap-4">
@@ -400,6 +530,140 @@ export default function SoportePage() {
             </div>
           </div>
         </div>
+          </>
+        ) : (
+          /* My PQRS Tab */
+          <div className="max-w-4xl mx-auto">
+            {/* Search Section */}
+            <div className="bg-white rounded-xl border border-surface-200 p-8 mb-6">
+              <h2 className="text-2xl font-bold text-primary font-display mb-2">
+                Consultar mis PQRS
+              </h2>
+              <p className="text-slate-600 mb-6">
+                Ingresa tu correo electrónico para ver el estado de tus solicitudes
+              </p>
+
+              <div className="flex gap-4">
+                <input
+                  type="email"
+                  value={searchEmail}
+                  onChange={(e) => setSearchEmail(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearchContacts()}
+                  placeholder="tu@email.com"
+                  className="flex-1 px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                />
+                <button
+                  onClick={handleSearchContacts}
+                  disabled={loadingContacts}
+                  className="px-6 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {loadingContacts ? (
+                    <>Buscando...</>
+                  ) : (
+                    <>
+                      <Search className="w-5 h-5" />
+                      Buscar
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {contactsError && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-red-800">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-semibold">{contactsError}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Results Section */}
+            {myContacts.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900">
+                  Se encontraron {myContacts.length} solicitud(es)
+                </h3>
+
+                {myContacts.map((contact) => (
+                  <div
+                    key={contact.id}
+                    className="bg-white rounded-xl border border-surface-200 p-6 hover:shadow-lg transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h4 className="text-lg font-bold text-slate-900">
+                            {contact.subject}
+                          </h4>
+                          {getTypeBadge(contact.contact_type)}
+                        </div>
+                        <p className="text-sm text-slate-500">
+                          Creado: {new Date(contact.created_at).toLocaleDateString('es-ES', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                      <div>
+                        {getStatusBadge(contact.status)}
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <p className="text-sm font-medium text-slate-700 mb-1">Tu mensaje:</p>
+                      <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
+                        {contact.message}
+                      </p>
+                    </div>
+
+                    {contact.admin_response && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <p className="text-sm font-semibold text-green-900 mb-2 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Respuesta del equipo:
+                        </p>
+                        <p className="text-sm text-green-800">
+                          {contact.admin_response}
+                        </p>
+                        <p className="text-xs text-green-600 mt-2">
+                          Actualizado: {new Date(contact.updated_at).toLocaleDateString('es-ES', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    )}
+
+                    {!contact.admin_response && contact.status === 'pending' && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <p className="text-sm text-yellow-800 flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          Tu solicitud está en cola. Te responderemos pronto a tu correo electrónico.
+                        </p>
+                      </div>
+                    )}
+
+                    {!contact.admin_response && contact.status === 'in_progress' && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-blue-800 flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4" />
+                          Estamos trabajando en tu solicitud. Te contactaremos pronto.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Footer */}
