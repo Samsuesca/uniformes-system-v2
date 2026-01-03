@@ -3,10 +3,21 @@
  * Handles both school-specific and global garment types
  * Access: Admin (school) or Superuser (global)
  */
-import { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Loader2, Upload, Trash2, Star, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { productService } from '../services/productService';
+import { useConfigStore } from '../stores/configStore';
 import type { GarmentType, GlobalGarmentType } from '../types/api';
+
+interface GarmentTypeImage {
+  id: string;
+  image_url: string;
+  display_order: number;
+  is_primary: boolean;
+  garment_type_id: string;
+  school_id: string;
+  created_at: string;
+}
 
 interface GarmentTypeModalProps {
   isOpen: boolean;
@@ -27,6 +38,14 @@ export default function GarmentTypeModal({
 }: GarmentTypeModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Image gallery state
+  const [images, setImages] = useState<GarmentTypeImage[]>([]);
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { apiUrl } = useConfigStore();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -49,6 +68,10 @@ export default function GarmentTypeModal({
           has_custom_measurements: garmentType.has_custom_measurements || false,
           is_active: garmentType.is_active ?? true,
         });
+        // Load images for school-specific garment types
+        if (!isGlobal && schoolId) {
+          loadImages();
+        }
       } else {
         // Create mode - reset form
         setFormData({
@@ -59,10 +82,106 @@ export default function GarmentTypeModal({
           has_custom_measurements: false,
           is_active: true,
         });
+        setImages([]);
       }
       setError(null);
+      setImageError(null);
     }
   }, [isOpen, garmentType]);
+
+  // Load images for garment type
+  const loadImages = async () => {
+    if (!garmentType || !schoolId || isGlobal) return;
+
+    setImagesLoading(true);
+    try {
+      const data = await productService.getGarmentTypeImages(schoolId, garmentType.id);
+      setImages(data || []);
+    } catch (err) {
+      console.error('Error loading images:', err);
+      setImageError('Error al cargar imágenes');
+    } finally {
+      setImagesLoading(false);
+    }
+  };
+
+  // Handle file selection for upload
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !garmentType || !schoolId) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setImageError('Formato no válido. Usa JPG, PNG o WebP');
+      return;
+    }
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      setImageError('La imagen es muy grande. Máximo 2MB');
+      return;
+    }
+
+    // Check max images
+    if (images.length >= 10) {
+      setImageError('Máximo 10 imágenes por tipo de prenda');
+      return;
+    }
+
+    setUploadingImage(true);
+    setImageError(null);
+
+    try {
+      const newImage = await productService.uploadGarmentTypeImage(schoolId, garmentType.id, file);
+      setImages(prev => [...prev, newImage]);
+    } catch (err: any) {
+      console.error('Error uploading image:', err);
+      setImageError(err.response?.data?.detail || 'Error al subir imagen');
+    } finally {
+      setUploadingImage(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle delete image
+  const handleDeleteImage = async (imageId: string) => {
+    if (!garmentType || !schoolId) return;
+
+    try {
+      await productService.deleteGarmentTypeImage(schoolId, garmentType.id, imageId);
+      setImages(prev => prev.filter(img => img.id !== imageId));
+    } catch (err: any) {
+      console.error('Error deleting image:', err);
+      setImageError(err.response?.data?.detail || 'Error al eliminar imagen');
+    }
+  };
+
+  // Handle set primary image
+  const handleSetPrimary = async (imageId: string) => {
+    if (!garmentType || !schoolId) return;
+
+    try {
+      await productService.setGarmentTypePrimaryImage(schoolId, garmentType.id, imageId);
+      // Update local state
+      setImages(prev => prev.map(img => ({
+        ...img,
+        is_primary: img.id === imageId
+      })));
+    } catch (err: any) {
+      console.error('Error setting primary image:', err);
+      setImageError(err.response?.data?.detail || 'Error al establecer imagen principal');
+    }
+  };
+
+  // Get full image URL
+  const getImageUrl = (imageUrl: string) => {
+    if (imageUrl.startsWith('http')) return imageUrl;
+    return `${apiUrl}${imageUrl}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,6 +418,130 @@ export default function GarmentTypeModal({
                       : 'El tipo está oculto y no se puede usar para nuevos productos'}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Image Gallery - Only show for school-specific garment types in edit mode */}
+            {garmentType && !isGlobal && schoolId && (
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4" />
+                      Imágenes del Tipo de Prenda
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Agrega fotos desde diferentes ángulos para mostrar en el catálogo web
+                    </p>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {images.length}/10
+                  </span>
+                </div>
+
+                {/* Image error */}
+                {imageError && (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <p className="text-xs text-red-700">{imageError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setImageError(null)}
+                      className="ml-auto text-red-400 hover:text-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Images loading */}
+                {imagesLoading ? (
+                  <div className="flex items-center justify-center py-8 bg-gray-50 rounded-lg">
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                    <span className="ml-2 text-sm text-gray-500">Cargando imágenes...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-3">
+                    {/* Existing images */}
+                    {images.map((image) => (
+                      <div
+                        key={image.id}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 ${
+                          image.is_primary ? 'border-yellow-400' : 'border-gray-200'
+                        } group`}
+                      >
+                        <img
+                          src={getImageUrl(image.image_url)}
+                          alt="Imagen del producto"
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Overlay with actions */}
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                          {/* Set as primary */}
+                          {!image.is_primary && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimary(image.id)}
+                              className="p-1.5 bg-white rounded-full shadow hover:bg-yellow-100 transition"
+                              title="Establecer como principal"
+                            >
+                              <Star className="w-4 h-4 text-yellow-500" />
+                            </button>
+                          )}
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteImage(image.id)}
+                            className="p-1.5 bg-white rounded-full shadow hover:bg-red-100 transition"
+                            title="Eliminar imagen"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </button>
+                        </div>
+                        {/* Primary badge */}
+                        {image.is_primary && (
+                          <div className="absolute top-1 left-1 bg-yellow-400 text-yellow-900 text-xs px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
+                            <Star className="w-3 h-3" fill="currentColor" />
+                            Principal
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Upload button */}
+                    {images.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImage}
+                        className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {uploadingImage ? (
+                          <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                        ) : (
+                          <>
+                            <Upload className="w-6 h-6 text-gray-400" />
+                            <span className="text-xs text-gray-500">Agregar</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                {/* Help text */}
+                <p className="text-xs text-gray-400 mt-2">
+                  JPG, PNG o WebP • Máx 2MB • Click en ⭐ para marcar como principal
+                </p>
               </div>
             )}
 

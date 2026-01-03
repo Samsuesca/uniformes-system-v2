@@ -6,21 +6,33 @@ Two types of endpoints:
 2. School-specific: /schools/{school_id}/products - Original endpoints for specific school
 """
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, status, Query, Depends
+from pathlib import Path
+from datetime import datetime
+import shutil
+import uuid as uuid_lib
+
+from fastapi import APIRouter, HTTPException, status, Query, Depends, UploadFile, File
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import selectinload, joinedload
 
 from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole
-from app.models.product import Product, GarmentType, Inventory
+from app.models.product import Product, GarmentType, GarmentTypeImage, Inventory
 from app.models.order import OrderItem, Order, OrderStatus, OrderItemStatus
 from app.models.school import School
 from app.schemas.product import (
     GarmentTypeCreate, GarmentTypeUpdate, GarmentTypeResponse,
+    GarmentTypeImageResponse, GarmentTypeImageReorder, GarmentTypeWithImages,
     ProductCreate, ProductUpdate, ProductResponse, ProductWithInventory,
     ProductListResponse
 )
 from app.services.product import GarmentTypeService, ProductService
+
+# Constants for image uploads
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2MB
+MAX_IMAGES_PER_GARMENT_TYPE = 10
+UPLOADS_BASE_DIR = Path("/var/www/uniformes-system-v2/uploads")
 
 
 # =============================================================================
@@ -44,7 +56,8 @@ async def list_all_products(
     garment_type_id: UUID | None = Query(None, description="Filter by garment type"),
     search: str | None = Query(None, description="Search by code or name"),
     active_only: bool = Query(True, description="Only active products"),
-    with_stock: bool = Query(False, description="Include stock quantity")
+    with_stock: bool = Query(False, description="Include stock quantity"),
+    with_images: bool = Query(False, description="Include garment type images")
 ):
     """
     List products from ALL schools the user has access to.
@@ -55,17 +68,22 @@ async def list_all_products(
     - search: Search in product code or name
     - active_only: Filter only active products
     - with_stock: Include current stock quantity
+    - with_images: Include garment type images for catalog display
     """
     if not user_school_ids:
         return []
 
     # Build query
+    query_options = [
+        joinedload(Product.garment_type),
+        joinedload(Product.school)
+    ]
+    if with_images:
+        query_options.append(selectinload(Product.garment_type).selectinload(GarmentType.images))
+
     query = (
         select(Product)
-        .options(
-            joinedload(Product.garment_type),
-            joinedload(Product.school)
-        )
+        .options(*query_options)
         .where(Product.school_id.in_(user_school_ids))
         .order_by(Product.name)
     )
@@ -155,8 +173,32 @@ async def list_all_products(
                     'count': int(row.order_count or 0)
                 }
 
-    return [
-        ProductListResponse(
+    # Build responses
+    responses = []
+    for product in products:
+        # Get images for this garment type if requested
+        images = []
+        primary_image_url = None
+        if with_images and product.garment_type:
+            # Filter images by school_id (since images are per-school)
+            garment_images = [
+                img for img in (product.garment_type.images or [])
+                if img.school_id == product.school_id
+            ]
+            # Sort by display_order
+            garment_images.sort(key=lambda x: x.display_order)
+            images = [
+                GarmentTypeImageResponse.model_validate(img)
+                for img in garment_images
+            ]
+            # Find primary image
+            primary = next((img for img in garment_images if img.is_primary), None)
+            if primary:
+                primary_image_url = primary.image_url
+            elif garment_images:
+                primary_image_url = garment_images[0].image_url
+
+        responses.append(ProductListResponse(
             id=product.id,
             code=product.code,
             name=product.name,
@@ -172,10 +214,12 @@ async def list_all_products(
             stock=stock_map.get(product.id, 0) if with_stock else None,
             min_stock=min_stock_map.get(product.id, 5) if with_stock else None,
             pending_orders_qty=pending_orders_map.get(product.id, {}).get('qty', 0),
-            pending_orders_count=pending_orders_map.get(product.id, {}).get('count', 0)
-        )
-        for product in products
-    ]
+            pending_orders_count=pending_orders_map.get(product.id, {}).get('count', 0),
+            garment_type_images=images if with_images else [],
+            garment_type_primary_image_url=primary_image_url
+        ))
+
+    return responses
 
 
 @router.get(
@@ -211,7 +255,7 @@ async def get_product_global(
 
 @router.get(
     "/garment-types",
-    response_model=list[GarmentTypeResponse],
+    response_model=list[GarmentTypeWithImages],
     summary="List garment types from all schools"
 )
 async def list_all_garment_types(
@@ -221,19 +265,24 @@ async def list_all_garment_types(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     school_id: UUID | None = Query(None, description="Filter by specific school"),
-    active_only: bool = Query(True, description="Only active garment types")
+    active_only: bool = Query(True, description="Only active garment types"),
+    with_images: bool = Query(True, description="Include images for each garment type")
 ):
     """
     List garment types from ALL schools the user has access to.
+    Includes images by default for display purposes.
     """
     if not user_school_ids:
         return []
 
-    query = (
-        select(GarmentType)
-        .where(GarmentType.school_id.in_(user_school_ids))
-        .order_by(GarmentType.name)
-    )
+    query_options = []
+    if with_images:
+        query_options.append(selectinload(GarmentType.images))
+
+    query = select(GarmentType)
+    if query_options:
+        query = query.options(*query_options)
+    query = query.where(GarmentType.school_id.in_(user_school_ids)).order_by(GarmentType.name)
 
     if school_id:
         if school_id not in user_school_ids:
@@ -249,9 +298,43 @@ async def list_all_garment_types(
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
-    garment_types = result.scalars().all()
+    garment_types = result.unique().scalars().all()
 
-    return [GarmentTypeResponse.model_validate(g) for g in garment_types]
+    # Build response with images
+    responses = []
+    for gt in garment_types:
+        # Get images for this garment type (filter by school_id since images are per-school)
+        gt_images = []
+        primary_image_url = None
+        if with_images and gt.images:
+            # Filter images that belong to this garment type's school
+            relevant_images = [img for img in gt.images if img.school_id == gt.school_id]
+            relevant_images.sort(key=lambda x: x.display_order)
+            gt_images = [GarmentTypeImageResponse.model_validate(img) for img in relevant_images]
+            # Find primary image
+            primary = next((img for img in relevant_images if img.is_primary), None)
+            if primary:
+                primary_image_url = primary.image_url
+            elif relevant_images:
+                primary_image_url = relevant_images[0].image_url
+
+        response = GarmentTypeWithImages(
+            id=gt.id,
+            school_id=gt.school_id,
+            name=gt.name,
+            description=gt.description,
+            category=gt.category,
+            requires_embroidery=gt.requires_embroidery,
+            has_custom_measurements=gt.has_custom_measurements,
+            is_active=gt.is_active,
+            created_at=gt.created_at,
+            updated_at=gt.updated_at,
+            images=gt_images,
+            primary_image_url=primary_image_url
+        )
+        responses.append(response)
+
+    return responses
 
 
 # =============================================================================
@@ -348,6 +431,340 @@ async def update_garment_type(
 
     await db.commit()
     return GarmentTypeResponse.model_validate(garment_type)
+
+
+# ==========================================
+# Garment Type Images
+# ==========================================
+
+@school_router.get(
+    "/garment-types/{garment_type_id}/images",
+    response_model=list[GarmentTypeImageResponse],
+    dependencies=[Depends(require_school_access(UserRole.VIEWER))]
+)
+async def list_garment_type_images(
+    school_id: UUID,
+    garment_type_id: UUID,
+    db: DatabaseSession
+):
+    """List all images for a garment type"""
+    # Verify garment type exists and belongs to school
+    garment_result = await db.execute(
+        select(GarmentType).where(
+            GarmentType.id == garment_type_id,
+            GarmentType.school_id == school_id
+        )
+    )
+    garment_type = garment_result.scalar_one_or_none()
+    if not garment_type:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tipo de prenda no encontrado"
+        )
+
+    # Get images
+    result = await db.execute(
+        select(GarmentTypeImage)
+        .where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+        .order_by(GarmentTypeImage.display_order)
+    )
+    images = result.scalars().all()
+
+    return [GarmentTypeImageResponse.model_validate(img) for img in images]
+
+
+@school_router.post(
+    "/garment-types/{garment_type_id}/images",
+    response_model=GarmentTypeImageResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def upload_garment_type_image(
+    school_id: UUID,
+    garment_type_id: UUID,
+    db: DatabaseSession,
+    file: UploadFile = File(...)
+):
+    """
+    Upload a new image for a garment type.
+
+    - Accepted formats: .jpg, .jpeg, .png, .webp
+    - Max file size: 2MB
+    - Max 10 images per garment type
+    """
+    # Validate file extension
+    file_ext = Path(file.filename or "").suffix.lower()
+    if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tipo de archivo no permitido. Solo se aceptan: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+        )
+
+    # Validate file size
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+
+    if file_size > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Imagen muy grande. Tamano maximo: 2MB"
+        )
+
+    # Verify garment type exists and belongs to school
+    garment_result = await db.execute(
+        select(GarmentType).where(
+            GarmentType.id == garment_type_id,
+            GarmentType.school_id == school_id
+        )
+    )
+    garment_type = garment_result.scalar_one_or_none()
+    if not garment_type:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tipo de prenda no encontrado"
+        )
+
+    # Check max images limit
+    count_result = await db.execute(
+        select(func.count(GarmentTypeImage.id)).where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+    )
+    current_count = count_result.scalar() or 0
+    if current_count >= MAX_IMAGES_PER_GARMENT_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximo {MAX_IMAGES_PER_GARMENT_TYPE} imagenes por tipo de prenda"
+        )
+
+    # Create upload directory
+    upload_dir = UPLOADS_BASE_DIR / "garment-types" / str(school_id) / str(garment_type_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate unique filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = uuid_lib.uuid4().hex[:8]
+    filename = f"img_{timestamp}_{unique_id}{file_ext}"
+    file_path = upload_dir / filename
+
+    # Save file
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar imagen: {str(e)}"
+        )
+
+    # Determine if this should be primary (first image is primary by default)
+    is_primary = current_count == 0
+
+    # Get next display order
+    max_order_result = await db.execute(
+        select(func.max(GarmentTypeImage.display_order)).where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+    )
+    max_order = max_order_result.scalar() or -1
+    next_order = max_order + 1
+
+    # Create database record
+    image_url = f"/uploads/garment-types/{school_id}/{garment_type_id}/{filename}"
+    new_image = GarmentTypeImage(
+        garment_type_id=garment_type_id,
+        school_id=school_id,
+        image_url=image_url,
+        display_order=next_order,
+        is_primary=is_primary
+    )
+    db.add(new_image)
+    await db.commit()
+    await db.refresh(new_image)
+
+    return GarmentTypeImageResponse.model_validate(new_image)
+
+
+@school_router.delete(
+    "/garment-types/{garment_type_id}/images/{image_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def delete_garment_type_image(
+    school_id: UUID,
+    garment_type_id: UUID,
+    image_id: UUID,
+    db: DatabaseSession
+):
+    """Delete a garment type image"""
+    # Find the image
+    result = await db.execute(
+        select(GarmentTypeImage).where(
+            GarmentTypeImage.id == image_id,
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+    )
+    image = result.scalar_one_or_none()
+
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Imagen no encontrada"
+        )
+
+    was_primary = image.is_primary
+
+    # Delete file from filesystem
+    file_path = UPLOADS_BASE_DIR / image.image_url.lstrip("/uploads/")
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except Exception:
+            pass  # Ignore file deletion errors
+
+    # Delete database record
+    await db.delete(image)
+
+    # If deleted image was primary, set next image as primary
+    if was_primary:
+        next_primary_result = await db.execute(
+            select(GarmentTypeImage)
+            .where(
+                GarmentTypeImage.garment_type_id == garment_type_id,
+                GarmentTypeImage.school_id == school_id
+            )
+            .order_by(GarmentTypeImage.display_order)
+            .limit(1)
+        )
+        next_primary = next_primary_result.scalar_one_or_none()
+        if next_primary:
+            next_primary.is_primary = True
+
+    await db.commit()
+
+
+@school_router.put(
+    "/garment-types/{garment_type_id}/images/{image_id}/primary",
+    response_model=GarmentTypeImageResponse,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def set_primary_image(
+    school_id: UUID,
+    garment_type_id: UUID,
+    image_id: UUID,
+    db: DatabaseSession
+):
+    """Set an image as the primary image for the garment type"""
+    # Find the image
+    result = await db.execute(
+        select(GarmentTypeImage).where(
+            GarmentTypeImage.id == image_id,
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+    )
+    image = result.scalar_one_or_none()
+
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Imagen no encontrada"
+        )
+
+    # Remove primary from all other images
+    await db.execute(
+        select(GarmentTypeImage)
+        .where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id,
+            GarmentTypeImage.is_primary == True
+        )
+    )
+    # Update all images to not be primary
+    all_images_result = await db.execute(
+        select(GarmentTypeImage).where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+    )
+    for img in all_images_result.scalars().all():
+        img.is_primary = False
+
+    # Set this image as primary
+    image.is_primary = True
+    await db.commit()
+    await db.refresh(image)
+
+    return GarmentTypeImageResponse.model_validate(image)
+
+
+@school_router.put(
+    "/garment-types/{garment_type_id}/images/reorder",
+    response_model=list[GarmentTypeImageResponse],
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))]
+)
+async def reorder_garment_type_images(
+    school_id: UUID,
+    garment_type_id: UUID,
+    reorder_data: GarmentTypeImageReorder,
+    db: DatabaseSession
+):
+    """Reorder images for a garment type"""
+    # Verify garment type exists
+    garment_result = await db.execute(
+        select(GarmentType).where(
+            GarmentType.id == garment_type_id,
+            GarmentType.school_id == school_id
+        )
+    )
+    if not garment_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tipo de prenda no encontrado"
+        )
+
+    # Get all images
+    result = await db.execute(
+        select(GarmentTypeImage).where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+    )
+    images = {img.id: img for img in result.scalars().all()}
+
+    # Validate all IDs are present
+    for img_id in reorder_data.image_ids:
+        if img_id not in images:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Imagen {img_id} no encontrada"
+            )
+
+    # Update display order
+    for order, img_id in enumerate(reorder_data.image_ids):
+        images[img_id].display_order = order
+
+    await db.commit()
+
+    # Return updated images in new order
+    updated_result = await db.execute(
+        select(GarmentTypeImage)
+        .where(
+            GarmentTypeImage.garment_type_id == garment_type_id,
+            GarmentTypeImage.school_id == school_id
+        )
+        .order_by(GarmentTypeImage.display_order)
+    )
+    updated_images = updated_result.scalars().all()
+
+    return [GarmentTypeImageResponse.model_validate(img) for img in updated_images]
 
 
 # ==========================================

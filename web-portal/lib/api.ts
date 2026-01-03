@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { getPublicToken, clearPublicToken } from './auth';
 
-// API Base URL - se configura desde variables de entorno
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// API Base URL - se configura desde variables de entorno (exported for image URLs)
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Public client - NO authentication required (for public endpoints like /schools)
 const publicClient = axios.create({
@@ -76,6 +76,16 @@ export interface School {
   is_active: boolean;
 }
 
+export interface GarmentTypeImage {
+  id: string;
+  image_url: string;
+  display_order: number;
+  is_primary: boolean;
+  garment_type_id: string;
+  school_id: string;
+  created_at: string;
+}
+
 export interface Product {
   id: string;
   school_id: string;
@@ -94,6 +104,9 @@ export interface Product {
   location?: string;
   barcode?: string;
   is_active: boolean;
+  // Garment type images for catalog display
+  garment_type_images?: GarmentTypeImage[];
+  garment_type_primary_image_url?: string | null;
 }
 
 export interface Client {
@@ -146,8 +159,8 @@ export const schoolsApi = {
 
 // Products
 export const productsApi = {
-  list: (schoolId: string, params?: { is_active?: boolean; with_stock?: boolean }) =>
-    apiClient.get<Product[]>('/products', { params: { school_id: schoolId, with_stock: true, ...params } }),
+  list: (schoolId: string, params?: { is_active?: boolean; with_stock?: boolean; with_images?: boolean }) =>
+    apiClient.get<Product[]>('/products', { params: { school_id: schoolId, with_stock: true, with_images: true, ...params } }),
   get: (schoolId: string, productId: string) =>
     apiClient.get<Product>(`/schools/${schoolId}/products/${productId}`),
   listGlobal: (params?: { with_inventory?: boolean; limit?: number }) =>

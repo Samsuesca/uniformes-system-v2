@@ -13,11 +13,12 @@ import OrderModal from '../components/OrderModal';
 import {
   Package, Plus, Search, AlertCircle, Loader2, Edit2, PackagePlus, X, Save,
   Globe, Building2, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingCart,
-  AlertTriangle, PackageX, TrendingUp, BarChart3, ChevronDown, Tag
+  AlertTriangle, PackageX, TrendingUp, BarChart3, ChevronDown, Tag, Image as ImageIcon
 } from 'lucide-react';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useAuthStore } from '../stores/authStore';
+import { useConfigStore } from '../stores/configStore';
 import apiClient from '../utils/api-client';
 import type { Product, GlobalProduct, GarmentType, GlobalGarmentType } from '../types/api';
 
@@ -43,6 +44,7 @@ interface SortConfig {
 export default function Products() {
   const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
   const { user } = useAuthStore();
+  const { apiUrl } = useConfigStore();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('school');
@@ -467,6 +469,13 @@ export default function Products() {
   };
 
   const hasActiveFilters = searchTerm || sizeFilter || garmentTypeFilter || stockFilter !== 'all';
+
+  // Helper to get full image URL
+  const getImageUrl = (imageUrl: string | undefined | null) => {
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('http')) return imageUrl;
+    return `${apiUrl}${imageUrl}`;
+  };
 
   return (
     <Layout>
@@ -1157,6 +1166,11 @@ export default function Products() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className={showGlobalTypes ? 'bg-purple-50' : 'bg-blue-50'}>
                 <tr>
+                  {!showGlobalTypes && (
+                    <th className="w-16 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Imagen
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Nombre
                   </th>
@@ -1192,8 +1206,29 @@ export default function Products() {
                     ? availableSchools.find(s => s.id === (type as GarmentType).school_id)?.name
                     : null;
 
+                  // Get primary image for school-specific types
+                  const primaryImage = !showGlobalTypes && 'images' in type && Array.isArray((type as any).images)
+                    ? (type as any).images.find((img: any) => img.is_primary)?.image_url ||
+                      (type as any).images[0]?.image_url
+                    : (type as any).primary_image_url;
+
                   return (
                     <tr key={type.id} className="hover:bg-gray-50">
+                      {!showGlobalTypes && (
+                        <td className="w-16 px-3 py-2">
+                          {primaryImage ? (
+                            <img
+                              src={getImageUrl(primaryImage) || ''}
+                              alt={type.name}
+                              className="w-12 h-12 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center">
+                              <ImageIcon className="w-6 h-6 text-gray-400" />
+                            </div>
+                          )}
+                        </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           {showGlobalTypes && <Globe className="w-4 h-4 text-purple-600 mr-2" />}

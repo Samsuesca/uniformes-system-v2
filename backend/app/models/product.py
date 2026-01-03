@@ -52,9 +52,53 @@ class GarmentType(Base):
         back_populates="garment_type",
         cascade="all, delete-orphan"
     )
+    images: Mapped[list["GarmentTypeImage"]] = relationship(
+        back_populates="garment_type",
+        cascade="all, delete-orphan",
+        order_by="GarmentTypeImage.display_order"
+    )
 
     def __repr__(self) -> str:
         return f"<GarmentType(name='{self.name}', school_id='{self.school_id}')>"
+
+
+class GarmentTypeImage(Base):
+    """Images for garment types - multiple images per type for gallery display"""
+    __tablename__ = "garment_type_images"
+    __table_args__ = (
+        UniqueConstraint('garment_type_id', 'school_id', 'image_url', name='uq_garment_type_image'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    garment_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("garment_types.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("schools.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    garment_type: Mapped["GarmentType"] = relationship(back_populates="images")
+    school: Mapped["School"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<GarmentTypeImage(garment_type_id='{self.garment_type_id}', order={self.display_order}, primary={self.is_primary})>"
 
 
 class Product(Base):

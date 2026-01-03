@@ -6,6 +6,7 @@ import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Sear
 import { productsApi, schoolsApi, type Product, type School, getProductImage } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 import { formatNumber } from '@/lib/utils';
+import ProductImageGallery from '@/components/ProductImageGallery';
 
 export default function CatalogPage() {
     const params = useParams();
@@ -613,9 +614,11 @@ export default function CatalogPage() {
                                         </div>
                                     )}
 
-                                    <div className="aspect-square bg-gradient-to-br from-brand-50 to-surface-100 flex items-center justify-center">
-                                        <span className="text-6xl">{getProductImage(product.name)}</span>
-                                    </div>
+                                    <ProductImageGallery
+                                        images={product.garment_type_images}
+                                        primaryImageUrl={product.garment_type_primary_image_url}
+                                        productName={product.name}
+                                    />
                                     <div className="p-4">
                                         <h3 className="font-semibold text-primary font-display mb-1">
                                             {product.name}

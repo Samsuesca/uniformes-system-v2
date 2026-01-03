@@ -47,6 +47,40 @@ class GarmentTypeResponse(GarmentTypeInDB):
 
 
 # ============================================
+# GarmentTypeImage Schemas
+# ============================================
+
+class GarmentTypeImageBase(BaseSchema):
+    """Base garment type image schema"""
+    display_order: int = Field(default=0, ge=0)
+    is_primary: bool = False
+
+
+class GarmentTypeImageCreate(GarmentTypeImageBase):
+    """Schema for creating garment type image (used internally after upload)"""
+    pass
+
+
+class GarmentTypeImageResponse(GarmentTypeImageBase, IDModelSchema):
+    """GarmentTypeImage for API responses"""
+    image_url: str
+    garment_type_id: UUID
+    school_id: UUID
+    created_at: datetime
+
+
+class GarmentTypeImageReorder(BaseSchema):
+    """Schema for reordering images"""
+    image_ids: list[UUID]  # New order of image IDs
+
+
+class GarmentTypeWithImages(GarmentTypeResponse):
+    """GarmentType with images for API responses"""
+    images: list[GarmentTypeImageResponse] = []
+    primary_image_url: str | None = None  # Convenience field
+
+
+# ============================================
 # Product Schemas
 # ============================================
 
@@ -125,6 +159,9 @@ class ProductListResponse(BaseSchema):
     min_stock: int | None = None  # Minimum stock alert level
     pending_orders_qty: int | None = None  # Quantity in pending orders
     pending_orders_count: int | None = None  # Number of pending orders
+    # Garment type images for catalog display
+    garment_type_images: list["GarmentTypeImageResponse"] = []
+    garment_type_primary_image_url: str | None = None
 
 
 # ============================================
