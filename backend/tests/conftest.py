@@ -7,12 +7,13 @@ import asyncio
 from datetime import datetime, date
 from decimal import Decimal
 from typing import AsyncGenerator, Generator
-from uuid import uuid4
+from uuid import uuid4, UUID
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
+from httpx import AsyncClient, ASGITransport
 
 from app.db.base import Base
 from app.models import (
@@ -23,11 +24,22 @@ from app.models import (
 from app.models.sale import SaleStatus, PaymentMethod, ChangeType, ChangeStatus
 from app.models.order import OrderStatus
 from app.models.user import UserRole
+from app.core.config import settings
 
 
 # ============================================================================
 # DATABASE FIXTURES (for integration tests)
 # ============================================================================
+
+# Test database URL - uses local PostgreSQL with test database
+# Set TEST_DATABASE_URL env var to override
+import os
+
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://uniformes_user:dev_password@localhost:5432/uniformes_test"
+)
+
 
 @pytest.fixture(scope="session")
 def event_loop() -> Generator:
@@ -37,21 +49,22 @@ def event_loop() -> Generator:
     loop.close()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 async def async_engine():
-    """Create async SQLite engine for testing."""
+    """Create async PostgreSQL engine for testing."""
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        TEST_DATABASE_URL,
         echo=False,
+        pool_pre_ping=True
     )
 
+    # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
+    # Drop all tables after tests
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
@@ -60,7 +73,7 @@ async def async_engine():
 
 @pytest.fixture(scope="function")
 async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Provide a database session for testing."""
+    """Provide a database session for testing with transaction rollback."""
     async_session = async_sessionmaker(
         async_engine,
         class_=AsyncSession,
@@ -68,8 +81,11 @@ async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
     )
 
     async with async_session() as session:
-        yield session
-        await session.rollback()
+        # Start a nested transaction (savepoint)
+        async with session.begin():
+            yield session
+            # Rollback after each test to keep tests isolated
+            await session.rollback()
 
 
 @pytest.fixture
@@ -466,4 +482,362 @@ def create_sale_item_data(
     return {
         "product_id": product_id,
         "quantity": quantity
+    }
+
+
+# ============================================================================
+# API CLIENT FIXTURES (for API endpoint tests)
+# ============================================================================
+
+@pytest.fixture
+async def app():
+    """Get FastAPI application instance."""
+    from app.main import app as fastapi_app
+    return fastapi_app
+
+
+@pytest.fixture
+async def api_client(app, db_session) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Create async HTTP client for API testing.
+
+    This client is configured to:
+    - Use the FastAPI app directly (no real network)
+    - Override database dependency to use test session
+    - Include proper base URL for testing
+
+    Usage:
+        async def test_endpoint(api_client):
+            response = await api_client.get("/api/v1/health")
+            assert response.status_code == 200
+    """
+    from app.db.session import get_db
+
+    # Override database dependency
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    # Clear overrides after test
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def test_user(db_session) -> User:
+    """Create a test user in the database."""
+    from app.services.user import UserService
+
+    user = User(
+        id=str(uuid4()),
+        username="testuser",
+        email="testuser@test.com",
+        hashed_password=UserService.hash_password("TestPassword123!"),
+        full_name="Test User",
+        is_active=True,
+        is_superuser=False
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def test_superuser(db_session) -> User:
+    """Create a test superuser in the database."""
+    from app.services.user import UserService
+
+    user = User(
+        id=str(uuid4()),
+        username="admin",
+        email="admin@test.com",
+        hashed_password=UserService.hash_password("AdminPassword123!"),
+        full_name="Admin User",
+        is_active=True,
+        is_superuser=True
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def test_school(db_session) -> School:
+    """Create a test school in the database."""
+    school = School(
+        id=str(uuid4()),
+        code="TST-001",
+        name="Test School",
+        slug="test-school",
+        is_active=True
+    )
+    db_session.add(school)
+    await db_session.commit()
+    await db_session.refresh(school)
+    return school
+
+
+@pytest.fixture
+async def test_user_with_school_role(db_session, test_user, test_school) -> tuple[User, School]:
+    """Create a test user with ADMIN role in test school."""
+    role = UserSchoolRole(
+        id=str(uuid4()),
+        user_id=test_user.id,
+        school_id=test_school.id,
+        role=UserRole.ADMIN
+    )
+    db_session.add(role)
+    await db_session.commit()
+    return test_user, test_school
+
+
+@pytest.fixture
+def auth_headers(test_user) -> dict[str, str]:
+    """
+    Generate JWT authentication headers for test user.
+
+    Usage:
+        async def test_protected_endpoint(api_client, auth_headers):
+            response = await api_client.get("/api/v1/protected", headers=auth_headers)
+    """
+    from app.services.user import UserService
+    from unittest.mock import MagicMock
+
+    # Create a mock DB session (we just need to generate token, not query DB)
+    mock_db = MagicMock()
+    user_service = UserService(mock_db)
+
+    token = user_service.create_access_token(
+        user_id=UUID(test_user.id),
+        username=test_user.username
+    )
+
+    return {"Authorization": f"Bearer {token.access_token}"}
+
+
+@pytest.fixture
+def superuser_headers(test_superuser) -> dict[str, str]:
+    """
+    Generate JWT authentication headers for superuser.
+
+    Usage:
+        async def test_admin_endpoint(api_client, superuser_headers):
+            response = await api_client.get("/api/v1/admin", headers=superuser_headers)
+    """
+    from app.services.user import UserService
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    user_service = UserService(mock_db)
+
+    token = user_service.create_access_token(
+        user_id=UUID(test_superuser.id),
+        username=test_superuser.username
+    )
+
+    return {"Authorization": f"Bearer {token.access_token}"}
+
+
+@pytest.fixture
+async def test_garment_type(db_session, test_school) -> GarmentType:
+    """Create a test garment type."""
+    garment_type = GarmentType(
+        id=str(uuid4()),
+        school_id=test_school.id,
+        code="CAM-001",
+        name="Camisa",
+        category="tops",
+        is_active=True
+    )
+    db_session.add(garment_type)
+    await db_session.commit()
+    await db_session.refresh(garment_type)
+    return garment_type
+
+
+@pytest.fixture
+async def test_product(db_session, test_school, test_garment_type) -> Product:
+    """Create a test product."""
+    product = Product(
+        id=str(uuid4()),
+        school_id=test_school.id,
+        garment_type_id=test_garment_type.id,
+        code="PRD-001",
+        name="Camisa Blanca T12",
+        size="T12",
+        color="Blanco",
+        price=Decimal("45000"),
+        is_active=True
+    )
+    db_session.add(product)
+    await db_session.commit()
+    await db_session.refresh(product)
+    return product
+
+
+@pytest.fixture
+async def test_inventory(db_session, test_product, test_school) -> Inventory:
+    """Create test inventory for a product."""
+    inventory = Inventory(
+        id=str(uuid4()),
+        product_id=test_product.id,
+        school_id=test_school.id,
+        quantity=100,
+        min_stock_alert=10
+    )
+    db_session.add(inventory)
+    await db_session.commit()
+    await db_session.refresh(inventory)
+    return inventory
+
+
+@pytest.fixture
+async def test_client(db_session, test_school) -> Client:
+    """Create a test client."""
+    client = Client(
+        id=str(uuid4()),
+        school_id=test_school.id,
+        code="CLI-001",
+        name="María García",
+        email="maria@test.com",
+        phone="3001234567",
+        student_name="Juan García",
+        student_grade="5A",
+        is_active=True
+    )
+    db_session.add(client)
+    await db_session.commit()
+    await db_session.refresh(client)
+    return client
+
+
+@pytest.fixture
+async def test_sale(
+    db_session,
+    test_school,
+    test_user,
+    test_client,
+    test_product
+) -> Sale:
+    """Create a test sale with one item."""
+    sale = Sale(
+        id=str(uuid4()),
+        school_id=test_school.id,
+        user_id=test_user.id,
+        client_id=test_client.id,
+        code="VNT-2025-0001",
+        status=SaleStatus.COMPLETED,
+        total=Decimal("45000"),
+        paid_amount=Decimal("45000"),
+        payment_method=PaymentMethod.CASH
+    )
+    db_session.add(sale)
+    await db_session.flush()
+
+    sale_item = SaleItem(
+        id=str(uuid4()),
+        sale_id=sale.id,
+        product_id=test_product.id,
+        quantity=1,
+        unit_price=Decimal("45000"),
+        subtotal=Decimal("45000")
+    )
+    db_session.add(sale_item)
+    await db_session.commit()
+    await db_session.refresh(sale)
+    return sale
+
+
+@pytest.fixture
+async def test_order(
+    db_session,
+    test_school,
+    test_user,
+    test_client,
+    test_garment_type
+) -> Order:
+    """Create a test order with one item."""
+    order = Order(
+        id=str(uuid4()),
+        school_id=test_school.id,
+        user_id=test_user.id,
+        client_id=test_client.id,
+        code="ENC-2025-0001",
+        status=OrderStatus.PENDING,
+        subtotal=Decimal("50000"),
+        tax=Decimal("9500"),
+        total=Decimal("59500"),
+        paid_amount=Decimal("20000"),
+        balance=Decimal("39500"),
+        source="store"
+    )
+    db_session.add(order)
+    await db_session.flush()
+
+    order_item = OrderItem(
+        id=str(uuid4()),
+        order_id=order.id,
+        garment_type_id=test_garment_type.id,
+        quantity=1,
+        unit_price=Decimal("50000"),
+        subtotal=Decimal("50000"),
+        size="M"
+    )
+    db_session.add(order_item)
+    await db_session.commit()
+    await db_session.refresh(order)
+    return order
+
+
+# ============================================================================
+# COMPLETE TEST DATA FIXTURES
+# ============================================================================
+
+@pytest.fixture
+async def complete_test_setup(
+    db_session,
+    test_superuser,
+    test_school,
+    test_garment_type,
+    test_product,
+    test_inventory,
+    test_client
+) -> dict:
+    """
+    Create a complete test environment with all necessary data.
+
+    Returns a dictionary with:
+    - superuser: Admin user with full access
+    - school: Test school
+    - garment_type: Test garment type
+    - product: Test product
+    - inventory: Test inventory
+    - client: Test client
+
+    This fixture is useful for integration tests that need
+    a fully configured environment.
+    """
+    # Add user role to school
+    role = UserSchoolRole(
+        id=str(uuid4()),
+        user_id=test_superuser.id,
+        school_id=test_school.id,
+        role=UserRole.OWNER
+    )
+    db_session.add(role)
+    await db_session.commit()
+
+    return {
+        "superuser": test_superuser,
+        "school": test_school,
+        "garment_type": test_garment_type,
+        "product": test_product,
+        "inventory": test_inventory,
+        "client": test_client,
     }

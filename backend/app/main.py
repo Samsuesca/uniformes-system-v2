@@ -57,9 +57,19 @@ app.include_router(contacts.router, prefix=f"{settings.API_V1_STR}")  # PQRS Con
 app.include_router(payment_accounts.router, prefix=f"{settings.API_V1_STR}")  # Payment accounts (bank accounts, QR)
 
 # Mount static files for uploads (payment proofs, etc.)
-uploads_dir = Path("/var/www/uniformes-system-v2/uploads")
-uploads_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+# Use environment-based path: production uses /var/www/..., development uses relative path
+if settings.ENV == "production":
+    uploads_dir = Path("/var/www/uniformes-system-v2/uploads")
+else:
+    # Use relative path for development/testing
+    uploads_dir = Path(__file__).parent.parent / "uploads"
+
+try:
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+except PermissionError:
+    # Skip mounting if we can't create the directory (e.g., in tests)
+    print(f"⚠️ Could not create uploads directory at {uploads_dir}")
 
 
 if __name__ == "__main__":
