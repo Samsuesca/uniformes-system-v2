@@ -192,30 +192,26 @@ class TestContactByEmail:
         assert isinstance(data, list)
         assert len(data) == 0
 
-    async def test_get_contacts_multiple_by_email(self, api_client, db_session):
+    async def test_get_contacts_multiple_by_email(self, api_client):
         """Should return multiple contacts for same email."""
-        from app.models.contact import Contact, ContactType, ContactStatus
+        unique_email = f"multi_{uuid4().hex[:8]}@example.com"
 
-        email = "multi@example.com"
-
-        # Create multiple contacts
+        # Create multiple contacts via API
         for i in range(3):
-            contact = Contact(
-                id=str(uuid4()),
-                name=f"User {i}",
-                email=email,
-                contact_type=ContactType.INQUIRY,
-                subject=f"Subject {i}",
-                message=f"Message {i}",
-                status=ContactStatus.PENDING
+            await api_client.post(
+                "/api/v1/contacts/submit",
+                json={
+                    "name": f"User {i}",
+                    "email": unique_email,
+                    "contact_type": "inquiry",
+                    "subject": f"Subject {i}",
+                    "message": f"Message content {i} with enough characters"
+                }
             )
-            db_session.add(contact)
-
-        await db_session.flush()
 
         response = await api_client.get(
             "/api/v1/contacts/by-email",
-            params={"email": email}
+            params={"email": unique_email}
         )
 
         data = assert_success_response(response)
@@ -290,6 +286,18 @@ class TestContactListing:
         superuser_headers
     ):
         """Should filter contacts by type."""
+        # First create a complaint to filter
+        await api_client.post(
+            "/api/v1/contacts",
+            json={
+                "full_name": "Complaint User",
+                "email": "complaint_filter_test@test.com",
+                "subject": "Filter Test Complaint",
+                "message": "This is for filter testing",
+                "contact_type": "complaint"
+            }
+        )
+
         response = await api_client.get(
             "/api/v1/contacts",
             headers=superuser_headers,
@@ -297,8 +305,9 @@ class TestContactListing:
         )
 
         data = assert_success_response(response)
-        items = data.get("items", data)
+        items = data.get("items", data) if isinstance(data, dict) else data
 
+        # If there are results, verify they are all complaints
         for contact in items:
             assert contact["contact_type"] == "complaint"
 
