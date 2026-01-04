@@ -129,7 +129,12 @@ async def list_all_orders(
             items_delivered=sum(1 for item in order.items if item.item_status == OrderItemStatus.DELIVERED) if order.items else 0,
             items_total=len(order.items) if order.items else 0,
             # Payment proof
-            payment_proof_url=order.payment_proof_url
+            payment_proof_url=order.payment_proof_url,
+            # Delivery info
+            delivery_type=order.delivery_type,
+            delivery_fee=order.delivery_fee,
+            delivery_address=order.delivery_address,
+            delivery_neighborhood=order.delivery_neighborhood
         )
         for order in orders
     ]
@@ -252,7 +257,12 @@ async def list_orders_for_school(
             balance=order.balance,
             created_at=order.created_at,
             items_count=0,  # TODO: Count items
-            school_id=order.school_id
+            school_id=order.school_id,
+            # Delivery info
+            delivery_type=order.delivery_type,
+            delivery_fee=order.delivery_fee,
+            delivery_address=order.delivery_address,
+            delivery_neighborhood=order.delivery_neighborhood
         )
         for order in orders
     ]
