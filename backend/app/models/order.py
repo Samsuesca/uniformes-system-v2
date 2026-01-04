@@ -30,6 +30,12 @@ class OrderItemStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class DeliveryType(str, enum.Enum):
+    """Tipo de entrega del pedido"""
+    PICKUP = "pickup"      # Retiro en tienda
+    DELIVERY = "delivery"  # Domicilio
+
+
 class Order(Base):
     """Custom orders with personalized measurements"""
     __tablename__ = "orders"
@@ -108,6 +114,27 @@ class Order(Base):
     payment_proof_url: Mapped[str | None] = mapped_column(String(500))
     payment_notes: Mapped[str | None] = mapped_column(Text)  # Client notes about payment
 
+    # Delivery information
+    delivery_type: Mapped[DeliveryType] = mapped_column(
+        SQLEnum(DeliveryType, name="delivery_type_enum", values_callable=lambda x: [e.value for e in x]),
+        default=DeliveryType.PICKUP,
+        nullable=False
+    )
+
+    # Delivery address (solo para domicilios)
+    delivery_address: Mapped[str | None] = mapped_column(String(300))  # Dirección completa
+    delivery_neighborhood: Mapped[str | None] = mapped_column(String(100))  # Barrio
+    delivery_city: Mapped[str | None] = mapped_column(String(100))  # Ciudad
+    delivery_references: Mapped[str | None] = mapped_column(Text)  # Indicaciones adicionales
+
+    # Zona de envío y costo
+    delivery_zone_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("delivery_zones.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    delivery_fee: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -128,6 +155,7 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan"
     )
+    delivery_zone: Mapped["DeliveryZone | None"] = relationship()
 
     def __repr__(self) -> str:
         return f"<Order(code='{self.code}', total={self.total}, status='{self.status}')>"

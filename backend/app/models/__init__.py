@@ -15,7 +15,8 @@ from app.models.product import (
 )
 from app.models.client import Client, ClientStudent, ClientType
 from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
-from app.models.order import Order, OrderItem, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus, DeliveryType
+from app.models.delivery_zone import DeliveryZone
 from app.models.contact import Contact, ContactType, ContactStatus
 from app.models.payment_account import PaymentAccount, PaymentMethodType
 from app.models.accounting import (
@@ -65,6 +66,9 @@ __all__ = [
     "Order",
     "OrderItem",
     "OrderStatus",
+    "DeliveryType",
+    # Delivery Zone models
+    "DeliveryZone",
     # Contact models
     "Contact",
     "ContactType",

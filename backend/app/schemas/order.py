@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import date, datetime
 from pydantic import Field, field_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
-from app.models.order import OrderStatus, OrderItemStatus
+from app.models.order import OrderStatus, OrderItemStatus, DeliveryType
 from app.models.sale import SaleSource
 
 
@@ -138,6 +138,8 @@ class OrderBase(BaseSchema):
     client_id: UUID
     delivery_date: date | None = None
     notes: str | None = None
+    # Delivery info
+    delivery_type: DeliveryType = DeliveryType.PICKUP
 
 
 class OrderCreate(OrderBase, SchoolIsolatedSchema):
@@ -153,6 +155,12 @@ class OrderCreate(OrderBase, SchoolIsolatedSchema):
     payment_notes: str | None = None
     # Custom school name for non-existent schools (web custom orders)
     custom_school_name: str | None = Field(None, max_length=200)
+    # Delivery fields (for delivery type orders)
+    delivery_address: str | None = Field(None, max_length=300)
+    delivery_neighborhood: str | None = Field(None, max_length=100)
+    delivery_city: str | None = Field(None, max_length=100)
+    delivery_references: str | None = None
+    delivery_zone_id: UUID | None = None
     # code, status, totals will be auto-generated
 
 
@@ -184,6 +192,14 @@ class OrderInDB(OrderBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema)
     user_id: UUID | None = None  # Who created the order (None for web portal)
     payment_proof_url: str | None = None
     payment_notes: str | None = None
+    # Delivery fields
+    delivery_type: DeliveryType = DeliveryType.PICKUP
+    delivery_address: str | None = None
+    delivery_neighborhood: str | None = None
+    delivery_city: str | None = None
+    delivery_references: str | None = None
+    delivery_zone_id: UUID | None = None
+    delivery_fee: Decimal = Decimal("0")
 
 
 class OrderResponse(OrderInDB):
@@ -225,6 +241,11 @@ class OrderListResponse(BaseSchema):
     payment_proof_url: str | None = None
     # Quotation flag (true if any item needs quotation)
     needs_quotation: bool = False
+    # Delivery info
+    delivery_type: DeliveryType = DeliveryType.PICKUP
+    delivery_fee: Decimal = Decimal("0")
+    delivery_address: str | None = None
+    delivery_neighborhood: str | None = None
 
 
 # ============================================

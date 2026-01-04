@@ -584,6 +584,26 @@ class OrderService(SchoolIsolatedService[Order]):
         # Determine paid amount (anticipo)
         paid_amount = order_data.advance_payment or Decimal("0")
 
+        # Calculate delivery fee if delivery type is specified
+        from app.models.delivery_zone import DeliveryZone
+        from app.models.order import DeliveryType
+
+        delivery_fee = Decimal("0")
+        delivery_type = getattr(order_data, 'delivery_type', DeliveryType.PICKUP)
+
+        if delivery_type == DeliveryType.DELIVERY and getattr(order_data, 'delivery_zone_id', None):
+            # Fetch delivery zone to get fee
+            zone_result = await self.db.execute(
+                select(DeliveryZone).where(
+                    DeliveryZone.id == order_data.delivery_zone_id,
+                    DeliveryZone.is_active == True
+                )
+            )
+            zone = zone_result.scalar_one_or_none()
+            if zone:
+                delivery_fee = Decimal(str(zone.delivery_fee))
+                total = subtotal + delivery_fee  # Add delivery fee to total
+
         # Create order without user_id (web portal order)
         order = Order(
             school_id=school_id,  # Use resolved school_id
@@ -597,7 +617,15 @@ class OrderService(SchoolIsolatedService[Order]):
             total=total,
             paid_amount=paid_amount,
             delivery_date=order_data.delivery_date,
-            notes=order_data.notes
+            notes=order_data.notes,
+            # Delivery fields
+            delivery_type=delivery_type,
+            delivery_address=getattr(order_data, 'delivery_address', None),
+            delivery_neighborhood=getattr(order_data, 'delivery_neighborhood', None),
+            delivery_city=getattr(order_data, 'delivery_city', None),
+            delivery_references=getattr(order_data, 'delivery_references', None),
+            delivery_zone_id=getattr(order_data, 'delivery_zone_id', None),
+            delivery_fee=delivery_fee,
         )
         self.db.add(order)
         await self.db.flush()

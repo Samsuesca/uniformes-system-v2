@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.core.config import settings
-from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts
+from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts, delivery_zones
 
 
 @asynccontextmanager
@@ -55,6 +55,7 @@ app.include_router(global_accounting.router, prefix=f"{settings.API_V1_STR}")  #
 app.include_router(global_products.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(contacts.router, prefix=f"{settings.API_V1_STR}")  # PQRS Contact messages
 app.include_router(payment_accounts.router, prefix=f"{settings.API_V1_STR}")  # Payment accounts (bank accounts, QR)
+app.include_router(delivery_zones.router, prefix=f"{settings.API_V1_STR}")  # Delivery zones for web orders
 
 # Mount static files for uploads (payment proofs, etc.)
 # Use environment-based path: production uses /var/www/..., development uses relative path
