@@ -320,6 +320,8 @@ def sale_item_factory():
 @pytest.fixture
 def order_factory():
     """Factory for creating Order instances."""
+    from app.models.sale import SaleSource
+
     def _create(
         id: str = None,
         school_id: str = None,
@@ -331,8 +333,10 @@ def order_factory():
         tax: Decimal = Decimal("19000"),
         total: Decimal = Decimal("119000"),
         paid_amount: Decimal = Decimal("0"),
+        source: SaleSource = SaleSource.DESKTOP_APP,
         **kwargs
     ) -> Order:
+        # Note: balance is a computed column, don't set it
         return Order(
             id=id or str(uuid4()),
             school_id=school_id or str(uuid4()),
@@ -344,6 +348,7 @@ def order_factory():
             tax=tax,
             total=total,
             paid_amount=paid_amount,
+            source=source,
             **kwargs
         )
     return _create
@@ -778,6 +783,8 @@ async def test_order(
     test_garment_type
 ) -> Order:
     """Create a test order with one item."""
+    from app.models.sale import SaleSource
+
     unique_id = uuid4().hex[:8]
     order = Order(
         id=str(uuid4()),
@@ -790,8 +797,8 @@ async def test_order(
         tax=Decimal("9500"),
         total=Decimal("59500"),
         paid_amount=Decimal("20000"),
-        balance=Decimal("39500"),
-        source="store"
+        # balance is a computed column (total - paid_amount), don't set it
+        source=SaleSource.DESKTOP_APP
     )
     db_session.add(order)
     await db_session.flush()
@@ -799,6 +806,7 @@ async def test_order(
     order_item = OrderItem(
         id=str(uuid4()),
         order_id=order.id,
+        school_id=test_school.id,
         garment_type_id=test_garment_type.id,
         quantity=1,
         unit_price=Decimal("50000"),
