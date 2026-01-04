@@ -695,3 +695,74 @@ class ReceivablesPayablesSummary(BaseSchema):
 
     # Net position
     net_position: Decimal  # receivables_pending - payables_pending
+
+
+# ============================================
+# Global Reports Schemas (for Reports page)
+# ============================================
+
+class TransactionListItemResponse(BaseSchema):
+    """Transaction item for list display with school name"""
+    id: UUID
+    type: TransactionType
+    amount: Decimal
+    payment_method: AccPaymentMethod
+    description: str
+    category: str | None
+    reference_code: str | None
+    transaction_date: date
+    created_at: datetime
+    school_id: UUID | None = None
+    school_name: str | None = None
+
+
+class ExpenseCategorySummary(BaseSchema):
+    """Summary of expenses by category"""
+    category: ExpenseCategory
+    category_label: str  # Human-readable label
+    total_amount: Decimal
+    paid_amount: Decimal
+    pending_amount: Decimal
+    count: int
+    percentage: Decimal = Decimal("0")
+
+
+class CashFlowPeriodItem(BaseSchema):
+    """Cash flow for a single period (day/week/month)"""
+    period: str  # "2024-01-15" or "2024-W03" or "2024-01"
+    period_label: str  # "15 Ene" or "Semana 3" or "Enero"
+    income: Decimal
+    expenses: Decimal
+    net: Decimal
+
+
+class CashFlowReportResponse(BaseSchema):
+    """Complete cash flow report response"""
+    period_start: date
+    period_end: date
+    group_by: str  # "day", "week", "month"
+    total_income: Decimal
+    total_expenses: Decimal
+    net_flow: Decimal
+    periods: list[CashFlowPeriodItem]
+
+
+class FinancialSummaryResponse(BaseSchema):
+    """Financial summary for reports dashboard"""
+    # Period
+    period_start: date
+    period_end: date
+
+    # Totals
+    total_income: Decimal
+    total_expenses: Decimal
+    net_flow: Decimal
+
+    # Income breakdown by payment method
+    income_by_method: dict[str, Decimal]
+
+    # Expenses breakdown by category
+    expenses_by_category: list[ExpenseCategorySummary]
+
+    # Recent transactions
+    recent_transactions: list[TransactionListItemResponse]

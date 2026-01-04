@@ -102,56 +102,24 @@ export const apiClient = {
     async delete(endpoint, options) {
         return this.request('DELETE', endpoint, undefined, options);
     },
-
-    /**
-     * Upload a file using multipart/form-data
-     * @param {string} endpoint - API endpoint
-     * @param {File} file - File to upload
-     * @param {string} fieldName - Form field name for the file (default: 'file')
-     * @param {Object} options - Additional options
-     */
-    async uploadFile(endpoint, file, fieldName = 'file', options) {
+    async uploadFile(endpoint, file, fieldName = 'file') {
         const apiUrl = useConfigStore.getState().apiUrl;
-        let url = `${apiUrl}/api/v1${endpoint}`;
-
-        // Add query params if provided
-        if (options?.params) {
-            const searchParams = new URLSearchParams();
-            Object.entries(options.params).forEach(([key, value]) => {
-                if (value !== undefined && value !== null) {
-                    searchParams.append(key, String(value));
-                }
-            });
-            const queryString = searchParams.toString();
-            if (queryString) {
-                url += `?${queryString}`;
-            }
-        }
-
+        const url = `${apiUrl}/api/v1${endpoint}`;
         const token = localStorage.getItem('access_token');
-        const headers = {
-            ...options?.headers,
-        };
-        // DO NOT set Content-Type - let the browser set it with boundary
+        const formData = new FormData();
+        formData.append(fieldName, file);
+        const headers = {};
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
-
-        // Create FormData
-        const formData = new FormData();
-        formData.append(fieldName, file);
-
         try {
             const response = await tauriFetch(url, {
                 method: 'POST',
                 headers,
                 body: formData,
-                connectTimeout: 60000, // Longer timeout for uploads
+                connectTimeout: 60000,
             });
-
             updateOnlineStatus(true);
-
-            // Handle 401 Unauthorized
             if (response.status === 401) {
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('user');
@@ -160,18 +128,13 @@ export const apiClient = {
                 }
                 throw new Error('Unauthorized');
             }
-
-            // Handle 403 Forbidden
             if (response.status === 403) {
                 throw new Error('No tienes permisos para esta acción');
             }
-
-            // Handle other errors
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || `HTTP ${response.status}`);
             }
-
             const responseData = await response.json();
             return { data: responseData, status: response.status };
         }

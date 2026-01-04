@@ -199,62 +199,41 @@ export const productService = {
         const response = await apiClient.put(`/schools/${schoolId}/garment-types/${typeId}`, data);
         return response.data;
     },
-
     // ==========================================
     // GARMENT TYPE IMAGES
     // ==========================================
-
     /**
-     * Get all images for a garment type
+     * Get images for a garment type
      */
     async getGarmentTypeImages(schoolId, garmentTypeId) {
         const response = await apiClient.get(`/schools/${schoolId}/garment-types/${garmentTypeId}/images`);
         return response.data;
     },
-
     /**
-     * Upload a new image for a garment type
-     * @param {string} schoolId - School ID
-     * @param {string} garmentTypeId - Garment type ID
-     * @param {File} file - Image file to upload
+     * Upload an image for a garment type
      */
     async uploadGarmentTypeImage(schoolId, garmentTypeId, file) {
-        const response = await apiClient.uploadFile(
-            `/schools/${schoolId}/garment-types/${garmentTypeId}/images`,
-            file,
-            'file'
-        );
+        const response = await apiClient.uploadFile(`/schools/${schoolId}/garment-types/${garmentTypeId}/images`, file, 'file');
         return response.data;
     },
-
     /**
      * Delete an image from a garment type
      */
     async deleteGarmentTypeImage(schoolId, garmentTypeId, imageId) {
         await apiClient.delete(`/schools/${schoolId}/garment-types/${garmentTypeId}/images/${imageId}`);
     },
-
     /**
-     * Set an image as the primary image for a garment type
+     * Set an image as primary for a garment type
      */
     async setGarmentTypePrimaryImage(schoolId, garmentTypeId, imageId) {
-        const response = await apiClient.put(
-            `/schools/${schoolId}/garment-types/${garmentTypeId}/images/${imageId}/primary`
-        );
+        const response = await apiClient.put(`/schools/${schoolId}/garment-types/${garmentTypeId}/images/${imageId}/primary`);
         return response.data;
     },
-
     /**
      * Reorder images for a garment type
-     * @param {string} schoolId - School ID
-     * @param {string} garmentTypeId - Garment type ID
-     * @param {string[]} imageIds - Array of image IDs in new order
      */
     async reorderGarmentTypeImages(schoolId, garmentTypeId, imageIds) {
-        const response = await apiClient.put(
-            `/schools/${schoolId}/garment-types/${garmentTypeId}/images/reorder`,
-            { image_ids: imageIds }
-        );
+        const response = await apiClient.put(`/schools/${schoolId}/garment-types/${garmentTypeId}/images/reorder`, { image_ids: imageIds });
         return response.data;
     },
 };

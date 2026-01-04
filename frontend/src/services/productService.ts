@@ -227,4 +227,56 @@ export const productService = {
     const response = await apiClient.put(`/schools/${schoolId}/garment-types/${typeId}`, data);
     return response.data;
   },
+
+  // ==========================================
+  // GARMENT TYPE IMAGES
+  // ==========================================
+
+  /**
+   * Get images for a garment type
+   */
+  async getGarmentTypeImages(schoolId: string, garmentTypeId: string): Promise<unknown[]> {
+    const response = await apiClient.get(`/schools/${schoolId}/garment-types/${garmentTypeId}/images`);
+    return response.data;
+  },
+
+  /**
+   * Upload an image for a garment type
+   */
+  async uploadGarmentTypeImage(schoolId: string, garmentTypeId: string, file: File): Promise<unknown> {
+    const response = await apiClient.uploadFile(
+      `/schools/${schoolId}/garment-types/${garmentTypeId}/images`,
+      file,
+      'file'
+    );
+    return response.data;
+  },
+
+  /**
+   * Delete an image from a garment type
+   */
+  async deleteGarmentTypeImage(schoolId: string, garmentTypeId: string, imageId: string): Promise<void> {
+    await apiClient.delete(`/schools/${schoolId}/garment-types/${garmentTypeId}/images/${imageId}`);
+  },
+
+  /**
+   * Set an image as primary for a garment type
+   */
+  async setGarmentTypePrimaryImage(schoolId: string, garmentTypeId: string, imageId: string): Promise<unknown> {
+    const response = await apiClient.put(
+      `/schools/${schoolId}/garment-types/${garmentTypeId}/images/${imageId}/primary`
+    );
+    return response.data;
+  },
+
+  /**
+   * Reorder images for a garment type
+   */
+  async reorderGarmentTypeImages(schoolId: string, garmentTypeId: string, imageIds: string[]): Promise<unknown> {
+    const response = await apiClient.put(
+      `/schools/${schoolId}/garment-types/${garmentTypeId}/images/reorder`,
+      { image_ids: imageIds }
+    );
+    return response.data;
+  },
 };

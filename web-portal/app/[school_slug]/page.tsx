@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown, Eye } from 'lucide-react';
 import { productsApi, schoolsApi, type Product, type School, getProductImage } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 import { formatNumber } from '@/lib/utils';
 import ProductImageGallery from '@/components/ProductImageGallery';
+import ProductDetailModal from '@/components/ProductDetailModal';
 
 export default function CatalogPage() {
     const params = useParams();
@@ -40,6 +41,10 @@ export default function CatalogPage() {
     const [showYomberModal, setShowYomberModal] = useState(false);
     const [selectedYomberProduct, setSelectedYomberProduct] = useState<Product | null>(null);
 
+    // Product detail modal state
+    const [showProductModal, setShowProductModal] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
     // Prevent hydration mismatch by only showing cart count after mount
     useEffect(() => {
         setMounted(true);
@@ -55,6 +60,12 @@ export default function CatalogPage() {
     const handleYomberClick = (product: Product) => {
         setSelectedYomberProduct(product);
         setShowYomberModal(true);
+    };
+
+    // Handle product click - show detail modal
+    const handleProductClick = (product: Product) => {
+        setSelectedProduct(product);
+        setShowProductModal(true);
     };
 
     useEffect(() => {
@@ -603,9 +614,10 @@ export default function CatalogPage() {
                             return (
                                 <div
                                     key={product.id}
-                                    className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ${
+                                    className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer ${
                                         isYomber ? 'border-purple-200' : 'border-surface-200'
                                     }`}
+                                    onClick={() => handleProductClick(product)}
                                 >
                                     {/* Yomber Badge */}
                                     {isYomber && (
@@ -614,11 +626,20 @@ export default function CatalogPage() {
                                         </div>
                                     )}
 
-                                    <ProductImageGallery
-                                        images={product.garment_type_images}
-                                        primaryImageUrl={product.garment_type_primary_image_url}
-                                        productName={product.name}
-                                    />
+                                    <div className="relative group/image">
+                                        <ProductImageGallery
+                                            images={product.garment_type_images}
+                                            primaryImageUrl={product.garment_type_primary_image_url}
+                                            productName={product.name}
+                                        />
+                                        {/* Hover overlay with "View details" */}
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
+                                            <div className="flex items-center gap-2 px-4 py-2 bg-white/90 rounded-full text-sm font-medium text-gray-700">
+                                                <Eye className="w-4 h-4" />
+                                                Ver detalles
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div className="p-4">
                                         <h3 className="font-semibold text-primary font-display mb-1">
                                             {product.name}
@@ -646,7 +667,7 @@ export default function CatalogPage() {
                                             {/* Yomber: Show contact button */}
                                             {isYomber ? (
                                                 <button
-                                                    onClick={() => handleYomberClick(product)}
+                                                    onClick={(e) => { e.stopPropagation(); handleYomberClick(product); }}
                                                     className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
                                                 >
                                                     Consultar
@@ -654,7 +675,7 @@ export default function CatalogPage() {
                                             ) : stock > 0 ? (
                                                 /* Has stock: Add to cart */
                                                 <button
-                                                    onClick={() => handleAddToCart(product, false)}
+                                                    onClick={(e) => { e.stopPropagation(); handleAddToCart(product, false); }}
                                                     className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium"
                                                 >
                                                     Agregar
@@ -662,7 +683,7 @@ export default function CatalogPage() {
                                             ) : (
                                                 /* No stock: Add as order */
                                                 <button
-                                                    onClick={() => handleAddToCart(product, true)}
+                                                    onClick={(e) => { e.stopPropagation(); handleAddToCart(product, true); }}
                                                     className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium flex items-center gap-1"
                                                 >
                                                     <Package className="w-4 h-4" />
@@ -695,6 +716,21 @@ export default function CatalogPage() {
                     </div>
                 )}
             </main>
+
+            {/* Product Detail Modal */}
+            {selectedProduct && (
+                <ProductDetailModal
+                    product={selectedProduct}
+                    isOpen={showProductModal}
+                    onClose={() => {
+                        setShowProductModal(false);
+                        setSelectedProduct(null);
+                    }}
+                    onAddToCart={handleAddToCart}
+                    stock={getProductStock(selectedProduct)}
+                    isYomber={isYomberProduct(selectedProduct)}
+                />
+            )}
 
             {/* Yomber Info Modal */}
             {showYomberModal && selectedYomberProduct && (

@@ -73,13 +73,19 @@ async def list_all_products(
     if not user_school_ids:
         return []
 
-    # Build query
-    query_options = [
-        joinedload(Product.garment_type),
-        joinedload(Product.school)
-    ]
+    # Build query options - avoid loader strategy conflict
+    # When with_images=True, use selectinload for garment_type (to chain images)
+    # When with_images=False, use joinedload for garment_type (faster for simple cases)
     if with_images:
-        query_options.append(selectinload(Product.garment_type).selectinload(GarmentType.images))
+        query_options = [
+            selectinload(Product.garment_type).selectinload(GarmentType.images),
+            joinedload(Product.school)
+        ]
+    else:
+        query_options = [
+            joinedload(Product.garment_type),
+            joinedload(Product.school)
+        ]
 
     query = (
         select(Product)

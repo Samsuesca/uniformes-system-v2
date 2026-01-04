@@ -5,11 +5,59 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import {
   BarChart3, TrendingUp, Package, Users, AlertTriangle, DollarSign,
-  Loader2, AlertCircle, ShoppingBag, RefreshCw, Calendar, Filter
+  Loader2, AlertCircle, ShoppingBag, RefreshCw, Calendar, Filter,
+  ArrowUpRight, ArrowDownRight, Wallet, Receipt, PieChart
 } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
 import { reportsService, type DashboardSummary, type TopProduct, type LowStockProduct, type TopClient, type SalesSummary, type DateFilters } from '../services/reportsService';
 import { useSchoolStore } from '../stores/schoolStore';
+import { globalAccountingService } from '../services/globalAccountingService';
+
+// Tab type
+type ReportTab = 'sales' | 'financial';
+
+// Transaction types
+interface TransactionItem {
+  id: string;
+  type: 'income' | 'expense' | 'transfer';
+  amount: number;
+  payment_method: string;
+  description: string;
+  category: string | null;
+  reference_code: string | null;
+  transaction_date: string;
+  created_at: string;
+  school_id: string | null;
+  school_name: string | null;
+}
+
+interface ExpenseCategory {
+  category: string;
+  category_label: string;
+  total_amount: number;
+  paid_amount: number;
+  pending_amount: number;
+  count: number;
+  percentage: number;
+}
+
+interface CashFlowPeriod {
+  period: string;
+  period_label: string;
+  income: number;
+  expenses: number;
+  net: number;
+}
+
+interface CashFlowReport {
+  period_start: string;
+  period_end: string;
+  group_by: string;
+  total_income: number;
+  total_expenses: number;
+  net_flow: number;
+  periods: CashFlowPeriod[];
+}
 
 // Preset date ranges
 type DatePreset = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all';
@@ -63,18 +111,27 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<ReportTab>('sales');
+
   // Date filter state
   const [datePreset, setDatePreset] = useState<DatePreset>('month');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [activeFilters, setActiveFilters] = useState<DateFilters>({});
 
-  // Dashboard data
+  // Dashboard data (Sales tab)
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [lowStock, setLowStock] = useState<LowStockProduct[]>([]);
   const [topClients, setTopClients] = useState<TopClient[]>([]);
+
+  // Financial data (Financial tab)
+  const [financialLoading, setFinancialLoading] = useState(false);
+  const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [expensesByCategory, setExpensesByCategory] = useState<ExpenseCategory[]>([]);
+  const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
 
   const schoolId = currentSchool?.id || '';
 
@@ -86,9 +143,55 @@ export default function Reports() {
 
   useEffect(() => {
     if (Object.keys(activeFilters).length > 0 || datePreset === 'all') {
-      loadAllReports();
+      if (activeTab === 'sales') {
+        loadAllReports();
+      } else {
+        loadFinancialReports();
+      }
     }
-  }, [activeFilters, schoolId]);
+  }, [activeFilters, schoolId, activeTab]);
+
+  const loadFinancialReports = async () => {
+    try {
+      setFinancialLoading(true);
+      setError(null);
+
+      const startDate = activeFilters.startDate;
+      const endDate = activeFilters.endDate;
+
+      // Determine group_by based on date range
+      let groupBy = 'day';
+      if (startDate && endDate) {
+        const daysDiff = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysDiff > 90) groupBy = 'month';
+        else if (daysDiff > 30) groupBy = 'week';
+      }
+
+      const [transactionsData, expensesData, cashFlowData] = await Promise.all([
+        globalAccountingService.getGlobalTransactions({
+          startDate,
+          endDate,
+          limit: 50
+        }),
+        globalAccountingService.getExpensesSummaryByCategory({
+          startDate,
+          endDate
+        }),
+        startDate && endDate
+          ? globalAccountingService.getCashFlowReport(startDate, endDate, groupBy)
+          : Promise.resolve(null)
+      ]);
+
+      setTransactions(transactionsData);
+      setExpensesByCategory(expensesData);
+      setCashFlow(cashFlowData);
+    } catch (err: any) {
+      console.error('Error loading financial reports:', err);
+      setError(err.response?.data?.detail || 'Error al cargar reportes financieros');
+    } finally {
+      setFinancialLoading(false);
+    }
+  };
 
   const handlePresetChange = (preset: DatePreset) => {
     setDatePreset(preset);
@@ -197,12 +300,40 @@ export default function Reports() {
           <p className="text-gray-600 mt-1">Resumen de métricas del negocio</p>
         </div>
         <button
-          onClick={loadAllReports}
+          onClick={activeTab === 'sales' ? loadAllReports : loadFinancialReports}
           className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center hover:bg-gray-50 transition self-start"
         >
           <RefreshCw className="w-5 h-5 mr-2" />
           Actualizar
         </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="flex gap-4">
+          <button
+            onClick={() => setActiveTab('sales')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition ${
+              activeTab === 'sales'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4 inline mr-2" />
+            Ventas por Colegio
+          </button>
+          <button
+            onClick={() => setActiveTab('financial')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition ${
+              activeTab === 'financial'
+                ? 'border-green-600 text-green-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Wallet className="w-4 h-4 inline mr-2" />
+            Financiero Global
+          </button>
+        </nav>
       </div>
 
       {/* Date Filters */}
@@ -277,6 +408,9 @@ export default function Reports() {
         )}
       </div>
 
+      {/* ===== SALES TAB CONTENT ===== */}
+      {activeTab === 'sales' && (
+        <>
       {/* Sales Summary for Period */}
       {salesSummary && (
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm p-6 mb-6 text-white">
@@ -578,6 +712,225 @@ export default function Reports() {
             </table>
           </div>
         </div>
+      )}
+        </>
+      )}
+
+      {/* ===== FINANCIAL TAB CONTENT ===== */}
+      {activeTab === 'financial' && (
+        <>
+          {financialLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+              <span className="ml-3 text-gray-600">Cargando datos financieros...</span>
+            </div>
+          ) : (
+            <>
+              {/* Financial KPI Cards */}
+              {cashFlow && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  {/* Total Income */}
+                  <div className="bg-white rounded-lg shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-2 bg-green-100 rounded-lg">
+                        <ArrowUpRight className="w-6 h-6 text-green-600" />
+                      </div>
+                      <span className="text-xs text-gray-500">Ingresos</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-green-600">
+                      {formatCurrency(cashFlow.total_income)}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">Total del período</p>
+                  </div>
+
+                  {/* Total Expenses */}
+                  <div className="bg-white rounded-lg shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-2 bg-red-100 rounded-lg">
+                        <ArrowDownRight className="w-6 h-6 text-red-600" />
+                      </div>
+                      <span className="text-xs text-gray-500">Gastos</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-red-600">
+                      {formatCurrency(cashFlow.total_expenses)}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">Total del período</p>
+                  </div>
+
+                  {/* Net Flow */}
+                  <div className="bg-white rounded-lg shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={`p-2 rounded-lg ${cashFlow.net_flow >= 0 ? 'bg-blue-100' : 'bg-orange-100'}`}>
+                        <Wallet className={`w-6 h-6 ${cashFlow.net_flow >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+                      </div>
+                      <span className="text-xs text-gray-500">Flujo Neto</span>
+                    </div>
+                    <h3 className={`text-2xl font-bold ${cashFlow.net_flow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                      {cashFlow.net_flow >= 0 ? '+' : ''}{formatCurrency(cashFlow.net_flow)}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">Ingresos - Gastos</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Cash Flow Chart (simplified bar visualization) */}
+              {cashFlow && cashFlow.periods.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-800 flex items-center mb-4">
+                    <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
+                    Flujo de Caja por Período
+                  </h2>
+                  <div className="space-y-3">
+                    {cashFlow.periods.slice(0, 10).map((period) => {
+                      const maxValue = Math.max(...cashFlow.periods.map(p => Math.max(p.income, p.expenses)));
+                      const incomeWidth = maxValue > 0 ? (period.income / maxValue) * 100 : 0;
+                      const expenseWidth = maxValue > 0 ? (period.expenses / maxValue) * 100 : 0;
+                      return (
+                        <div key={period.period} className="flex items-center gap-4">
+                          <div className="w-24 text-sm text-gray-600 flex-shrink-0">
+                            {period.period_label}
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-4 bg-green-500 rounded"
+                                style={{ width: `${incomeWidth}%`, minWidth: period.income > 0 ? '4px' : '0' }}
+                              />
+                              <span className="text-xs text-green-600">{formatCurrency(period.income)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-4 bg-red-500 rounded"
+                                style={{ width: `${expenseWidth}%`, minWidth: period.expenses > 0 ? '4px' : '0' }}
+                              />
+                              <span className="text-xs text-red-600">{formatCurrency(period.expenses)}</span>
+                            </div>
+                          </div>
+                          <div className={`w-24 text-right text-sm font-medium ${period.net >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                            {period.net >= 0 ? '+' : ''}{formatCurrency(period.net)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-green-500 rounded" />
+                      <span>Ingresos</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-red-500 rounded" />
+                      <span>Gastos</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Two Column Layout: Transactions & Expenses by Category */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                {/* Recent Transactions */}
+                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-gray-200">
+                    <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                      <Receipt className="w-5 h-5 mr-2 text-blue-600" />
+                      Últimas Transacciones
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">{getDateRangeLabel() || 'Período seleccionado'}</p>
+                  </div>
+                  {transactions.length > 0 ? (
+                    <div className="overflow-x-auto max-h-96">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              Fecha
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              Descripción
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                              Monto
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {transactions.slice(0, 20).map((tx) => (
+                            <tr key={tx.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                {formatDateDisplay(tx.transaction_date)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="text-sm text-gray-900 line-clamp-1">
+                                  {tx.description}
+                                </div>
+                                {tx.school_name && (
+                                  <div className="text-xs text-gray-500">{tx.school_name}</div>
+                                )}
+                              </td>
+                              <td className={`px-4 py-3 text-right text-sm font-medium whitespace-nowrap ${
+                                tx.type === 'income' ? 'text-green-600' : tx.type === 'expense' ? 'text-red-600' : 'text-gray-600'
+                              }`}>
+                                {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}
+                                {formatCurrency(tx.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-gray-500">
+                      No hay transacciones para el período seleccionado
+                    </div>
+                  )}
+                </div>
+
+                {/* Expenses by Category */}
+                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-gray-200">
+                    <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                      <PieChart className="w-5 h-5 mr-2 text-purple-600" />
+                      Gastos por Categoría
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">{getDateRangeLabel() || 'Período seleccionado'}</p>
+                  </div>
+                  {expensesByCategory.length > 0 ? (
+                    <div className="p-6 space-y-4">
+                      {expensesByCategory.map((cat) => (
+                        <div key={cat.category}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-gray-700">{cat.category_label}</span>
+                            <span className="text-sm text-gray-600">{formatCurrency(cat.total_amount)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                              <div
+                                className="h-full bg-purple-500 rounded"
+                                style={{ width: `${cat.percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-gray-500 w-12 text-right">{Number(cat.percentage).toFixed(1)}%</span>
+                          </div>
+                          <div className="flex gap-4 mt-1 text-xs text-gray-500">
+                            <span>Pagado: {formatCurrency(cat.paid_amount)}</span>
+                            {cat.pending_amount > 0 && (
+                              <span className="text-orange-600">Pendiente: {formatCurrency(cat.pending_amount)}</span>
+                            )}
+                            <span>{cat.count} gastos</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-gray-500">
+                      No hay gastos para el período seleccionado
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </>
       )}
     </Layout>
   );

@@ -125,6 +125,57 @@ export const apiClient = {
   async delete<T>(endpoint: string, options?: { headers?: Record<string, string>; params?: Record<string, unknown> }) {
     return this.request<T>('DELETE', endpoint, undefined, options);
   },
+
+  async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<{ data: T; status: number }> {
+    const apiUrl = useConfigStore.getState().apiUrl;
+    const url = `${apiUrl}/api/v1${endpoint}`;
+    const token = localStorage.getItem('access_token');
+
+    const formData = new FormData();
+    formData.append(fieldName, file);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await tauriFetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+        connectTimeout: 60000,
+      });
+
+      updateOnlineStatus(true);
+
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+        throw new Error('Unauthorized');
+      }
+
+      if (response.status === 403) {
+        throw new Error('No tienes permisos para esta acción');
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      return { data: responseData as T, status: response.status };
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        updateOnlineStatus(false);
+      }
+      throw error;
+    }
+  },
 };
 
 // Check connection status by calling health endpoint

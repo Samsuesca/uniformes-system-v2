@@ -163,6 +163,7 @@ export default function Home() {
                   'instituci-n-educativa-caracas': 'caracas.jpg',
                   'instituci-n-educativa-el-pinal': 'pinal.jpeg',
                   'instituci-n-educativa-alfonso-l-pez-pumarejo': 'pumarejo.jpeg',
+                  'confama': 'confama.jpg',
                 };
                 return logoMap[slug] || null;
               };

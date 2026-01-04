@@ -18,15 +18,17 @@ from app.api.dependencies import DatabaseSession, CurrentUser, require_any_schoo
 from app.models.user import UserRole
 from app.models.accounting import (
     TransactionType, ExpenseCategory, AccountType,
-    BalanceAccount, BalanceEntry, Expense, AccountsPayable, AccountsReceivable
+    BalanceAccount, BalanceEntry, Expense, AccountsPayable, AccountsReceivable, Transaction
 )
+from app.models.school import School
 from app.schemas.accounting import (
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
     BalanceAccountResponse, BalanceAccountListResponse, BalanceAccountUpdate,
     GlobalBalanceAccountCreate, GlobalBalanceAccountResponse,
     GlobalAccountsPayableCreate, GlobalAccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
     GlobalAccountsReceivableCreate, GlobalAccountsReceivableResponse, AccountsReceivableListResponse, AccountsReceivablePayment,
-    BalanceGeneralSummary, BalanceGeneralDetailed
+    BalanceGeneralSummary, BalanceGeneralDetailed,
+    TransactionListItemResponse, ExpenseCategorySummary, CashFlowPeriodItem, CashFlowReportResponse
 )
 from sqlalchemy import select, func
 
@@ -1448,3 +1450,257 @@ async def pay_global_receivable(
     await db.refresh(receivable)
 
     return GlobalAccountsReceivableResponse.model_validate(receivable)
+
+
+# ============================================
+# Global Transactions (for Reports)
+# ============================================
+
+# Category labels in Spanish
+EXPENSE_CATEGORY_LABELS = {
+    ExpenseCategory.RENT: "Arriendo",
+    ExpenseCategory.UTILITIES: "Servicios",
+    ExpenseCategory.PAYROLL: "Nomina",
+    ExpenseCategory.SUPPLIES: "Suministros",
+    ExpenseCategory.INVENTORY: "Inventario",
+    ExpenseCategory.TRANSPORT: "Transporte",
+    ExpenseCategory.MAINTENANCE: "Mantenimiento",
+    ExpenseCategory.MARKETING: "Marketing",
+    ExpenseCategory.TAXES: "Impuestos",
+    ExpenseCategory.BANK_FEES: "Comisiones Bancarias",
+    ExpenseCategory.OTHER: "Otros",
+}
+
+
+@router.get(
+    "/transactions",
+    response_model=list[TransactionListItemResponse],
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def list_global_transactions(
+    db: DatabaseSession,
+    start_date: date = Query(None, description="Filter from date"),
+    end_date: date = Query(None, description="Filter to date"),
+    transaction_type: TransactionType = Query(None, description="Filter by type (income/expense)"),
+    school_id: UUID = Query(None, description="Filter by school"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200)
+):
+    """
+    List transactions (global and school-specific)
+
+    Returns all transactions for reporting purposes.
+    """
+    from sqlalchemy.orm import joinedload
+
+    query = select(Transaction).options(
+        joinedload(Transaction.school)
+    )
+
+    # Apply filters
+    if start_date:
+        query = query.where(Transaction.transaction_date >= start_date)
+    if end_date:
+        query = query.where(Transaction.transaction_date <= end_date)
+    if transaction_type:
+        query = query.where(Transaction.type == transaction_type)
+    if school_id:
+        query = query.where(Transaction.school_id == school_id)
+
+    query = query.order_by(Transaction.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    transactions = result.scalars().unique().all()
+
+    return [
+        TransactionListItemResponse(
+            id=t.id,
+            type=t.type,
+            amount=t.amount,
+            payment_method=t.payment_method,
+            description=t.description,
+            category=t.category,
+            reference_code=t.reference_code,
+            transaction_date=t.transaction_date,
+            created_at=t.created_at,
+            school_id=t.school_id,
+            school_name=t.school.name if t.school else None
+        )
+        for t in transactions
+    ]
+
+
+@router.get(
+    "/expenses/summary-by-category",
+    response_model=list[ExpenseCategorySummary],
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def get_expenses_summary_by_category(
+    db: DatabaseSession,
+    start_date: date = Query(None, description="Filter from date"),
+    end_date: date = Query(None, description="Filter to date")
+):
+    """
+    Get expenses grouped by category
+
+    Returns summary of expenses by category for pie/bar charts.
+    """
+    query = select(
+        Expense.category,
+        func.count(Expense.id).label('count'),
+        func.sum(Expense.amount).label('total_amount'),
+        func.sum(Expense.amount_paid).label('paid_amount')
+    ).where(
+        Expense.is_active == True
+    ).group_by(Expense.category)
+
+    # Apply date filters
+    if start_date:
+        query = query.where(Expense.expense_date >= start_date)
+    if end_date:
+        query = query.where(Expense.expense_date <= end_date)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Calculate total for percentages
+    total_expenses = sum(float(row.total_amount or 0) for row in rows)
+
+    summaries = []
+    for row in rows:
+        total_amount = Decimal(str(row.total_amount or 0))
+        paid_amount = Decimal(str(row.paid_amount or 0))
+        pending_amount = total_amount - paid_amount
+        percentage = Decimal(str(round((float(total_amount) / total_expenses * 100) if total_expenses > 0 else 0, 2)))
+
+        summaries.append(ExpenseCategorySummary(
+            category=row.category,
+            category_label=EXPENSE_CATEGORY_LABELS.get(row.category, str(row.category.value)),
+            total_amount=total_amount,
+            paid_amount=paid_amount,
+            pending_amount=pending_amount,
+            count=row.count,
+            percentage=percentage
+        ))
+
+    # Sort by total amount descending
+    summaries.sort(key=lambda x: x.total_amount, reverse=True)
+
+    return summaries
+
+
+@router.get(
+    "/cash-flow",
+    response_model=CashFlowReportResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def get_cash_flow_report(
+    db: DatabaseSession,
+    start_date: date = Query(..., description="Start date"),
+    end_date: date = Query(..., description="End date"),
+    group_by: str = Query("day", description="Group by: day, week, month")
+):
+    """
+    Get cash flow report for a period
+
+    Shows income vs expenses over time for line charts.
+    """
+    from datetime import timedelta
+    from collections import defaultdict
+
+    # Validate group_by
+    if group_by not in ("day", "week", "month"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="group_by must be: day, week, or month"
+        )
+
+    # Get all transactions in range
+    query = select(Transaction).where(
+        Transaction.transaction_date >= start_date,
+        Transaction.transaction_date <= end_date
+    ).order_by(Transaction.transaction_date)
+
+    result = await db.execute(query)
+    transactions = result.scalars().all()
+
+    # Group transactions by period
+    periods_data = defaultdict(lambda: {"income": Decimal("0"), "expenses": Decimal("0")})
+
+    for t in transactions:
+        # Determine period key
+        if group_by == "day":
+            period_key = t.transaction_date.isoformat()
+            period_label = t.transaction_date.strftime("%d %b")
+        elif group_by == "week":
+            # Get ISO week
+            iso_cal = t.transaction_date.isocalendar()
+            period_key = f"{iso_cal.year}-W{iso_cal.week:02d}"
+            period_label = f"Sem {iso_cal.week}"
+        else:  # month
+            period_key = t.transaction_date.strftime("%Y-%m")
+            period_label = t.transaction_date.strftime("%B %Y")
+
+        # Add amount to appropriate bucket
+        if t.type == TransactionType.INCOME:
+            periods_data[period_key]["income"] += t.amount
+        else:  # EXPENSE or TRANSFER (count transfers as expense for cash flow)
+            periods_data[period_key]["expenses"] += t.amount
+
+        periods_data[period_key]["label"] = period_label
+
+    # Also include expenses not in transactions
+    expense_query = select(Expense).where(
+        Expense.expense_date >= start_date,
+        Expense.expense_date <= end_date,
+        Expense.is_active == True,
+        Expense.is_paid == True
+    )
+    result = await db.execute(expense_query)
+    expenses = result.scalars().all()
+
+    for e in expenses:
+        if group_by == "day":
+            period_key = e.expense_date.isoformat()
+            period_label = e.expense_date.strftime("%d %b")
+        elif group_by == "week":
+            iso_cal = e.expense_date.isocalendar()
+            period_key = f"{iso_cal.year}-W{iso_cal.week:02d}"
+            period_label = f"Sem {iso_cal.week}"
+        else:
+            period_key = e.expense_date.strftime("%Y-%m")
+            period_label = e.expense_date.strftime("%B %Y")
+
+        periods_data[period_key]["expenses"] += e.amount_paid
+        periods_data[period_key]["label"] = period_label
+
+    # Convert to list and calculate net
+    periods = []
+    total_income = Decimal("0")
+    total_expenses = Decimal("0")
+
+    for period_key in sorted(periods_data.keys()):
+        data = periods_data[period_key]
+        income = data["income"]
+        expenses = data["expenses"]
+        net = income - expenses
+
+        total_income += income
+        total_expenses += expenses
+
+        periods.append(CashFlowPeriodItem(
+            period=period_key,
+            period_label=data.get("label", period_key),
+            income=income,
+            expenses=expenses,
+            net=net
+        ))
+
+    return CashFlowReportResponse(
+        period_start=start_date,
+        period_end=end_date,
+        group_by=group_by,
+        total_income=total_income,
+        total_expenses=total_expenses,
+        net_flow=total_income - total_expenses,
+        periods=periods
+    )
