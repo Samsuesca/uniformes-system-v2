@@ -105,39 +105,42 @@ def build_sale_item(
 
 
 def build_sale_change_request(
-    sale_id: UUID | str | None = None,
-    sale_item_id: UUID | str | None = None,
-    change_type: str = "size_change",
-    quantity: int = 1,
+    original_item_id: UUID | str | None = None,
+    change_type: str = "return",
+    returned_quantity: int = 1,
     reason: str = "Cambio de talla",
     new_product_id: UUID | str | None = None,
+    new_quantity: int = 0,
     **overrides
 ) -> dict[str, Any]:
     """
     Build a SaleChangeCreate request payload.
 
     Args:
-        sale_id: Original sale ID
-        sale_item_id: Original sale item ID
-        change_type: Type of change (size_change, return, exchange)
-        quantity: Quantity to change
+        original_item_id: Original sale item ID
+        change_type: Type of change (size_change, product_change, return, defect)
+        returned_quantity: Quantity being returned/changed
         reason: Reason for change
-        new_product_id: New product ID for exchanges
+        new_product_id: New product ID for exchanges (required for size_change, product_change, defect)
+        new_quantity: Quantity of new product (required for non-return changes)
         **overrides: Additional fields
 
     Returns:
         Sale change request payload
     """
     payload = {
-        "sale_id": str(sale_id) if sale_id else str(uuid4()),
-        "sale_item_id": str(sale_item_id) if sale_item_id else str(uuid4()),
+        "original_item_id": str(original_item_id) if original_item_id else str(uuid4()),
         "change_type": change_type,
-        "quantity": quantity,
+        "returned_quantity": returned_quantity,
         "reason": reason,
     }
 
-    if new_product_id:
-        payload["new_product_id"] = str(new_product_id)
+    # For non-return changes, new_product_id and new_quantity are required
+    if change_type != "return":
+        if new_product_id:
+            payload["new_product_id"] = str(new_product_id)
+        if new_quantity > 0:
+            payload["new_quantity"] = new_quantity
 
     payload.update(overrides)
     return payload

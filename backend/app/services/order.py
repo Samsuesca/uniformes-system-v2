@@ -168,7 +168,11 @@ class OrderService(SchoolIsolatedService[Order]):
             payment_method = AccPaymentMethod.CASH
 
         # Create order
-        order_dict = order_data.model_dump(exclude={'items', 'advance_payment', 'advance_payment_method'})
+        # Exclude fields that are not in Order model or are handled separately
+        order_dict = order_data.model_dump(exclude={
+            'items', 'advance_payment', 'advance_payment_method',
+            'custom_school_name'  # Not in Order model, only used for school resolution
+        })
         order_dict.update({
             "code": code,
             "user_id": user_id,
