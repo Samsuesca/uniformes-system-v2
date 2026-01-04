@@ -166,18 +166,23 @@ def garment_type_factory():
     def _create(
         id: str = None,
         school_id: str = None,
-        code: str = None,
-        name: str = "Camisa",
-        category: str = "tops",
+        name: str = None,
+        category: str = "uniforme_diario",
+        description: str = None,
+        requires_embroidery: bool = False,
+        has_custom_measurements: bool = False,
         is_active: bool = True,
         **kwargs
     ) -> GarmentType:
+        unique = uuid4().hex[:6]
         return GarmentType(
             id=id or str(uuid4()),
             school_id=school_id or str(uuid4()),
-            code=code or f"GT-{uuid4().hex[:4].upper()}",
-            name=name,
+            name=name or f"Camisa {unique}",
             category=category,
+            description=description,
+            requires_embroidery=requires_embroidery,
+            has_custom_measurements=has_custom_measurements,
             is_active=is_active,
             **kwargs
         )
@@ -660,9 +665,11 @@ async def test_garment_type(db_session, test_school) -> GarmentType:
     garment_type = GarmentType(
         id=str(uuid4()),
         school_id=test_school.id,
-        code=f"CAM-{unique_id}",
         name=f"Camisa {unique_id}",
-        category="tops",
+        category="uniforme_diario",
+        description="Test garment type",
+        requires_embroidery=False,
+        has_custom_measurements=False,
         is_active=True
     )
     db_session.add(garment_type)
