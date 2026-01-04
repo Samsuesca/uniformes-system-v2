@@ -323,6 +323,7 @@ export interface SaleChangeListItem {
 export type OrderStatus = 'pending' | 'in_production' | 'ready' | 'delivered' | 'cancelled';
 export type OrderItemStatus = 'pending' | 'in_production' | 'ready' | 'delivered' | 'cancelled';
 export type OrderType = 'catalog' | 'yomber' | 'custom';
+export type DeliveryType = 'pickup' | 'delivery';
 
 // Yomber measurements interface
 export interface YomberMeasurements {
@@ -409,6 +410,14 @@ export interface OrderWithItems extends Order {
   client_name: string;
   client_phone: string | null;
   student_name: string | null;
+  // Delivery info
+  delivery_type?: DeliveryType;
+  delivery_address?: string | null;
+  delivery_neighborhood?: string | null;
+  delivery_city?: string | null;
+  delivery_references?: string | null;
+  delivery_zone_id?: string | null;
+  delivery_fee?: number;
 }
 
 export interface OrderListItem {
@@ -434,6 +443,13 @@ export interface OrderListItem {
   items_total: number;
   // Payment proof
   payment_proof_url: string | null;
+  // Quotation flag
+  needs_quotation?: boolean;
+  // Delivery info
+  delivery_type: DeliveryType;
+  delivery_fee: number;
+  delivery_address: string | null;
+  delivery_neighborhood: string | null;
 }
 
 export interface OrderCreate {

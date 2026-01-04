@@ -130,7 +130,7 @@ export default function WebOrders() {
 
       // Delivery type filter
       if (deliveryFilter !== 'all') {
-        const orderDeliveryType = (order as any).delivery_type || 'pickup';
+        const orderDeliveryType = order.delivery_type || 'pickup';
         if (orderDeliveryType !== deliveryFilter) return false;
       }
 
@@ -158,8 +158,8 @@ export default function WebOrders() {
       total: webOrders.length,
       totalPending: webOrders.reduce((sum, o) => sum + (Number(o.balance) || 0), 0),
       // Delivery stats
-      deliveryOrders: webOrders.filter(o => (o as any).delivery_type === 'delivery').length,
-      pickupOrders: webOrders.filter(o => (o as any).delivery_type !== 'delivery').length,
+      deliveryOrders: webOrders.filter(o => o.delivery_type === 'delivery').length,
+      pickupOrders: webOrders.filter(o => o.delivery_type !== 'delivery').length,
     };
   }, [orders]);
 
@@ -570,7 +570,7 @@ export default function WebOrders() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-medium text-indigo-600">{order.code}</span>
-                          {(order as any).delivery_type === 'delivery' && (
+                          {order.delivery_type === 'delivery' && (
                             <span className="inline-flex items-center text-blue-600" title="Domicilio">
                               <Home className="w-4 h-4" />
                             </span>
@@ -713,7 +713,7 @@ export default function WebOrders() {
                 </div>
 
                 {/* Delivery Information */}
-                {(selectedOrder as any).delivery_type === 'delivery' && (
+                {selectedOrder.delivery_type === 'delivery' && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h3 className="font-medium text-blue-800 mb-3 flex items-center">
                       <Truck className="w-5 h-5 mr-2" />
@@ -722,28 +722,28 @@ export default function WebOrders() {
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-blue-600">Direccion</p>
-                        <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_address || '-'}</p>
+                        <p className="font-medium text-blue-900">{selectedOrder.delivery_address || '-'}</p>
                       </div>
                       <div>
                         <p className="text-blue-600">Barrio</p>
-                        <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_neighborhood || '-'}</p>
+                        <p className="font-medium text-blue-900">{selectedOrder.delivery_neighborhood || '-'}</p>
                       </div>
-                      {(selectedOrder as any).delivery_city && (
+                      {selectedOrder.delivery_city && (
                         <div>
                           <p className="text-blue-600">Ciudad</p>
-                          <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_city}</p>
+                          <p className="font-medium text-blue-900">{selectedOrder.delivery_city}</p>
                         </div>
                       )}
-                      {(selectedOrder as any).delivery_fee && Number((selectedOrder as any).delivery_fee) > 0 && (
+                      {selectedOrder.delivery_fee && Number(selectedOrder.delivery_fee) > 0 && (
                         <div>
                           <p className="text-blue-600">Costo de Envio</p>
-                          <p className="font-bold text-blue-900">${Number((selectedOrder as any).delivery_fee).toLocaleString()}</p>
+                          <p className="font-bold text-blue-900">${Number(selectedOrder.delivery_fee).toLocaleString()}</p>
                         </div>
                       )}
-                      {(selectedOrder as any).delivery_references && (
+                      {selectedOrder.delivery_references && (
                         <div className="col-span-2">
                           <p className="text-blue-600">Indicaciones</p>
-                          <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_references}</p>
+                          <p className="font-medium text-blue-900">{selectedOrder.delivery_references}</p>
                         </div>
                       )}
                     </div>
