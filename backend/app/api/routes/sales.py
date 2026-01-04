@@ -259,9 +259,10 @@ async def get_sale(
     sale_id: UUID,
     db: DatabaseSession
 ):
-    """Get sale by ID"""
+    """Get sale by ID with items loaded"""
     sale_service = SaleService(db)
-    sale = await sale_service.get(sale_id, school_id)
+    # Use get_sale_with_items to ensure items relationship is loaded for serialization
+    sale = await sale_service.get_sale_with_items(sale_id, school_id)
 
     if not sale:
         raise HTTPException(

@@ -784,6 +784,8 @@ async def create_product(
     current_user: CurrentUser
 ):
     """Create a new product (requires ADMIN role)"""
+    from sqlalchemy.exc import IntegrityError
+
     # Ensure school_id matches
     product_data.school_id = school_id
 
@@ -793,6 +795,20 @@ async def create_product(
         product = await product_service.create_product(product_data)
         await db.commit()
         return ProductResponse.model_validate(product)
+
+    except IntegrityError as e:
+        await db.rollback()
+        # Handle FK constraint violations (e.g., invalid garment_type_id)
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if "garment_type_id" in error_msg.lower() or "fkey" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tipo de prenda no válido o no encontrado"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error de integridad de datos"
+        )
 
     except ValueError as e:
         raise HTTPException(
