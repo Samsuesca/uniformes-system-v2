@@ -55,16 +55,18 @@ async def async_engine():
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
-        pool_pre_ping=True
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10
     )
 
-    # Create all tables
+    # Create all tables once at session start
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
-    # Drop all tables after tests
+    # Drop all tables after all tests complete
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
@@ -73,32 +75,26 @@ async def async_engine():
 
 @pytest.fixture(scope="function")
 async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Provide a database session for testing with transaction rollback."""
-    # Create a connection and start a transaction
-    async with async_engine.connect() as connection:
-        # Begin a transaction that we'll rollback at the end
-        transaction = await connection.begin()
+    """
+    Provide a database session for testing.
 
-        # Create session bound to this connection
-        async_session = async_sessionmaker(
-            bind=connection,
-            class_=AsyncSession,
-            expire_on_commit=False,
-        )
+    Each test gets a fresh session. Data cleanup happens via
+    truncating tables or through test isolation.
+    """
+    async_session = async_sessionmaker(
+        async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=True,
+    )
 
-        async with async_session() as session:
-            # Use nested transaction (savepoint) for each test
-            nested = await connection.begin_nested()
-
+    async with async_session() as session:
+        try:
             yield session
-
-            # Rollback the nested transaction
-            if nested.is_active:
-                await nested.rollback()
-
-        # Rollback the main transaction to clean up all test data
-        if transaction.is_active:
-            await transaction.rollback()
+        finally:
+            # Always rollback at the end to clean up
+            await session.rollback()
+            await session.close()
 
 
 @pytest.fixture
