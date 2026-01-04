@@ -148,11 +148,10 @@ def build_sale_change_request(
 # ============================================================================
 
 def build_order_request(
-    school_id: UUID | str | None = None,
     client_id: UUID | str | None = None,
     items: list[dict] | None = None,
-    advance_payment: Decimal | float = 0,
-    payment_method: str = "cash",
+    advance_payment: Decimal | float | None = None,
+    advance_payment_method: str | None = None,
     delivery_date: str | None = None,
     notes: str | None = None,
     source: str = "desktop_app",
@@ -161,13 +160,14 @@ def build_order_request(
     """
     Build an OrderCreate request payload.
 
+    Note: school_id is set from URL path, not in body.
+
     Args:
-        school_id: School ID (required)
-        client_id: Client ID
-        items: List of order items
+        client_id: Client ID (required)
+        items: List of order items (each with garment_type_id, quantity, unit_price)
         advance_payment: Initial payment amount
-        payment_method: Payment method for advance
-        delivery_date: Expected delivery date
+        advance_payment_method: Payment method for advance (cash, nequi, transfer, card)
+        delivery_date: Expected delivery date (YYYY-MM-DD)
         notes: Optional notes
         source: Order source (desktop_app, web_portal, api)
         **overrides: Additional fields
@@ -176,14 +176,15 @@ def build_order_request(
         Order request payload
     """
     payload = {
-        "school_id": str(school_id) if school_id else str(uuid4()),
         "client_id": str(client_id) if client_id else str(uuid4()),
         "items": items or [build_order_item()],
-        "advance_payment": float(advance_payment),
-        "payment_method": payment_method,
         "notes": notes,
         "source": source,
     }
+
+    if advance_payment is not None and advance_payment > 0:
+        payload["advance_payment"] = float(advance_payment)
+        payload["advance_payment_method"] = advance_payment_method or "cash"
 
     if delivery_date:
         payload["delivery_date"] = delivery_date
@@ -193,13 +194,14 @@ def build_order_request(
 
 
 def build_order_item(
-    product_id: UUID | str | None = None,
     garment_type_id: UUID | str | None = None,
+    product_id: UUID | str | None = None,
     quantity: int = 1,
     unit_price: Decimal | float = 50000,
+    order_type: str = "custom",
     size: str = "M",
     color: str | None = None,
-    measurements: dict | None = None,
+    custom_measurements: dict | None = None,
     notes: str | None = None,
     **overrides
 ) -> dict[str, Any]:
@@ -207,13 +209,14 @@ def build_order_item(
     Build an OrderItemCreate payload.
 
     Args:
-        product_id: Product ID (for yomber orders)
-        garment_type_id: Garment type ID (for custom orders)
+        garment_type_id: Garment type ID (required for custom orders)
+        product_id: Product ID (for catalog/yomber orders)
         quantity: Quantity
         unit_price: Price per unit
+        order_type: Order type (custom, catalog, yomber, web_custom)
         size: Size
         color: Color
-        measurements: Custom measurements dict
+        custom_measurements: Custom measurements dict
         notes: Item notes
         **overrides: Additional fields
 
@@ -223,20 +226,23 @@ def build_order_item(
     payload = {
         "quantity": quantity,
         "unit_price": float(unit_price),
-        "size": size,
+        "order_type": order_type,
     }
-
-    if product_id:
-        payload["product_id"] = str(product_id)
 
     if garment_type_id:
         payload["garment_type_id"] = str(garment_type_id)
 
+    if product_id:
+        payload["product_id"] = str(product_id)
+
+    if size:
+        payload["size"] = size
+
     if color:
         payload["color"] = color
 
-    if measurements:
-        payload["measurements"] = measurements
+    if custom_measurements:
+        payload["custom_measurements"] = custom_measurements
 
     if notes:
         payload["notes"] = notes
