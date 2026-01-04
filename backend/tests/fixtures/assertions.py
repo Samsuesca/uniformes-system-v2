@@ -388,32 +388,41 @@ def assert_decimal_equal(
     )
 
 
-def assert_positive(value: Decimal | float | int, name: str = "value") -> None:
+def _to_numeric(value) -> float:
+    """Convert value to numeric (handles string decimal values)."""
+    if isinstance(value, str):
+        return float(value)
+    return float(value)
+
+
+def assert_positive(value: Decimal | float | int | str, name: str = "value") -> None:
     """
     Assert a value is positive (> 0).
 
     Args:
-        value: Value to check
+        value: Value to check (can be string from API)
         name: Name for error message
 
     Raises:
         AssertionError: If value is not positive
     """
-    assert value > 0, f"Expected {name} to be positive, got {value}"
+    numeric_val = _to_numeric(value)
+    assert numeric_val > 0, f"Expected {name} to be positive, got {value}"
 
 
-def assert_non_negative(value: Decimal | float | int, name: str = "value") -> None:
+def assert_non_negative(value: Decimal | float | int | str, name: str = "value") -> None:
     """
     Assert a value is non-negative (>= 0).
 
     Args:
-        value: Value to check
+        value: Value to check (can be string from API)
         name: Name for error message
 
     Raises:
         AssertionError: If value is negative
     """
-    assert value >= 0, f"Expected {name} to be non-negative, got {value}"
+    numeric_val = _to_numeric(value)
+    assert numeric_val >= 0, f"Expected {name} to be non-negative, got {value}"
 
 
 def assert_in_range(
