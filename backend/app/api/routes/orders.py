@@ -332,7 +332,15 @@ async def get_order_for_school(
         items=items_response,
         client_name=order.client.name if order.client else "Unknown",
         client_phone=order.client.phone if order.client else None,
-        student_name=order.client.student_name if order.client else None
+        student_name=order.client.student_name if order.client else None,
+        # Delivery fields
+        delivery_type=order.delivery_type,
+        delivery_address=order.delivery_address,
+        delivery_neighborhood=order.delivery_neighborhood,
+        delivery_city=order.delivery_city,
+        delivery_references=order.delivery_references,
+        delivery_zone_id=order.delivery_zone_id,
+        delivery_fee=order.delivery_fee
     )
 
 
