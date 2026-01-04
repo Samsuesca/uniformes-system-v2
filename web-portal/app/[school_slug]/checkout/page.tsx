@@ -113,7 +113,7 @@ export default function CheckoutPage() {
   // Get selected delivery zone and fee
   const selectedDeliveryZone = deliveryZones.find(z => z.id === formData.delivery_zone_id);
   const deliveryFee = formData.delivery_type === 'delivery' && selectedDeliveryZone
-    ? selectedDeliveryZone.delivery_fee
+    ? Number(selectedDeliveryZone.delivery_fee)
     : 0;
   const totalWithDelivery = getTotalPrice() + deliveryFee;
 
@@ -1133,7 +1133,7 @@ export default function CheckoutPage() {
                           type="text"
                           value={formData.delivery_address}
                           onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })}
-                          placeholder="Ej: Calle 123 #45-67, Apto 201"
+                          placeholder="Ej: Cra 45 #32-15, Apto 201"
                           className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                         />
                       </div>
