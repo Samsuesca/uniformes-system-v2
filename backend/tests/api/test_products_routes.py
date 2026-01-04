@@ -583,19 +583,13 @@ class TestProductValidation:
         # API may accept or reject (depends on validation)
         assert response.status_code in [201, 400, 422]
 
-    @pytest.mark.xfail(reason="FK constraint violation may propagate as unhandled error")
     async def test_create_product_invalid_garment_type(
         self,
         api_client,
         superuser_headers,
         test_school
     ):
-        """Should reject invalid garment type ID.
-
-        Note: This may fail with DB integrity error if the API
-        doesn't validate garment_type_id before database insertion.
-        The FK violation error may not be properly handled.
-        """
+        """Should reject invalid garment type ID."""
         response = await api_client.post(
             f"/api/v1/schools/{test_school.id}/products",
             headers=superuser_headers,

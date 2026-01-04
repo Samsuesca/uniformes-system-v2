@@ -327,7 +327,6 @@ class TestSaleRetrieval:
         # API returns a list (not paginated)
         assert isinstance(data, list)
 
-    @pytest.mark.xfail(reason="API has Pydantic serialization bug in get_sale endpoint")
     async def test_get_single_sale(
         self,
         api_client,
