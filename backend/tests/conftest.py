@@ -718,18 +718,21 @@ async def test_inventory(db_session, test_product, test_school) -> Inventory:
 
 
 @pytest.fixture
-async def test_client(db_session, test_school) -> Client:
-    """Create a test client."""
+async def test_client(db_session) -> Client:
+    """Create a test client (global - not tied to school)."""
+    from app.models.client import ClientType
+
     unique_id = uuid4().hex[:8]
     client = Client(
         id=str(uuid4()),
-        school_id=test_school.id,
+        # school_id is optional for global clients
         code=f"CLI-{unique_id}",
         name=f"María García {unique_id}",
         email=f"maria_{unique_id}@test.com",
         phone="3001234567",
         student_name="Juan García",
         student_grade="5A",
+        client_type=ClientType.REGULAR,
         is_active=True
     )
     db_session.add(client)
