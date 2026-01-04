@@ -575,10 +575,12 @@ class TestProductsMultiTenancy:
         """Should not access products from unauthorized school."""
         from app.models import School
 
+        unique_id = uuid4().hex[:6]
         other_school = School(
             id=str(uuid4()),
-            code="OTHER-004",
+            code=f"OTHER-{unique_id}",
             name="Other School",
+            slug=f"other-school-{unique_id}",
             is_active=True
         )
         db_session.add(other_school)

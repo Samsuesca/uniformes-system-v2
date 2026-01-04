@@ -123,13 +123,16 @@ def school_factory():
         id: str = None,
         code: str = None,
         name: str = "Test School",
+        slug: str = None,
         is_active: bool = True,
         **kwargs
     ) -> School:
+        unique = uuid4().hex[:6]
         return School(
             id=id or str(uuid4()),
-            code=code or f"TST-{uuid4().hex[:4].upper()}",
+            code=code or f"TST-{unique.upper()}",
             name=name,
+            slug=slug or f"test-school-{unique}",
             is_active=is_active,
             **kwargs
         )
