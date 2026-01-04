@@ -29,20 +29,21 @@ def build_sale_request(
     Build a SaleCreate request payload.
 
     Args:
-        school_id: School ID (generated if not provided)
+        school_id: School ID (required)
         client_id: Optional client ID
         items: List of sale items (uses default if not provided)
         payment_method: Payment method (cash, nequi, transfer, card, credit)
         paid_amount: Amount paid (defaults to total if not specified)
         notes: Optional notes
         is_historical: Whether this is a historical sale
-        sale_date: Date string for historical sales
+        sale_date: Date string for historical sales (ISO format with time)
         **overrides: Additional fields to override
 
     Returns:
         Sale request payload dictionary
     """
     payload = {
+        "school_id": str(school_id) if school_id else str(uuid4()),
         "client_id": str(client_id) if client_id else None,
         "items": items or [build_sale_item()],
         "payment_method": payment_method,
@@ -54,6 +55,9 @@ def build_sale_request(
         payload["paid_amount"] = float(paid_amount)
 
     if sale_date:
+        # Ensure sale_date includes time for datetime parsing
+        if "T" not in sale_date and " " not in sale_date:
+            sale_date = f"{sale_date}T00:00:00"
         payload["sale_date"] = sale_date
 
     payload.update(overrides)
@@ -151,27 +155,28 @@ def build_order_request(
     payment_method: str = "cash",
     delivery_date: str | None = None,
     notes: str | None = None,
-    source: str = "store",
+    source: str = "desktop_app",
     **overrides
 ) -> dict[str, Any]:
     """
     Build an OrderCreate request payload.
 
     Args:
-        school_id: School ID
+        school_id: School ID (required)
         client_id: Client ID
         items: List of order items
         advance_payment: Initial payment amount
         payment_method: Payment method for advance
         delivery_date: Expected delivery date
         notes: Optional notes
-        source: Order source (store, web)
+        source: Order source (desktop_app, web_portal, api)
         **overrides: Additional fields
 
     Returns:
         Order request payload
     """
     payload = {
+        "school_id": str(school_id) if school_id else str(uuid4()),
         "client_id": str(client_id) if client_id else str(uuid4()),
         "items": items or [build_order_item()],
         "advance_payment": float(advance_payment),
@@ -494,6 +499,7 @@ def build_payable_request(
 
 def build_product_request(
     name: str = "Test Product",
+    school_id: UUID | str | None = None,
     garment_type_id: UUID | str | None = None,
     size: str = "M",
     color: str = "Blanco",
@@ -508,6 +514,7 @@ def build_product_request(
 
     Args:
         name: Product name
+        school_id: School ID (required)
         garment_type_id: Garment type ID
         size: Size
         color: Color
@@ -522,6 +529,7 @@ def build_product_request(
     """
     payload = {
         "name": name,
+        "school_id": str(school_id) if school_id else str(uuid4()),
         "garment_type_id": str(garment_type_id) if garment_type_id else str(uuid4()),
         "size": size,
         "color": color,
@@ -541,9 +549,11 @@ def build_product_request(
 
 def build_garment_type_request(
     name: str = "Camisa",
-    code: str | None = None,
-    category: str = "tops",
+    school_id: UUID | str | None = None,
+    category: str = "uniforme_diario",
     description: str | None = None,
+    requires_embroidery: bool = False,
+    has_custom_measurements: bool = False,
     is_active: bool = True,
     **overrides
 ) -> dict[str, Any]:
@@ -552,9 +562,11 @@ def build_garment_type_request(
 
     Args:
         name: Garment type name
-        code: Type code
-        category: Category (tops, bottoms, etc.)
+        school_id: School ID (required)
+        category: Category (uniforme_diario, uniforme_deportivo, etc.)
         description: Description
+        requires_embroidery: Whether requires embroidery
+        has_custom_measurements: Whether has custom measurements
         is_active: Active status
         **overrides: Additional fields
 
@@ -563,12 +575,12 @@ def build_garment_type_request(
     """
     payload = {
         "name": name,
+        "school_id": str(school_id) if school_id else str(uuid4()),
         "category": category,
         "is_active": is_active,
+        "requires_embroidery": requires_embroidery,
+        "has_custom_measurements": has_custom_measurements,
     }
-
-    if code:
-        payload["code"] = code
 
     if description:
         payload["description"] = description

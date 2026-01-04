@@ -153,7 +153,7 @@ class TestContactByEmail:
 
     async def test_get_contacts_by_email(self, api_client, db_session):
         """Should get contacts by email without authentication."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         # Create test contact
         contact = Contact(
@@ -194,7 +194,7 @@ class TestContactByEmail:
 
     async def test_get_contacts_multiple_by_email(self, api_client, db_session):
         """Should return multiple contacts for same email."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         email = "multi@example.com"
 
@@ -242,7 +242,7 @@ class TestContactListing:
         db_session
     ):
         """Should list all contacts for admin."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         # Create test contact
         contact = Contact(
@@ -335,7 +335,7 @@ class TestContactDetail:
         db_session
     ):
         """Should get contact detail."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         contact = Contact(
             id=str(uuid4()),
@@ -386,7 +386,7 @@ class TestContactUpdate:
         db_session
     ):
         """Should update contact status."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         contact = Contact(
             id=str(uuid4()),
@@ -416,7 +416,7 @@ class TestContactUpdate:
         db_session
     ):
         """Should mark contact as read."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         contact = Contact(
             id=str(uuid4()),
@@ -448,7 +448,7 @@ class TestContactUpdate:
         test_superuser
     ):
         """Should add admin response to contact."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         contact = Contact(
             id=str(uuid4()),
@@ -483,7 +483,7 @@ class TestContactUpdate:
         db_session
     ):
         """Should close contact."""
-        from app.models.contacts import Contact, ContactType, ContactStatus
+        from app.models.contact import Contact, ContactType, ContactStatus
 
         contact = Contact(
             id=str(uuid4()),
