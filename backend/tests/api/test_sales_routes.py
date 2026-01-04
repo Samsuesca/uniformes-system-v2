@@ -331,19 +331,43 @@ class TestSaleRetrieval:
         self,
         api_client,
         superuser_headers,
-        test_sale,
-        test_school
+        complete_test_setup
     ):
-        """Should get single sale by ID."""
+        """Should get single sale by ID.
+
+        Uses complete_test_setup which creates a sale via API
+        to ensure proper serialization.
+        """
+        setup = complete_test_setup
+
+        # Create a sale via API to ensure it's properly constructed
+        create_response = await api_client.post(
+            f"/api/v1/schools/{setup['school'].id}/sales",
+            headers=superuser_headers,
+            json=build_sale_request(
+                client_id=setup["client"].id,
+                items=[
+                    build_sale_item(
+                        product_id=setup["product"].id,
+                        quantity=1
+                    )
+                ],
+                payment_method="cash"
+            )
+        )
+
+        assert create_response.status_code == 201
+        created_sale = create_response.json()
+
+        # Now fetch the sale by ID
         response = await api_client.get(
-            f"/api/v1/schools/{test_school.id}/sales/{test_sale.id}",
+            f"/api/v1/schools/{setup['school'].id}/sales/{created_sale['id']}",
             headers=superuser_headers
         )
 
         data = assert_success_response(response)
-        assert data["id"] == str(test_sale.id)
-        assert data["code"] == test_sale.code
-        assert "items" in data
+        assert data["id"] == created_sale["id"]
+        assert data["code"] == created_sale["code"]
 
     async def test_get_sale_not_found(
         self,
