@@ -136,6 +136,32 @@ export interface OrderItem {
   needs_quotation?: boolean;
 }
 
+// Delivery Types
+export type DeliveryType = 'pickup' | 'delivery';
+
+export interface DeliveryZone {
+  id: string;
+  name: string;
+  description?: string;
+  delivery_fee: number;
+  estimated_days: number;
+}
+
+export interface OrderCreateData {
+  school_id?: string | null;
+  client_id: string;
+  items: OrderItem[];
+  notes?: string;
+  custom_school_name?: string;
+  // Delivery fields
+  delivery_type?: DeliveryType;
+  delivery_address?: string;
+  delivery_neighborhood?: string;
+  delivery_city?: string;
+  delivery_references?: string;
+  delivery_zone_id?: string;
+}
+
 export interface Order {
   id: string;
   school_id: string;
@@ -324,10 +350,18 @@ export const clientsApi = {
   },
 };
 
+// Delivery Zones (public endpoint - no auth required)
+export const deliveryZonesApi = {
+  listPublic: async (): Promise<DeliveryZone[]> => {
+    const response = await publicClient.get<DeliveryZone[]>('/delivery-zones/public');
+    return response.data;
+  },
+};
+
 // Orders
 export const ordersApi = {
   // Web portal order creation (public endpoint - sin autenticación)
-  createWeb: async (data: { school_id?: string | null; client_id: string; items: OrderItem[]; notes?: string; custom_school_name?: string }) => {
+  createWeb: async (data: OrderCreateData) => {
     // Use Next.js API proxy to avoid CORS issues
     const response = await fetch('/api/orders/create', {
       method: 'POST',

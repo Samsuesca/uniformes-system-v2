@@ -27,7 +27,10 @@ import {
   Sparkles,
   Factory,
   Image as ImageIcon,
-  FileText
+  FileText,
+  Home,
+  Store,
+  Truck
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { formatDateSpanish } from '../components/DatePicker';
@@ -52,6 +55,7 @@ export default function WebOrders() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'pickup' | 'delivery'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Detail modal
@@ -124,6 +128,12 @@ export default function WebOrders() {
       // Status filter
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
 
+      // Delivery type filter
+      if (deliveryFilter !== 'all') {
+        const orderDeliveryType = (order as any).delivery_type || 'pickup';
+        if (orderDeliveryType !== deliveryFilter) return false;
+      }
+
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -135,7 +145,7 @@ export default function WebOrders() {
 
       return true;
     });
-  }, [orders, statusFilter, searchQuery]);
+  }, [orders, statusFilter, deliveryFilter, searchQuery]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -147,6 +157,9 @@ export default function WebOrders() {
       delivered: webOrders.filter(o => o.status === 'delivered').length,
       total: webOrders.length,
       totalPending: webOrders.reduce((sum, o) => sum + (Number(o.balance) || 0), 0),
+      // Delivery stats
+      deliveryOrders: webOrders.filter(o => (o as any).delivery_type === 'delivery').length,
+      pickupOrders: webOrders.filter(o => (o as any).delivery_type !== 'delivery').length,
     };
   }, [orders]);
 
@@ -467,12 +480,30 @@ export default function WebOrders() {
             </div>
           </div>
 
+          {/* Delivery Type Filter */}
+          <div className="flex-1">
+            <label className="block text-xs text-gray-500 mb-1">Tipo de Entrega</label>
+            <div className="relative">
+              <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <select
+                value={deliveryFilter}
+                onChange={(e) => setDeliveryFilter(e.target.value as 'all' | 'pickup' | 'delivery')}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="pickup">Retiro en tienda ({stats.pickupOrders})</option>
+                <option value="delivery">Domicilio ({stats.deliveryOrders})</option>
+              </select>
+            </div>
+          </div>
+
           {/* Clear Filters */}
-          {(statusFilter !== 'all' || searchQuery) && (
+          {(statusFilter !== 'all' || deliveryFilter !== 'all' || searchQuery) && (
             <div className="flex items-end">
               <button
                 onClick={() => {
                   setStatusFilter('all');
+                  setDeliveryFilter('all');
                   setSearchQuery('');
                 }}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
@@ -537,7 +568,14 @@ export default function WebOrders() {
                   return (
                     <tr key={order.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <span className="font-mono font-medium text-indigo-600">{order.code}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-medium text-indigo-600">{order.code}</span>
+                          {(order as any).delivery_type === 'delivery' && (
+                            <span className="inline-flex items-center text-blue-600" title="Domicilio">
+                              <Home className="w-4 h-4" />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-gray-700">{order.school_name || '-'}</span>
@@ -673,6 +711,44 @@ export default function WebOrders() {
                     )}
                   </div>
                 </div>
+
+                {/* Delivery Information */}
+                {(selectedOrder as any).delivery_type === 'delivery' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="font-medium text-blue-800 mb-3 flex items-center">
+                      <Truck className="w-5 h-5 mr-2" />
+                      Informacion de Domicilio
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-blue-600">Direccion</p>
+                        <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_address || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-blue-600">Barrio</p>
+                        <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_neighborhood || '-'}</p>
+                      </div>
+                      {(selectedOrder as any).delivery_city && (
+                        <div>
+                          <p className="text-blue-600">Ciudad</p>
+                          <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_city}</p>
+                        </div>
+                      )}
+                      {(selectedOrder as any).delivery_fee && Number((selectedOrder as any).delivery_fee) > 0 && (
+                        <div>
+                          <p className="text-blue-600">Costo de Envio</p>
+                          <p className="font-bold text-blue-900">${Number((selectedOrder as any).delivery_fee).toLocaleString()}</p>
+                        </div>
+                      )}
+                      {(selectedOrder as any).delivery_references && (
+                        <div className="col-span-2">
+                          <p className="text-blue-600">Indicaciones</p>
+                          <p className="font-medium text-blue-900">{(selectedOrder as any).delivery_references}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Stock Verification Banner (for pending orders) */}
                 {selectedOrder.status === 'pending' && (

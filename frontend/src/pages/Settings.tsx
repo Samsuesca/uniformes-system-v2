@@ -7,15 +7,16 @@ import Layout from '../components/Layout';
 import {
   Settings as SettingsIcon, School, User, Bell, Lock, Server,
   CheckCircle, XCircle, X, Plus, Edit2, Trash2, Users,
-  Building2, Loader2, AlertCircle, Eye, EyeOff, Save, Shield
+  Building2, Loader2, AlertCircle, Eye, EyeOff, Save, Shield, Truck
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { ENVIRONMENTS, ENVIRONMENT_LABELS, ENVIRONMENT_DESCRIPTIONS, type EnvironmentKey } from '../config/environments';
 import { userService, type User as UserType, type UserCreate, type UserUpdate, type UserSchoolRole } from '../services/userService';
 import { schoolService, type School as SchoolType, type SchoolCreate, type SchoolUpdate } from '../services/schoolService';
+import { deliveryZoneService, type DeliveryZone, type DeliveryZoneCreate, type DeliveryZoneUpdate } from '../services/deliveryZoneService';
 
-type ModalType = 'editProfile' | 'changePassword' | 'manageSchools' | 'manageUsers' | 'createSchool' | 'editSchool' | 'createUser' | 'editUser' | 'manageUserRoles' | null;
+type ModalType = 'editProfile' | 'changePassword' | 'manageSchools' | 'manageUsers' | 'createSchool' | 'editSchool' | 'createUser' | 'editUser' | 'manageUserRoles' | 'manageDeliveryZones' | 'createDeliveryZone' | 'editDeliveryZone' | null;
 
 export default function Settings() {
   const { user, updateUser } = useAuthStore();
@@ -88,6 +89,19 @@ export default function Settings() {
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleError, setRoleError] = useState<string | null>(null);
 
+  // Delivery zones management state
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<DeliveryZone | null>(null);
+  const [zoneForm, setZoneForm] = useState<DeliveryZoneCreate>({
+    name: '',
+    description: '',
+    delivery_fee: 0,
+    estimated_days: 1
+  });
+  const [zoneSaving, setZoneSaving] = useState(false);
+  const [zoneError, setZoneError] = useState<string | null>(null);
+
   // Update profile form when user changes
   useEffect(() => {
     if (user) {
@@ -118,6 +132,13 @@ export default function Settings() {
       loadUserRoles(selectedUser.id);
     }
   }, [activeModal, selectedUser]);
+
+  // Load delivery zones when modal opens
+  useEffect(() => {
+    if (activeModal === 'manageDeliveryZones' || activeModal === 'createDeliveryZone' || activeModal === 'editDeliveryZone') {
+      loadDeliveryZones();
+    }
+  }, [activeModal]);
 
   const loadSchools = async () => {
     setSchoolsLoading(true);
@@ -152,6 +173,18 @@ export default function Settings() {
       console.error('Error loading user roles:', err);
     } finally {
       setRolesLoading(false);
+    }
+  };
+
+  const loadDeliveryZones = async () => {
+    setZonesLoading(true);
+    try {
+      const data = await deliveryZoneService.getZones(true);
+      setDeliveryZones(data);
+    } catch (err: any) {
+      console.error('Error loading delivery zones:', err);
+    } finally {
+      setZonesLoading(false);
     }
   };
 
@@ -381,6 +414,58 @@ export default function Settings() {
     }
   };
 
+  // Delivery zone handlers
+  const handleOpenEditZone = (zone: DeliveryZone) => {
+    setSelectedZone(zone);
+    setZoneForm({
+      name: zone.name,
+      description: zone.description || '',
+      delivery_fee: zone.delivery_fee,
+      estimated_days: zone.estimated_days
+    });
+    setActiveModal('editDeliveryZone');
+  };
+
+  const handleSaveZone = async () => {
+    setZoneSaving(true);
+    setZoneError(null);
+
+    try {
+      if (activeModal === 'createDeliveryZone') {
+        await deliveryZoneService.createZone(zoneForm);
+      } else if (selectedZone) {
+        const updateData: DeliveryZoneUpdate = {
+          name: zoneForm.name,
+          description: zoneForm.description || undefined,
+          delivery_fee: zoneForm.delivery_fee,
+          estimated_days: zoneForm.estimated_days
+        };
+        await deliveryZoneService.updateZone(selectedZone.id, updateData);
+      }
+      await loadDeliveryZones();
+      setActiveModal('manageDeliveryZones');
+      setZoneForm({ name: '', description: '', delivery_fee: 0, estimated_days: 1 });
+      setSelectedZone(null);
+    } catch (err: any) {
+      setZoneError(err.response?.data?.detail || 'Error al guardar zona');
+    } finally {
+      setZoneSaving(false);
+    }
+  };
+
+  const handleToggleZoneActive = async (zone: DeliveryZone) => {
+    try {
+      if (zone.is_active) {
+        await deliveryZoneService.deleteZone(zone.id);
+      } else {
+        await deliveryZoneService.updateZone(zone.id, { is_active: true });
+      }
+      await loadDeliveryZones();
+    } catch (err: any) {
+      console.error('Error toggling zone:', err);
+    }
+  };
+
   const closeModal = () => {
     setActiveModal(null);
     setProfileError(null);
@@ -388,13 +473,16 @@ export default function Settings() {
     setSchoolError(null);
     setUserError(null);
     setRoleError(null);
+    setZoneError(null);
     setProfileSuccess(false);
     setPasswordSuccess(false);
     setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
     setSchoolForm({ code: '', name: '', email: '', phone: '', address: '' });
     setUserForm({ username: '', email: '', password: '', full_name: '', is_superuser: false });
+    setZoneForm({ name: '', description: '', delivery_fee: 0, estimated_days: 1 });
     setSelectedSchool(null);
     setSelectedUser(null);
+    setSelectedZone(null);
     setUserRoles([]);
   };
 
@@ -585,6 +673,26 @@ export default function Settings() {
               >
                 <Users className="w-4 h-4 mr-2" />
                 Administrar Usuarios
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Delivery Zones (only for superusers) */}
+        {user?.is_superuser && (
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center mb-4">
+              <Truck className="w-5 h-5 text-blue-600 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-800">Zonas de Envio</h2>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">Configura las zonas de envio y sus costos para pedidos con domicilio.</p>
+              <button
+                onClick={() => setActiveModal('manageDeliveryZones')}
+                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center"
+              >
+                <Truck className="w-4 h-4 mr-2" />
+                Administrar Zonas
               </button>
             </div>
           </div>
@@ -1334,6 +1442,171 @@ export default function Settings() {
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Delivery Zones Modal */}
+      {activeModal === 'manageDeliveryZones' && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">Administrar Zonas de Envio</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setZoneForm({ name: '', description: '', delivery_fee: 0, estimated_days: 1 });
+                    setActiveModal('createDeliveryZone');
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Nueva Zona
+                </button>
+                <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {zonesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="ml-2 text-gray-600">Cargando zonas...</span>
+                </div>
+              ) : deliveryZones.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No hay zonas de envio registradas</div>
+              ) : (
+                <div className="space-y-3">
+                  {deliveryZones.map((zone) => (
+                    <div key={zone.id} className={`p-4 border rounded-lg ${zone.is_active ? 'bg-white' : 'bg-gray-50'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Truck className="w-5 h-5 text-blue-500" />
+                            <span className="font-medium text-gray-800">{zone.name}</span>
+                            {!zone.is_active && (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">Inactiva</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500 mt-1 ml-7">
+                            {zone.description && <span>{zone.description}</span>}
+                          </div>
+                          <div className="flex items-center gap-4 mt-2 ml-7">
+                            <span className="text-sm font-medium text-green-600">
+                              ${zone.delivery_fee.toLocaleString()}
+                            </span>
+                            <span className="text-sm text-gray-500">
+                              {zone.estimated_days} dia{zone.estimated_days > 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenEditZone(zone)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleZoneActive(zone)}
+                            className={`p-2 rounded-lg transition ${
+                              zone.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            title={zone.is_active ? 'Desactivar' : 'Activar'}
+                          >
+                            {zone.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Delivery Zone Modal */}
+      {(activeModal === 'createDeliveryZone' || activeModal === 'editDeliveryZone') && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">
+                {activeModal === 'createDeliveryZone' ? 'Nueva Zona de Envio' : 'Editar Zona de Envio'}
+              </h3>
+              <button onClick={() => setActiveModal('manageDeliveryZones')} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {zoneError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  {zoneError}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={zoneForm.name}
+                  onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ej: Zona Norte"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripcion</label>
+                <textarea
+                  value={zoneForm.description}
+                  onChange={(e) => setZoneForm({ ...zoneForm, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  placeholder="Ej: Barrios incluidos en esta zona"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Costo de Envio *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={zoneForm.delivery_fee || ''}
+                    onChange={(e) => setZoneForm({ ...zoneForm, delivery_fee: parseFloat(e.target.value) || 0 })}
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="8000"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dias Estimados *</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={zoneForm.estimated_days || ''}
+                  onChange={(e) => setZoneForm({ ...zoneForm, estimated_days: parseInt(e.target.value) || 1 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="1"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button onClick={() => setActiveModal('manageDeliveryZones')} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveZone}
+                disabled={zoneSaving || !zoneForm.name || zoneForm.delivery_fee < 0}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center disabled:opacity-50"
+              >
+                {zoneSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Guardar
               </button>
             </div>
           </div>

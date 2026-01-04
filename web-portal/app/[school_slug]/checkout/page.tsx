@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff, Mail, AlertCircle, Loader2, User, X, CreditCard, Upload } from 'lucide-react';
+import { ArrowLeft, CheckCircle, School as SchoolIcon, Package, Eye, EyeOff, Mail, AlertCircle, Loader2, User, X, CreditCard, Upload, Store, Truck } from 'lucide-react';
 import { useCartStore } from '@/lib/store';
-import { clientsApi, ordersApi } from '@/lib/api';
+import { clientsApi, ordersApi, deliveryZonesApi, DeliveryZone, DeliveryType } from '@/lib/api';
 import { useClientAuth } from '@/lib/clientAuth';
 import { formatNumber } from '@/lib/utils';
 import UploadPaymentProofModal from '@/components/UploadPaymentProofModal';
@@ -44,7 +44,18 @@ export default function CheckoutPage() {
     student_name: '',
     grade: '',
     notes: '',
+    // Delivery fields
+    delivery_type: 'pickup' as DeliveryType,
+    delivery_address: '',
+    delivery_neighborhood: '',
+    delivery_city: '',
+    delivery_references: '',
+    delivery_zone_id: '',
   });
+
+  // Delivery zones state
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+  const [loadingZones, setLoadingZones] = useState(false);
   const [showFormPassword, setShowFormPassword] = useState(false);
 
   // Login modal state
@@ -56,6 +67,19 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setMounted(true);
+    // Load delivery zones
+    const loadZones = async () => {
+      setLoadingZones(true);
+      try {
+        const zones = await deliveryZonesApi.listPublic();
+        setDeliveryZones(zones);
+      } catch (error) {
+        console.error('Error loading delivery zones:', error);
+      } finally {
+        setLoadingZones(false);
+      }
+    };
+    loadZones();
   }, []);
 
   // Pre-fill form if user is logged in
@@ -85,6 +109,13 @@ export default function CheckoutPage() {
   const getProductStock = (product: any): number => {
     return product.stock ?? product.stock_quantity ?? product.inventory_quantity ?? 0;
   };
+
+  // Get selected delivery zone and fee
+  const selectedDeliveryZone = deliveryZones.find(z => z.id === formData.delivery_zone_id);
+  const deliveryFee = formData.delivery_type === 'delivery' && selectedDeliveryZone
+    ? selectedDeliveryZone.delivery_fee
+    : 0;
+  const totalWithDelivery = getTotalPrice() + deliveryFee;
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -185,6 +216,25 @@ export default function CheckoutPage() {
         }
       }
 
+      // Validar campos de delivery si el tipo es domicilio
+      if (formData.delivery_type === 'delivery') {
+        if (!formData.delivery_address.trim()) {
+          setError('La dirección es requerida para envío a domicilio');
+          setLoading(false);
+          return;
+        }
+        if (!formData.delivery_neighborhood.trim()) {
+          setError('El barrio es requerido para envío a domicilio');
+          setLoading(false);
+          return;
+        }
+        if (!formData.delivery_zone_id) {
+          setError('Selecciona una zona de envío');
+          setLoading(false);
+          return;
+        }
+      }
+
       // Get first school_id for client registration (students can be from multiple schools)
       const firstSchoolId = items[0].school.id;
 
@@ -265,6 +315,13 @@ export default function CheckoutPage() {
             };
           }),
           notes: formData.notes || undefined,
+          // Delivery info
+          delivery_type: formData.delivery_type,
+          delivery_address: formData.delivery_type === 'delivery' ? formData.delivery_address : undefined,
+          delivery_neighborhood: formData.delivery_type === 'delivery' ? formData.delivery_neighborhood : undefined,
+          delivery_city: formData.delivery_type === 'delivery' ? formData.delivery_city : undefined,
+          delivery_references: formData.delivery_type === 'delivery' ? formData.delivery_references : undefined,
+          delivery_zone_id: formData.delivery_type === 'delivery' ? formData.delivery_zone_id : undefined,
         });
 
         results.push({
@@ -304,6 +361,7 @@ export default function CheckoutPage() {
   if (success) {
     const hasMultipleOrders = orderResults.length > 1;
     const totalAmount = orderResults.reduce((sum, r) => sum + r.total, 0);
+    const totalWithDeliveryFee = totalAmount + deliveryFee;
 
     return (
       <>
@@ -319,6 +377,27 @@ export default function CheckoutPage() {
               </h2>
             </div>
 
+            {/* Delivery type badge */}
+            <div className="flex justify-center mb-4">
+              <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+                formData.delivery_type === 'delivery'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                {formData.delivery_type === 'delivery' ? (
+                  <>
+                    <Truck className="w-4 h-4" />
+                    Envío a Domicilio
+                  </>
+                ) : (
+                  <>
+                    <Store className="w-4 h-4" />
+                    Retiro en Tienda
+                  </>
+                )}
+              </span>
+            </div>
+
             {/* Single order display */}
             {!hasMultipleOrders && orderCode && (
               <div className="text-center mb-6">
@@ -326,8 +405,15 @@ export default function CheckoutPage() {
                 <p className="text-2xl font-bold text-brand-600 mb-2">
                   {orderCode}
                 </p>
+                {formData.delivery_type === 'delivery' && deliveryFee > 0 && (
+                  <div className="text-sm text-slate-600 mb-1">
+                    <span>Subtotal: ${formatNumber(totalAmount)}</span>
+                    <span className="mx-2">+</span>
+                    <span>Envío: ${formatNumber(deliveryFee)}</span>
+                  </div>
+                )}
                 <p className="text-3xl font-bold text-green-600">
-                  ${formatNumber(totalAmount)}
+                  ${formatNumber(totalWithDeliveryFee)}
                 </p>
               </div>
             )}
@@ -380,6 +466,27 @@ export default function CheckoutPage() {
                 </li>
               </ol>
             </div>
+
+            {/* Delivery address info */}
+            {formData.delivery_type === 'delivery' && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
+                <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                  <Truck className="w-4 h-4" />
+                  Dirección de Entrega
+                </h3>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <p><span className="font-medium">Dirección:</span> {formData.delivery_address}</p>
+                  <p><span className="font-medium">Barrio:</span> {formData.delivery_neighborhood}</p>
+                  {formData.delivery_city && <p><span className="font-medium">Ciudad:</span> {formData.delivery_city}</p>}
+                  {formData.delivery_references && <p><span className="font-medium">Indicaciones:</span> {formData.delivery_references}</p>}
+                  {selectedDeliveryZone && (
+                    <p className="mt-2 text-blue-600 font-medium">
+                      Tiempo estimado: {selectedDeliveryZone.estimated_days} día{selectedDeliveryZone.estimated_days > 1 ? 's' : ''} hábiles
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
@@ -514,11 +621,24 @@ export default function CheckoutPage() {
         );
       })}
 
+      {/* Delivery fee line */}
+      {formData.delivery_type === 'delivery' && (
+        <div className="flex justify-between items-center text-sm pt-2 border-t border-surface-200">
+          <span className="text-slate-600 flex items-center gap-1">
+            <Truck className="w-4 h-4" />
+            Envío ({selectedDeliveryZone?.name || 'Selecciona zona'})
+          </span>
+          <span className="font-semibold text-slate-700">
+            {selectedDeliveryZone ? `$${formatNumber(deliveryFee)}` : '-'}
+          </span>
+        </div>
+      )}
+
       {/* Total general */}
       <div className="border-t-2 border-surface-300 pt-4 flex justify-between items-center">
         <span className="font-bold text-lg text-primary">Total General:</span>
         <span className="text-2xl font-bold text-brand-600 font-display">
-          ${formatNumber(getTotalPrice())}
+          ${formatNumber(totalWithDelivery)}
         </span>
       </div>
 
@@ -536,8 +656,17 @@ export default function CheckoutPage() {
       <div className="bg-brand-50 rounded-lg p-3 mt-4">
         <p className="text-xs text-brand-800 leading-relaxed">
           <span className="font-semibold">Información importante:</span><br />
-          • Los uniformes se entregarán directamente en el colegio<br />
-          • Te contactaremos para confirmar tallas y coordinar la entrega<br />
+          {formData.delivery_type === 'pickup' ? (
+            <>
+              • Los uniformes se entregarán directamente en el colegio o tienda<br />
+              • Te contactaremos para confirmar tallas y coordinar la entrega<br />
+            </>
+          ) : (
+            <>
+              • Los uniformes se entregarán en la dirección indicada<br />
+              • Te contactaremos para coordinar la entrega<br />
+            </>
+          )}
           • El pago se realiza contra entrega
         </p>
       </div>
@@ -919,6 +1048,139 @@ export default function CheckoutPage() {
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Tipo de Entrega Section */}
+                <div>
+                  <h2 className="text-lg font-bold text-primary font-display mb-4">
+                    Tipo de Entrega
+                  </h2>
+
+                  {/* Delivery Type Selector */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, delivery_type: 'pickup', delivery_zone_id: '' })}
+                      className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                        formData.delivery_type === 'pickup'
+                          ? 'border-brand-500 bg-brand-50 text-brand-700'
+                          : 'border-surface-200 hover:border-surface-300 text-slate-600'
+                      }`}
+                    >
+                      <Store className="w-8 h-8" />
+                      <span className="font-semibold">Retiro en Tienda</span>
+                      <span className="text-sm text-green-600 font-medium">Gratis</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, delivery_type: 'delivery' })}
+                      className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                        formData.delivery_type === 'delivery'
+                          ? 'border-brand-500 bg-brand-50 text-brand-700'
+                          : 'border-surface-200 hover:border-surface-300 text-slate-600'
+                      }`}
+                    >
+                      <Truck className="w-8 h-8" />
+                      <span className="font-semibold">Domicilio</span>
+                      <span className="text-sm text-slate-500">Según zona</span>
+                    </button>
+                  </div>
+
+                  {/* Delivery Address Fields */}
+                  {formData.delivery_type === 'delivery' && (
+                    <div className="space-y-4 pt-4 border-t border-surface-200">
+                      {/* Zona de envío */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Zona de Envío *
+                        </label>
+                        {loadingZones ? (
+                          <div className="flex items-center gap-2 text-slate-500 py-3">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Cargando zonas...
+                          </div>
+                        ) : deliveryZones.length === 0 ? (
+                          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+                            No hay zonas de envío disponibles. Por favor selecciona "Retiro en Tienda".
+                          </div>
+                        ) : (
+                          <select
+                            value={formData.delivery_zone_id}
+                            onChange={(e) => setFormData({ ...formData, delivery_zone_id: e.target.value })}
+                            className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all bg-white"
+                          >
+                            <option value="">Selecciona una zona</option>
+                            {deliveryZones.map((zone) => (
+                              <option key={zone.id} value={zone.id}>
+                                {zone.name} - ${formatNumber(zone.delivery_fee)} ({zone.estimated_days} día{zone.estimated_days > 1 ? 's' : ''})
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {selectedDeliveryZone && (
+                          <p className="text-sm text-slate-500 mt-1">
+                            {selectedDeliveryZone.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Dirección */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Dirección *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.delivery_address}
+                          onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })}
+                          placeholder="Ej: Calle 123 #45-67, Apto 201"
+                          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Barrio */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Barrio *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.delivery_neighborhood}
+                          onChange={(e) => setFormData({ ...formData, delivery_neighborhood: e.target.value })}
+                          placeholder="Ej: Chapinero"
+                          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Ciudad */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Ciudad
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.delivery_city}
+                          onChange={(e) => setFormData({ ...formData, delivery_city: e.target.value })}
+                          placeholder="Ej: Bogotá"
+                          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Indicaciones */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                          Indicaciones para el repartidor
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={formData.delivery_references}
+                          onChange={(e) => setFormData({ ...formData, delivery_references: e.target.value })}
+                          placeholder="Ej: Edificio azul con portería, timbre 201"
+                          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all resize-none"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {error && (
