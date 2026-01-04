@@ -36,7 +36,7 @@ class TestLogin:
         response = await api_client.post(
             "/api/v1/auth/login",
             json=build_login_request(
-                username="testuser",
+                username=test_user.username,
                 password="TestPassword123!"
             )
         )
@@ -52,8 +52,8 @@ class TestLogin:
         # Verify user data
         assert "user" in data
         user = data["user"]
-        assert user["username"] == "testuser"
-        assert user["email"] == "testuser@test.com"
+        assert user["username"] == test_user.username
+        assert user["email"] == test_user.email
         assert user["is_active"] is True
 
     async def test_login_success_with_email(self, api_client, test_user):
@@ -61,7 +61,7 @@ class TestLogin:
         response = await api_client.post(
             "/api/v1/auth/login",
             json=build_login_request(
-                username="testuser@test.com",
+                username=test_user.email,
                 password="TestPassword123!"
             )
         )
@@ -75,7 +75,7 @@ class TestLogin:
         response = await api_client.post(
             "/api/v1/auth/login",
             json=build_login_request(
-                username="testuser",
+                username=test_user.username,
                 password="WrongPassword123!"
             )
         )
@@ -160,7 +160,7 @@ class TestLogin:
         response = await api_client.post(
             "/api/v1/auth/login",
             json=build_login_request(
-                username="testuser",
+                username=user.username,
                 password="TestPassword123!"
             )
         )

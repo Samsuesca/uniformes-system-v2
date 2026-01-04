@@ -541,10 +541,11 @@ async def test_user(db_session) -> User:
     """Create a test user in the database."""
     from app.services.user import UserService
 
+    unique_id = uuid4().hex[:8]
     user = User(
         id=str(uuid4()),
-        username="testuser",
-        email="testuser@test.com",
+        username=f"testuser_{unique_id}",
+        email=f"testuser_{unique_id}@test.com",
         hashed_password=UserService.hash_password("TestPassword123!"),
         full_name="Test User",
         is_active=True,
@@ -560,10 +561,11 @@ async def test_superuser(db_session) -> User:
     """Create a test superuser in the database."""
     from app.services.user import UserService
 
+    unique_id = uuid4().hex[:8]
     user = User(
         id=str(uuid4()),
-        username="admin",
-        email="admin@test.com",
+        username=f"admin_{unique_id}",
+        email=f"admin_{unique_id}@test.com",
         hashed_password=UserService.hash_password("AdminPassword123!"),
         full_name="Admin User",
         is_active=True,
@@ -577,11 +579,12 @@ async def test_superuser(db_session) -> User:
 @pytest.fixture
 async def test_school(db_session) -> School:
     """Create a test school in the database."""
+    unique_id = uuid4().hex[:8]
     school = School(
         id=str(uuid4()),
-        code="TST-001",
-        name="Test School",
-        slug="test-school",
+        code=f"TST-{unique_id}",
+        name=f"Test School {unique_id}",
+        slug=f"test-school-{unique_id}",
         is_active=True
     )
     db_session.add(school)
@@ -653,11 +656,12 @@ def superuser_headers(test_superuser) -> dict[str, str]:
 @pytest.fixture
 async def test_garment_type(db_session, test_school) -> GarmentType:
     """Create a test garment type."""
+    unique_id = uuid4().hex[:8]
     garment_type = GarmentType(
         id=str(uuid4()),
         school_id=test_school.id,
-        code="CAM-001",
-        name="Camisa",
+        code=f"CAM-{unique_id}",
+        name=f"Camisa {unique_id}",
         category="tops",
         is_active=True
     )
@@ -669,12 +673,13 @@ async def test_garment_type(db_session, test_school) -> GarmentType:
 @pytest.fixture
 async def test_product(db_session, test_school, test_garment_type) -> Product:
     """Create a test product."""
+    unique_id = uuid4().hex[:8]
     product = Product(
         id=str(uuid4()),
         school_id=test_school.id,
         garment_type_id=test_garment_type.id,
-        code="PRD-001",
-        name="Camisa Blanca T12",
+        code=f"PRD-{unique_id}",
+        name=f"Camisa Blanca T12 {unique_id}",
         size="T12",
         color="Blanco",
         price=Decimal("45000"),
@@ -703,12 +708,13 @@ async def test_inventory(db_session, test_product, test_school) -> Inventory:
 @pytest.fixture
 async def test_client(db_session, test_school) -> Client:
     """Create a test client."""
+    unique_id = uuid4().hex[:8]
     client = Client(
         id=str(uuid4()),
         school_id=test_school.id,
-        code="CLI-001",
-        name="María García",
-        email="maria@test.com",
+        code=f"CLI-{unique_id}",
+        name=f"María García {unique_id}",
+        email=f"maria_{unique_id}@test.com",
         phone="3001234567",
         student_name="Juan García",
         student_grade="5A",
@@ -728,12 +734,13 @@ async def test_sale(
     test_product
 ) -> Sale:
     """Create a test sale with one item."""
+    unique_id = uuid4().hex[:8]
     sale = Sale(
         id=str(uuid4()),
         school_id=test_school.id,
         user_id=test_user.id,
         client_id=test_client.id,
-        code="VNT-2025-0001",
+        code=f"VNT-2025-{unique_id}",
         status=SaleStatus.COMPLETED,
         total=Decimal("45000"),
         paid_amount=Decimal("45000"),
@@ -764,12 +771,13 @@ async def test_order(
     test_garment_type
 ) -> Order:
     """Create a test order with one item."""
+    unique_id = uuid4().hex[:8]
     order = Order(
         id=str(uuid4()),
         school_id=test_school.id,
         user_id=test_user.id,
         client_id=test_client.id,
-        code="ENC-2025-0001",
+        code=f"ENC-2025-{unique_id}",
         status=OrderStatus.PENDING,
         subtotal=Decimal("50000"),
         tax=Decimal("9500"),
