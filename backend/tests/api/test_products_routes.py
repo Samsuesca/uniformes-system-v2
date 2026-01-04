@@ -126,7 +126,7 @@ class TestGarmentTypeCreation:
             is_active=True
         )
         db_session.add(garment)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.delete(
             f"/api/v1/schools/{test_school.id}/garment-types/{garment.id}",
@@ -452,7 +452,7 @@ class TestProductDeletion:
             is_active=True
         )
         db_session.add(product)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.delete(
             f"/api/v1/schools/{test_school.id}/products/{product.id}",
@@ -582,7 +582,7 @@ class TestProductsMultiTenancy:
             is_active=True
         )
         db_session.add(other_school)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             f"/api/v1/schools/{other_school.id}/products",

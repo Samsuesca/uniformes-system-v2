@@ -166,7 +166,7 @@ class TestContactByEmail:
             status=ContactStatus.PENDING
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             "/api/v1/contacts/by-email",
@@ -211,7 +211,7 @@ class TestContactByEmail:
             )
             db_session.add(contact)
 
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             "/api/v1/contacts/by-email",
@@ -255,7 +255,7 @@ class TestContactListing:
             status=ContactStatus.PENDING
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             "/api/v1/contacts",
@@ -347,7 +347,7 @@ class TestContactDetail:
             status=ContactStatus.PENDING
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             f"/api/v1/contacts/{contact.id}",
@@ -398,7 +398,7 @@ class TestContactUpdate:
             status=ContactStatus.PENDING
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.put(
             f"/api/v1/contacts/{contact.id}",
@@ -429,7 +429,7 @@ class TestContactUpdate:
             is_read=False
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.put(
             f"/api/v1/contacts/{contact.id}",
@@ -460,7 +460,7 @@ class TestContactUpdate:
             status=ContactStatus.IN_REVIEW
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.put(
             f"/api/v1/contacts/{contact.id}",
@@ -495,7 +495,7 @@ class TestContactUpdate:
             status=ContactStatus.RESOLVED
         )
         db_session.add(contact)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.put(
             f"/api/v1/contacts/{contact.id}",

@@ -611,7 +611,7 @@ class TestPaymentProof:
         """Should approve payment proof."""
         # First set a payment proof URL
         test_order.payment_proof_url = "https://example.com/proof.jpg"
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.post(
             f"/api/v1/schools/{test_school.id}/orders/{test_order.id}/approve-payment",
@@ -632,7 +632,7 @@ class TestPaymentProof:
         """Should reject payment proof and clear URL."""
         # Set payment proof
         test_order.payment_proof_url = "https://example.com/proof.jpg"
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.post(
             f"/api/v1/schools/{test_school.id}/orders/{test_order.id}/reject-payment",
@@ -744,7 +744,7 @@ class TestOrdersMultiTenancy:
             is_active=True
         )
         db_session.add(other_school)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             f"/api/v1/schools/{other_school.id}/orders",

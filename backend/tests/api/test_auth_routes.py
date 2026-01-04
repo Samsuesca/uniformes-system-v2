@@ -108,7 +108,7 @@ class TestLogin:
             is_active=False
         )
         db_session.add(inactive_user)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.post(
             "/api/v1/auth/login",

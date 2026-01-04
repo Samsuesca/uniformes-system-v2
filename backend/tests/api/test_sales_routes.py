@@ -112,7 +112,7 @@ class TestSaleCreation:
             min_stock_alert=5
         )
         db_session.add(inventory2)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.post(
             f"/api/v1/schools/{school_id}/sales",
@@ -636,7 +636,7 @@ class TestSalesMultiTenancy:
             is_active=True
         )
         db_session.add(other_school)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             f"/api/v1/schools/{other_school.id}/sales",

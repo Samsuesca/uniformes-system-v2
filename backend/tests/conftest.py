@@ -74,18 +74,31 @@ async def async_engine():
 @pytest.fixture(scope="function")
 async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
     """Provide a database session for testing with transaction rollback."""
-    async_session = async_sessionmaker(
-        async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
+    # Create a connection and start a transaction
+    async with async_engine.connect() as connection:
+        # Begin a transaction that we'll rollback at the end
+        transaction = await connection.begin()
 
-    async with async_session() as session:
-        # Start a nested transaction (savepoint)
-        async with session.begin():
+        # Create session bound to this connection
+        async_session = async_sessionmaker(
+            bind=connection,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
+        async with async_session() as session:
+            # Use nested transaction (savepoint) for each test
+            nested = await connection.begin_nested()
+
             yield session
-            # Rollback after each test to keep tests isolated
-            await session.rollback()
+
+            # Rollback the nested transaction
+            if nested.is_active:
+                await nested.rollback()
+
+        # Rollback the main transaction to clean up all test data
+        if transaction.is_active:
+            await transaction.rollback()
 
 
 @pytest.fixture
@@ -542,8 +555,7 @@ async def test_user(db_session) -> User:
         is_superuser=False
     )
     db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
+    await db_session.flush()
     return user
 
 
@@ -562,8 +574,7 @@ async def test_superuser(db_session) -> User:
         is_superuser=True
     )
     db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
+    await db_session.flush()
     return user
 
 
@@ -578,8 +589,7 @@ async def test_school(db_session) -> School:
         is_active=True
     )
     db_session.add(school)
-    await db_session.commit()
-    await db_session.refresh(school)
+    await db_session.flush()
     return school
 
 
@@ -593,7 +603,7 @@ async def test_user_with_school_role(db_session, test_user, test_school) -> tupl
         role=UserRole.ADMIN
     )
     db_session.add(role)
-    await db_session.commit()
+    await db_session.flush()
     return test_user, test_school
 
 
@@ -656,8 +666,7 @@ async def test_garment_type(db_session, test_school) -> GarmentType:
         is_active=True
     )
     db_session.add(garment_type)
-    await db_session.commit()
-    await db_session.refresh(garment_type)
+    await db_session.flush()
     return garment_type
 
 
@@ -676,8 +685,7 @@ async def test_product(db_session, test_school, test_garment_type) -> Product:
         is_active=True
     )
     db_session.add(product)
-    await db_session.commit()
-    await db_session.refresh(product)
+    await db_session.flush()
     return product
 
 
@@ -692,8 +700,7 @@ async def test_inventory(db_session, test_product, test_school) -> Inventory:
         min_stock_alert=10
     )
     db_session.add(inventory)
-    await db_session.commit()
-    await db_session.refresh(inventory)
+    await db_session.flush()
     return inventory
 
 
@@ -712,8 +719,7 @@ async def test_client(db_session, test_school) -> Client:
         is_active=True
     )
     db_session.add(client)
-    await db_session.commit()
-    await db_session.refresh(client)
+    await db_session.flush()
     return client
 
 
@@ -749,8 +755,7 @@ async def test_sale(
         subtotal=Decimal("45000")
     )
     db_session.add(sale_item)
-    await db_session.commit()
-    await db_session.refresh(sale)
+    await db_session.flush()
     return sale
 
 
@@ -790,8 +795,7 @@ async def test_order(
         size="M"
     )
     db_session.add(order_item)
-    await db_session.commit()
-    await db_session.refresh(order)
+    await db_session.flush()
     return order
 
 
@@ -831,7 +835,7 @@ async def complete_test_setup(
         role=UserRole.OWNER
     )
     db_session.add(role)
-    await db_session.commit()
+    await db_session.flush()
 
     return {
         "superuser": test_superuser,

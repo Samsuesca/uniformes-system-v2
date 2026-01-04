@@ -312,7 +312,7 @@ class TestClientDeletion:
             is_active=True
         )
         db_session.add(client)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.delete(
             f"/api/v1/schools/{test_school.id}/clients/{client.id}",
@@ -429,7 +429,7 @@ class TestStudentManagement:
             is_active=True
         )
         db_session.add(client)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.put(
             f"/api/v1/schools/{test_school.id}/clients/{client.id}",
@@ -491,7 +491,7 @@ class TestClientsMultiTenancy:
             is_active=True
         )
         db_session.add(other_school)
-        await db_session.commit()
+        await db_session.flush()
 
         response = await api_client.get(
             f"/api/v1/schools/{other_school.id}/clients",
