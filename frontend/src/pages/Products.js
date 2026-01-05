@@ -517,5 +517,5 @@ export default function Products() {
                     setOrderModalOpen(false);
                     setInitialProduct(null);
                     loadProducts(); // Refresh after order
-                }, initialSchoolId: initialProduct?.school_id, initialProduct: initialProduct || undefined }), _jsx(GlobalProductModal, { isOpen: globalProductModalOpen, onClose: handleCloseGlobalProductModal, onSuccess: handleGlobalProductSuccess, product: selectedGlobalProduct }), _jsx(GarmentTypeModal, { isOpen: garmentTypeModalOpen, onClose: handleCloseGarmentTypeModal, onSuccess: handleGarmentTypeSuccess, garmentType: selectedGarmentType, isGlobal: isGlobalGarmentType, schoolId: schoolIdForCreate })] }));
+                }, initialSchoolId: initialProduct?.school_id, initialProduct: initialProduct || undefined }), _jsx(GlobalProductModal, { isOpen: globalProductModalOpen, onClose: handleCloseGlobalProductModal, onSuccess: handleGlobalProductSuccess, product: selectedGlobalProduct }), _jsx(GarmentTypeModal, { isOpen: garmentTypeModalOpen, onClose: handleCloseGarmentTypeModal, onSuccess: handleGarmentTypeSuccess, garmentType: selectedGarmentType, isGlobal: isGlobalGarmentType, schoolId: selectedGarmentType?.school_id || schoolIdForCreate })] }));
 }

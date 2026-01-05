@@ -11,7 +11,7 @@ from app.models.user import User, UserSchoolRole, UserRole
 from app.models.school import School
 from app.models.product import (
     GarmentType, GarmentTypeImage, Product, Inventory,
-    GlobalGarmentType, GlobalProduct, GlobalInventory
+    GlobalGarmentType, GlobalGarmentTypeImage, GlobalProduct, GlobalInventory
 )
 from app.models.client import Client, ClientStudent, ClientType
 from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
@@ -47,6 +47,7 @@ __all__ = [
     "Inventory",
     # Global product models
     "GlobalGarmentType",
+    "GlobalGarmentTypeImage",
     "GlobalProduct",
     "GlobalInventory",
     # Client models

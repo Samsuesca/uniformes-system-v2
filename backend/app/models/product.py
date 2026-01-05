@@ -194,9 +194,44 @@ class GlobalGarmentType(Base):
         back_populates="garment_type",
         cascade="all, delete-orphan"
     )
+    images: Mapped[list["GlobalGarmentTypeImage"]] = relationship(
+        back_populates="garment_type",
+        cascade="all, delete-orphan",
+        order_by="GlobalGarmentTypeImage.display_order"
+    )
 
     def __repr__(self) -> str:
         return f"<GlobalGarmentType(name='{self.name}')>"
+
+
+class GlobalGarmentTypeImage(Base):
+    """Images for global garment types"""
+    __tablename__ = "global_garment_type_images"
+    __table_args__ = (
+        UniqueConstraint('garment_type_id', 'image_url', name='uq_global_garment_type_image'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    garment_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("global_garment_types.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    garment_type: Mapped["GlobalGarmentType"] = relationship(back_populates="images")
+
+    def __repr__(self) -> str:
+        return f"<GlobalGarmentTypeImage(garment_type_id='{self.garment_type_id}', is_primary={self.is_primary})>"
 
 
 class GlobalProduct(Base):

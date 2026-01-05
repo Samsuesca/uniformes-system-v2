@@ -1591,7 +1591,7 @@ export default function Products() {
         onSuccess={handleGarmentTypeSuccess}
         garmentType={selectedGarmentType}
         isGlobal={isGlobalGarmentType}
-        schoolId={schoolIdForCreate}
+        schoolId={(selectedGarmentType as GarmentType)?.school_id || schoolIdForCreate}
       />
     </Layout>
   );

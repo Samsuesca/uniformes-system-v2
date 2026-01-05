@@ -253,6 +253,39 @@ class GlobalGarmentTypeResponse(GlobalGarmentTypeBase, IDModelSchema, TimestampS
 
 
 # ============================================
+# Global GarmentType Image Schemas
+# ============================================
+
+class GlobalGarmentTypeImageBase(BaseSchema):
+    """Base global garment type image schema"""
+    display_order: int = Field(default=0, ge=0)
+    is_primary: bool = False
+
+
+class GlobalGarmentTypeImageCreate(GlobalGarmentTypeImageBase):
+    """Schema for creating global garment type image (used internally after upload)"""
+    pass
+
+
+class GlobalGarmentTypeImageResponse(GlobalGarmentTypeImageBase, IDModelSchema):
+    """GlobalGarmentTypeImage for API responses"""
+    image_url: str
+    garment_type_id: UUID
+    created_at: datetime
+
+
+class GlobalGarmentTypeImageReorder(BaseSchema):
+    """Schema for reordering global garment type images"""
+    image_ids: list[UUID]  # New order of image IDs
+
+
+class GlobalGarmentTypeWithImages(GlobalGarmentTypeResponse):
+    """Global GarmentType with images for API responses"""
+    images: list[GlobalGarmentTypeImageResponse] = []
+    primary_image_url: str | None = None  # Convenience field
+
+
+# ============================================
 # Global Product Schemas
 # ============================================
 
