@@ -8,7 +8,7 @@ import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calenda
 import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
-import ProductSelectorModal from './ProductSelectorModal';
+import ProductGroupSelector from './ProductGroupSelector';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { Product, GlobalProduct } from '../types/api';
 
@@ -974,16 +974,15 @@ export default function SaleModal({
         </div>
       )}
 
-      {/* Product Selector Modal */}
-      <ProductSelectorModal
+      {/* Product Group Selector - Grouped by garment type */}
+      <ProductGroupSelector
         isOpen={productSelectorOpen}
         onClose={() => setProductSelectorOpen(false)}
         onSelect={handleProductSelectorSelect}
         schoolId={selectedSchoolId}
         filterByStock={formData.is_historical ? 'all' : 'with_stock'}
-        allowGlobalProducts={true}
         excludeProductIds={items.map(i => i.product_id)}
-        title="Buscar y Agregar Producto"
+        title="Seleccionar Producto"
         emptyMessage="No se encontraron productos disponibles"
       />
     </div>

@@ -11,6 +11,7 @@ import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, 
 import DatePicker from './DatePicker';
 import ClientSelector from './ClientSelector';
 import ProductSelectorModal from './ProductSelectorModal';
+import ProductGroupSelector from './ProductGroupSelector';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
@@ -1155,14 +1156,13 @@ export default function OrderModal({
         </div>
       </div>
 
-      {/* Product Selector Modal for Catalog Tab */}
-      <ProductSelectorModal
+      {/* Product Group Selector for Catalog Tab - Grouped by garment type */}
+      <ProductGroupSelector
         isOpen={catalogProductSelectorOpen}
         onClose={() => setCatalogProductSelectorOpen(false)}
         onSelect={handleCatalogProductSelect}
         schoolId={selectedSchoolId}
         filterByStock="without_stock"
-        allowGlobalProducts={false}
         excludeProductIds={items.map(i => i.product_id || '')}
         excludeGarmentTypeIds={yomberGarmentTypeIds}
         title="Seleccionar Producto del Catálogo"
