@@ -562,6 +562,121 @@ export const getGlobalPatrimonySummary = async (): Promise<GlobalPatrimonySummar
 };
 
 // ============================================
+// Global Transactions (for Reports)
+// ============================================
+
+export interface GlobalTransactionOptions {
+  startDate?: string;
+  endDate?: string;
+  transactionType?: 'income' | 'expense';
+  schoolId?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface GlobalTransactionItem {
+  id: string;
+  type: 'income' | 'expense' | 'transfer';
+  amount: number;
+  payment_method: string;
+  description: string;
+  category: string | null;
+  reference_code: string | null;
+  transaction_date: string;
+  created_at: string;
+  school_id: string | null;
+  school_name: string | null;
+}
+
+export const getGlobalTransactions = async (
+  options?: GlobalTransactionOptions
+): Promise<GlobalTransactionItem[]> => {
+  const response = await apiClient.get<GlobalTransactionItem[]>(
+    `${BASE_URL}/transactions`,
+    {
+      params: {
+        start_date: options?.startDate,
+        end_date: options?.endDate,
+        transaction_type: options?.transactionType,
+        school_id: options?.schoolId,
+        skip: options?.skip || 0,
+        limit: options?.limit || 50
+      }
+    }
+  );
+  return response.data;
+};
+
+// ============================================
+// Expense Summary by Category
+// ============================================
+
+export interface ExpenseCategorySummary {
+  category: string;
+  category_label: string;
+  total_amount: number;
+  paid_amount: number;
+  pending_amount: number;
+  count: number;
+  percentage: number;
+}
+
+export const getExpensesSummaryByCategory = async (
+  options?: { startDate?: string; endDate?: string }
+): Promise<ExpenseCategorySummary[]> => {
+  const response = await apiClient.get<ExpenseCategorySummary[]>(
+    `${BASE_URL}/expenses/summary-by-category`,
+    {
+      params: {
+        start_date: options?.startDate,
+        end_date: options?.endDate
+      }
+    }
+  );
+  return response.data;
+};
+
+// ============================================
+// Cash Flow Report
+// ============================================
+
+export interface CashFlowPeriod {
+  period: string;
+  period_label: string;
+  income: number;
+  expenses: number;
+  net: number;
+}
+
+export interface CashFlowReport {
+  period_start: string;
+  period_end: string;
+  group_by: string;
+  total_income: number;
+  total_expenses: number;
+  net_flow: number;
+  periods: CashFlowPeriod[];
+}
+
+export const getCashFlowReport = async (
+  startDate: string,
+  endDate: string,
+  groupBy: string = 'day'
+): Promise<CashFlowReport> => {
+  const response = await apiClient.get<CashFlowReport>(
+    `${BASE_URL}/cash-flow`,
+    {
+      params: {
+        start_date: startDate,
+        end_date: endDate,
+        group_by: groupBy
+      }
+    }
+  );
+  return response.data;
+};
+
+// ============================================
 // Export as object for easier imports
 // ============================================
 
@@ -604,7 +719,11 @@ export const globalAccountingService = {
   createGlobalReceivable,
   payGlobalReceivable,
   // Patrimony
-  getGlobalPatrimonySummary
+  getGlobalPatrimonySummary,
+  // Transactions & Reports
+  getGlobalTransactions,
+  getExpensesSummaryByCategory,
+  getCashFlowReport
 };
 
 export default globalAccountingService;
