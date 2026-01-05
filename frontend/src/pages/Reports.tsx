@@ -113,6 +113,35 @@ const isValidUUID = (str: string): boolean => {
   return uuidRegex.test(str);
 };
 
+export const parseApiError = (err: any) => {
+  // Error de red (backend caído, CORS, timeout)
+  if (!err.response) {
+    return {
+      userMessage: 'No se pudo conectar con el servidor. Verifica tu conexión.',
+      technicalMessage: err.message,
+      status: null
+    };
+  }
+
+  const { status, data } = err.response;
+
+  // Errores comunes del backend
+  const backendMessage =
+    data?.detail ||
+    data?.message ||
+    data?.error ||
+    (Array.isArray(data?.errors) ? data.errors.join(', ') : null);
+
+  return {
+    userMessage:
+      backendMessage ||
+      `Error del servidor (${status}). Intenta nuevamente.`,
+    technicalMessage: JSON.stringify(data),
+    status
+  };
+};
+
+
 export default function Reports() {
   const { currentSchool } = useSchoolStore();
   const [loading, setLoading] = useState(true);
@@ -170,47 +199,59 @@ export default function Reports() {
     }
   }, [activeFilters, schoolId, activeTab, filtersReady]);
 
-  const loadFinancialReports = async () => {
-    try {
-      setFinancialLoading(true);
-      setFinancialError(null);
+ const loadFinancialReports = async () => {
+  try {
+    setFinancialLoading(true);
+    setFinancialError(null);
 
-      const startDate = activeFilters.startDate;
-      const endDate = activeFilters.endDate;
+    const { startDate, endDate } = activeFilters;
 
-      // Determine group_by based on date range
-      let groupBy = 'day';
-      if (startDate && endDate) {
-        const daysDiff = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
-        if (daysDiff > 90) groupBy = 'month';
-        else if (daysDiff > 30) groupBy = 'week';
-      }
+    let groupBy: 'day' | 'week' | 'month' = 'day';
 
-      const [transactionsData, expensesData, cashFlowData] = await Promise.all([
-        globalAccountingService.getGlobalTransactions({
-          startDate,
-          endDate,
-          limit: 50
-        }),
-        globalAccountingService.getExpensesSummaryByCategory({
-          startDate,
-          endDate
-        }),
-        startDate && endDate
-          ? globalAccountingService.getCashFlowReport(startDate, endDate, groupBy)
-          : Promise.resolve(null)
-      ]);
+    if (startDate && endDate) {
+      const daysDiff = Math.ceil(
+        (new Date(endDate).getTime() - new Date(startDate).getTime()) /
+        (1000 * 60 * 60 * 24)
+      );
 
-      setTransactions(transactionsData);
-      setExpensesByCategory(expensesData);
-      setCashFlow(cashFlowData);
-    } catch (err: any) {
-      console.error('Error loading financial reports:', err);
-      setFinancialError(err.message || err.response?.data?.detail || 'Error al cargar reportes financieros');
-    } finally {
-      setFinancialLoading(false);
+      if (daysDiff > 90) groupBy = 'month';
+      else if (daysDiff > 30) groupBy = 'week';
     }
-  };
+
+    const [transactionsData, expensesData, cashFlowData] = await Promise.all([
+      globalAccountingService.getGlobalTransactions({
+        startDate,
+        endDate,
+        limit: 50
+      }),
+      globalAccountingService.getExpensesSummaryByCategory({
+        startDate,
+        endDate
+      }),
+      startDate && endDate
+        ? globalAccountingService.getCashFlowReport(startDate, endDate, groupBy)
+        : Promise.resolve(null)
+    ]);
+
+    setTransactions(transactionsData);
+    setExpensesByCategory(expensesData);
+    setCashFlow(cashFlowData);
+
+  } catch (err: any) {
+    const parsedError = parseApiError(err);
+
+    console.error('[FinancialReportsError]', {
+      status: parsedError.status,
+      message: parsedError.technicalMessage,
+      originalError: err
+    });
+
+    setFinancialError(parsedError.userMessage);
+  } finally {
+    setFinancialLoading(false);
+  }
+};
+
 
   const handlePresetChange = (preset: DatePreset) => {
     setDatePreset(preset);
