@@ -118,7 +118,9 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState<DatePreset>('month');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [activeFilters, setActiveFilters] = useState<DateFilters>({});
+  // Initialize with month preset to avoid race condition
+  const [activeFilters, setActiveFilters] = useState<DateFilters>(() => getPresetDates('month'));
+  const [filtersReady, setFiltersReady] = useState(false);
 
   // Dashboard data (Sales tab)
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
@@ -129,19 +131,22 @@ export default function Reports() {
 
   // Financial data (Financial tab)
   const [financialLoading, setFinancialLoading] = useState(false);
+  const [financialError, setFinancialError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [expensesByCategory, setExpensesByCategory] = useState<ExpenseCategory[]>([]);
   const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
 
   const schoolId = currentSchool?.id || '';
 
+  // Mark filters as ready after initial render
   useEffect(() => {
-    // Set initial filters
-    const initialFilters = getPresetDates('month');
-    setActiveFilters(initialFilters);
+    setFiltersReady(true);
   }, []);
 
+  // Load data when filters are ready and change
   useEffect(() => {
+    if (!filtersReady) return;
+
     if (Object.keys(activeFilters).length > 0 || datePreset === 'all') {
       if (activeTab === 'sales') {
         loadAllReports();
@@ -149,12 +154,12 @@ export default function Reports() {
         loadFinancialReports();
       }
     }
-  }, [activeFilters, schoolId, activeTab]);
+  }, [activeFilters, schoolId, activeTab, filtersReady]);
 
   const loadFinancialReports = async () => {
     try {
       setFinancialLoading(true);
-      setError(null);
+      setFinancialError(null);
 
       const startDate = activeFilters.startDate;
       const endDate = activeFilters.endDate;
@@ -187,7 +192,7 @@ export default function Reports() {
       setCashFlow(cashFlowData);
     } catch (err: any) {
       console.error('Error loading financial reports:', err);
-      setError(err.response?.data?.detail || 'Error al cargar reportes financieros');
+      setFinancialError(err.message || err.response?.data?.detail || 'Error al cargar reportes financieros');
     } finally {
       setFinancialLoading(false);
     }
@@ -255,7 +260,8 @@ export default function Reports() {
     return `${formatDateDisplay(activeFilters.startDate)} - ${formatDateDisplay(activeFilters.endDate)}`;
   };
 
-  if (loading) {
+  // Only show full-page loading for initial sales tab load
+  if (loading && activeTab === 'sales' && !dashboard) {
     return (
       <Layout>
         <div className="flex items-center justify-center py-12">
@@ -266,7 +272,8 @@ export default function Reports() {
     );
   }
 
-  if (error) {
+  // Only show full-page error for sales tab errors
+  if (error && activeTab === 'sales') {
     return (
       <Layout>
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -723,6 +730,22 @@ export default function Reports() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-green-600" />
               <span className="ml-3 text-gray-600">Cargando datos financieros...</span>
+            </div>
+          ) : financialError ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+              <div className="flex items-start">
+                <AlertCircle className="w-6 h-6 text-red-600 mr-3 flex-shrink-0" />
+                <div>
+                  <h3 className="text-sm font-medium text-red-800">Error al cargar datos financieros</h3>
+                  <p className="mt-1 text-sm text-red-700">{financialError}</p>
+                  <button
+                    onClick={loadFinancialReports}
+                    className="mt-3 text-sm text-red-700 hover:text-red-800 underline"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <>
