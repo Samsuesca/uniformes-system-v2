@@ -21,6 +21,35 @@ export const getErrorMessage = (error) => {
     }
     return 'An unexpected error occurred';
 };
+
+// Helper to extract error message from API error response
+const extractErrorMessage = (errorData, statusCode) => {
+    if (!errorData || typeof errorData !== 'object') {
+        return `HTTP ${statusCode}`;
+    }
+    // Handle FastAPI validation errors (array of errors)
+    if (Array.isArray(errorData.detail)) {
+        return errorData.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+    }
+    // Handle string detail
+    if (typeof errorData.detail === 'string') {
+        return errorData.detail;
+    }
+    // Handle object detail
+    if (typeof errorData.detail === 'object' && errorData.detail !== null) {
+        return errorData.detail.message || errorData.detail.msg || JSON.stringify(errorData.detail);
+    }
+    // Handle message field
+    if (typeof errorData.message === 'string') {
+        return errorData.message;
+    }
+    // Handle error field
+    if (typeof errorData.error === 'string') {
+        return errorData.error;
+    }
+    // Fallback
+    return `HTTP ${statusCode}`;
+};
 // API Client wrapper using Tauri fetch
 export const apiClient = {
     async request(method, endpoint, data, options) {
@@ -70,8 +99,8 @@ export const apiClient = {
             }
             // Handle other errors
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP ${response.status}`);
+                const errorData = await response.json().catch(() => null);
+                throw new Error(extractErrorMessage(errorData, response.status));
             }
             // Handle 204 No Content (DELETE responses)
             if (response.status === 204) {
@@ -142,8 +171,8 @@ export const apiClient = {
                 throw new Error('No tienes permisos para esta acción');
             }
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP ${response.status}`);
+                const errorData = await response.json().catch(() => null);
+                throw new Error(extractErrorMessage(errorData, response.status));
             }
             const responseData = await response.json();
             return { data: responseData, status: response.status };
