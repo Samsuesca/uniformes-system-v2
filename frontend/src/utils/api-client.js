@@ -81,10 +81,20 @@ export const apiClient = {
             return { data: responseData, status: response.status };
         }
         catch (error) {
-            if (error instanceof TypeError && error.message.includes('fetch')) {
+            // Tauri fetch errors may not be standard Error objects
+            if (error instanceof TypeError && error.message?.includes('fetch')) {
                 updateOnlineStatus(false);
             }
-            throw error;
+            // Ensure we always throw a proper Error with a string message
+            if (error instanceof Error) {
+                throw error;
+            }
+            // Handle non-Error objects (like Tauri's error responses)
+            if (typeof error === 'object' && error !== null) {
+                const message = error.message || error.detail || error.error || JSON.stringify(error);
+                throw new Error(message);
+            }
+            throw new Error(String(error));
         }
     },
     async get(endpoint, options) {
@@ -139,10 +149,20 @@ export const apiClient = {
             return { data: responseData, status: response.status };
         }
         catch (error) {
-            if (error instanceof TypeError && error.message.includes('fetch')) {
+            // Tauri fetch errors may not be standard Error objects
+            if (error instanceof TypeError && error.message?.includes('fetch')) {
                 updateOnlineStatus(false);
             }
-            throw error;
+            // Ensure we always throw a proper Error with a string message
+            if (error instanceof Error) {
+                throw error;
+            }
+            // Handle non-Error objects (like Tauri's error responses)
+            if (typeof error === 'object' && error !== null) {
+                const message = error.message || error.detail || error.error || JSON.stringify(error);
+                throw new Error(message);
+            }
+            throw new Error(String(error));
         }
     },
 };
