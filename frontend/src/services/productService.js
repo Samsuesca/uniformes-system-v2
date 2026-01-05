@@ -236,4 +236,41 @@ export const productService = {
         const response = await apiClient.put(`/schools/${schoolId}/garment-types/${garmentTypeId}/images/reorder`, { image_ids: imageIds });
         return response.data;
     },
+    // ==========================================
+    // GLOBAL GARMENT TYPE IMAGES
+    // ==========================================
+    /**
+     * Get images for a global garment type
+     */
+    async getGlobalGarmentTypeImages(garmentTypeId) {
+        const response = await apiClient.get(`/global/garment-types/${garmentTypeId}/images`);
+        return response.data;
+    },
+    /**
+     * Upload an image for a global garment type (superuser only)
+     */
+    async uploadGlobalGarmentTypeImage(garmentTypeId, file) {
+        const response = await apiClient.uploadFile(`/global/garment-types/${garmentTypeId}/images`, file, 'file');
+        return response.data;
+    },
+    /**
+     * Delete an image from a global garment type (superuser only)
+     */
+    async deleteGlobalGarmentTypeImage(garmentTypeId, imageId) {
+        await apiClient.delete(`/global/garment-types/${garmentTypeId}/images/${imageId}`);
+    },
+    /**
+     * Set an image as primary for a global garment type (superuser only)
+     */
+    async setGlobalGarmentTypePrimaryImage(garmentTypeId, imageId) {
+        const response = await apiClient.put(`/global/garment-types/${garmentTypeId}/images/${imageId}/primary`);
+        return response.data;
+    },
+    /**
+     * Reorder images for a global garment type (superuser only)
+     */
+    async reorderGlobalGarmentTypeImages(garmentTypeId, imageIds) {
+        const response = await apiClient.put(`/global/garment-types/${garmentTypeId}/images/reorder`, { image_ids: imageIds });
+        return response.data;
+    },
 };

@@ -68,8 +68,8 @@ export default function GarmentTypeModal({
           has_custom_measurements: garmentType.has_custom_measurements || false,
           is_active: garmentType.is_active ?? true,
         });
-        // Load images for school-specific garment types
-        if (!isGlobal && schoolId) {
+        // Load images for existing garment types (both school-specific and global)
+        if (garmentType) {
           loadImages();
         }
       } else {
@@ -89,13 +89,20 @@ export default function GarmentTypeModal({
     }
   }, [isOpen, garmentType]);
 
-  // Load images for garment type
+  // Load images for garment type (supports both school-specific and global)
   const loadImages = async () => {
-    if (!garmentType || !schoolId || isGlobal) return;
+    if (!garmentType) return;
+    // For school types, we need schoolId
+    if (!isGlobal && !schoolId) return;
 
     setImagesLoading(true);
     try {
-      const data = await productService.getGarmentTypeImages(schoolId, garmentType.id);
+      let data;
+      if (isGlobal) {
+        data = await productService.getGlobalGarmentTypeImages(garmentType.id);
+      } else if (schoolId) {
+        data = await productService.getGarmentTypeImages(schoolId, garmentType.id);
+      }
       setImages(data || []);
     } catch (err) {
       console.error('Error loading images:', err);
@@ -105,10 +112,12 @@ export default function GarmentTypeModal({
     }
   };
 
-  // Handle file selection for upload
+  // Handle file selection for upload (supports both school-specific and global)
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !garmentType || !schoolId) return;
+    if (!file || !garmentType) return;
+    // For school types, we need schoolId
+    if (!isGlobal && !schoolId) return;
 
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -133,11 +142,18 @@ export default function GarmentTypeModal({
     setImageError(null);
 
     try {
-      const newImage = await productService.uploadGarmentTypeImage(schoolId, garmentType.id, file);
-      setImages(prev => [...prev, newImage]);
+      let newImage;
+      if (isGlobal) {
+        newImage = await productService.uploadGlobalGarmentTypeImage(garmentType.id, file);
+      } else if (schoolId) {
+        newImage = await productService.uploadGarmentTypeImage(schoolId, garmentType.id, file);
+      }
+      if (newImage) {
+        setImages(prev => [...prev, newImage]);
+      }
     } catch (err: any) {
       console.error('Error uploading image:', err);
-      setImageError(err.response?.data?.detail || 'Error al subir imagen');
+      setImageError(err.message || 'Error al subir imagen');
     } finally {
       setUploadingImage(false);
       // Reset file input
@@ -147,25 +163,37 @@ export default function GarmentTypeModal({
     }
   };
 
-  // Handle delete image
+  // Handle delete image (supports both school-specific and global)
   const handleDeleteImage = async (imageId: string) => {
-    if (!garmentType || !schoolId) return;
+    if (!garmentType) return;
+    // For school types, we need schoolId
+    if (!isGlobal && !schoolId) return;
 
     try {
-      await productService.deleteGarmentTypeImage(schoolId, garmentType.id, imageId);
+      if (isGlobal) {
+        await productService.deleteGlobalGarmentTypeImage(garmentType.id, imageId);
+      } else if (schoolId) {
+        await productService.deleteGarmentTypeImage(schoolId, garmentType.id, imageId);
+      }
       setImages(prev => prev.filter(img => img.id !== imageId));
     } catch (err: any) {
       console.error('Error deleting image:', err);
-      setImageError(err.response?.data?.detail || 'Error al eliminar imagen');
+      setImageError(err.message || 'Error al eliminar imagen');
     }
   };
 
-  // Handle set primary image
+  // Handle set primary image (supports both school-specific and global)
   const handleSetPrimary = async (imageId: string) => {
-    if (!garmentType || !schoolId) return;
+    if (!garmentType) return;
+    // For school types, we need schoolId
+    if (!isGlobal && !schoolId) return;
 
     try {
-      await productService.setGarmentTypePrimaryImage(schoolId, garmentType.id, imageId);
+      if (isGlobal) {
+        await productService.setGlobalGarmentTypePrimaryImage(garmentType.id, imageId);
+      } else if (schoolId) {
+        await productService.setGarmentTypePrimaryImage(schoolId, garmentType.id, imageId);
+      }
       // Update local state
       setImages(prev => prev.map(img => ({
         ...img,
@@ -173,7 +201,7 @@ export default function GarmentTypeModal({
       })));
     } catch (err: any) {
       console.error('Error setting primary image:', err);
-      setImageError(err.response?.data?.detail || 'Error al establecer imagen principal');
+      setImageError(err.message || 'Error al establecer imagen principal');
     }
   };
 
@@ -421,8 +449,8 @@ export default function GarmentTypeModal({
               </div>
             )}
 
-            {/* Image Gallery - Only show for school-specific garment types in edit mode */}
-            {garmentType && !isGlobal && schoolId && (
+            {/* Image Gallery - Show for both school-specific and global garment types in edit mode */}
+            {garmentType && (isGlobal || schoolId) && (
               <div className="border-t border-gray-200 pt-4 mt-4">
                 <div className="flex items-center justify-between mb-3">
                   <div>
