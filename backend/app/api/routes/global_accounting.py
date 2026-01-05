@@ -739,7 +739,7 @@ async def get_pending_global_expenses(
 
 @router.get(
     "/expenses/{expense_id}",
-    response_model=ExpenseResponse,
+    response_model=GlobalExpenseResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def get_global_expense(
@@ -761,12 +761,12 @@ async def get_global_expense(
             detail="Global expense not found"
         )
 
-    return ExpenseResponse.model_validate(expense)
+    return GlobalExpenseResponse.model_validate(expense)
 
 
 @router.patch(
     "/expenses/{expense_id}",
-    response_model=ExpenseResponse,
+    response_model=GlobalExpenseResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def update_global_expense(
@@ -797,12 +797,12 @@ async def update_global_expense(
     await db.commit()
     await db.refresh(expense)
 
-    return ExpenseResponse.model_validate(expense)
+    return GlobalExpenseResponse.model_validate(expense)
 
 
 @router.post(
     "/expenses/{expense_id}/pay",
-    response_model=ExpenseResponse,
+    response_model=GlobalExpenseResponse,
     dependencies=[Depends(require_any_school_admin)]
 )
 async def pay_global_expense(
@@ -862,7 +862,7 @@ async def pay_global_expense(
     await db.commit()
     await db.refresh(expense)
 
-    return ExpenseResponse.model_validate(expense)
+    return GlobalExpenseResponse.model_validate(expense)
 
 
 # ============================================
