@@ -738,6 +738,71 @@ async def get_pending_global_expenses(
 
 
 @router.get(
+    "/expenses/summary-by-category",
+    response_model=list[ExpenseCategorySummary],
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def get_expenses_summary_by_category(
+    db: DatabaseSession,
+    start_date: date | None = Query(None, description="Filter from date"),
+    end_date: date | None = Query(None, description="Filter to date")
+):
+    """
+    Get expenses grouped by category
+
+    Returns summary of expenses by category for pie/bar charts.
+    """
+    query = select(
+        Expense.category,
+        func.count(Expense.id).label('count'),
+        func.sum(Expense.amount).label('total_amount'),
+        func.sum(Expense.amount_paid).label('paid_amount')
+    ).where(
+        Expense.is_active == True
+    ).group_by(Expense.category)
+
+    # Apply date filters
+    if start_date:
+        query = query.where(Expense.expense_date >= start_date)
+    if end_date:
+        query = query.where(Expense.expense_date <= end_date)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Calculate total for percentages
+    total_expenses = sum(float(row.total_amount or 0) for row in rows)
+
+    summaries = []
+    for row in rows:
+        total_amount = Decimal(str(row.total_amount or 0))
+        paid_amount = Decimal(str(row.paid_amount or 0))
+        pending_amount = total_amount - paid_amount
+        percentage = Decimal(str(round((float(total_amount) / total_expenses * 100) if total_expenses > 0 else 0, 2)))
+
+        # Handle None category gracefully
+        if row.category is None:
+            category_label = "Sin Categoría"
+        else:
+            category_label = EXPENSE_CATEGORY_LABELS.get(row.category, str(row.category.value))
+
+        summaries.append(ExpenseCategorySummary(
+            category=row.category,
+            category_label=category_label,
+            total_amount=total_amount,
+            paid_amount=paid_amount,
+            pending_amount=pending_amount,
+            count=row.count,
+            percentage=percentage
+        ))
+
+    # Sort by total amount descending
+    summaries.sort(key=lambda x: x.total_amount, reverse=True)
+
+    return summaries
+
+
+@router.get(
     "/expenses/{expense_id}",
     response_model=GlobalExpenseResponse,
     dependencies=[Depends(require_any_school_admin)]
@@ -1524,71 +1589,6 @@ async def list_global_transactions(
         )
         for t in transactions
     ]
-
-
-@router.get(
-    "/expenses/summary-by-category",
-    response_model=list[ExpenseCategorySummary],
-    dependencies=[Depends(require_any_school_admin)]
-)
-async def get_expenses_summary_by_category(
-    db: DatabaseSession,
-    start_date: date | None = Query(None, description="Filter from date"),
-    end_date: date | None = Query(None, description="Filter to date")
-):
-    """
-    Get expenses grouped by category
-
-    Returns summary of expenses by category for pie/bar charts.
-    """
-    query = select(
-        Expense.category,
-        func.count(Expense.id).label('count'),
-        func.sum(Expense.amount).label('total_amount'),
-        func.sum(Expense.amount_paid).label('paid_amount')
-    ).where(
-        Expense.is_active == True
-    ).group_by(Expense.category)
-
-    # Apply date filters
-    if start_date:
-        query = query.where(Expense.expense_date >= start_date)
-    if end_date:
-        query = query.where(Expense.expense_date <= end_date)
-
-    result = await db.execute(query)
-    rows = result.all()
-
-    # Calculate total for percentages
-    total_expenses = sum(float(row.total_amount or 0) for row in rows)
-
-    summaries = []
-    for row in rows:
-        total_amount = Decimal(str(row.total_amount or 0))
-        paid_amount = Decimal(str(row.paid_amount or 0))
-        pending_amount = total_amount - paid_amount
-        percentage = Decimal(str(round((float(total_amount) / total_expenses * 100) if total_expenses > 0 else 0, 2)))
-
-        # Handle None category gracefully
-        if row.category is None:
-            category_label = "Sin Categoría"
-        else:
-            category_label = EXPENSE_CATEGORY_LABELS.get(row.category, str(row.category.value))
-
-        summaries.append(ExpenseCategorySummary(
-            category=row.category,
-            category_label=category_label,
-            total_amount=total_amount,
-            paid_amount=paid_amount,
-            pending_amount=pending_amount,
-            count=row.count,
-            percentage=percentage
-        ))
-
-    # Sort by total amount descending
-    summaries.sort(key=lambda x: x.total_amount, reverse=True)
-
-    return summaries
 
 
 @router.get(

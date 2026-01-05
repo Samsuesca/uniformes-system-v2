@@ -637,20 +637,23 @@ export default function Products() {
               {globalProducts.length}
             </span>
           </button>
-          <button
-            onClick={() => { setActiveTab('garment-types'); setSizeFilter(''); setStockFilter('all'); }}
-            className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition ${
-              activeTab === 'garment-types'
-                ? 'border-purple-600 text-purple-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Tag className="w-5 h-5 mr-2" />
-            Tipos de Prenda
-            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-100">
-              {garmentTypes.length + globalGarmentTypes.length}
-            </span>
-          </button>
+          {/* Tipos de Prenda - Solo visible para superusuarios */}
+          {isSuperuser && (
+            <button
+              onClick={() => { setActiveTab('garment-types'); setSizeFilter(''); setStockFilter('all'); }}
+              className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition ${
+                activeTab === 'garment-types'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Tag className="w-5 h-5 mr-2" />
+              Tipos de Prenda
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-100">
+                {garmentTypes.length + globalGarmentTypes.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Tab description */}
@@ -1132,8 +1135,8 @@ export default function Products() {
         </div>
       )}
 
-      {/* Garment Types Table */}
-      {activeTab === 'garment-types' && !isLoading && !error && (
+      {/* Garment Types Table - Solo visible para superusuarios */}
+      {activeTab === 'garment-types' && isSuperuser && !isLoading && !error && (
         <div className="bg-white rounded-lg shadow-sm mb-6">
           {/* Toggle between School and Global Types */}
           <div className="flex border-b border-gray-200">

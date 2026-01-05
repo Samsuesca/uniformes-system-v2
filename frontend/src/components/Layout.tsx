@@ -42,21 +42,27 @@ interface NavItem {
   path: string;
   icon: typeof LayoutDashboard;
   requiresAccounting?: boolean; // Only visible if user can access accounting
+  requiresSuperuser?: boolean; // Only visible if user is superuser
+  category?: 'main' | 'operations' | 'finance' | 'admin'; // For grouping
 }
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Productos', path: '/products', icon: Package },
-  { name: 'Clientes', path: '/clients', icon: Users },
-  { name: 'Ventas', path: '/sales', icon: ShoppingCart },
-  { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw },
-  { name: 'Encargos', path: '/orders', icon: FileText },
-  { name: 'Pedidos Web', path: '/web-orders', icon: Globe },
-  { name: 'PQRS', path: '/contacts', icon: MessageSquare },
-  { name: 'Cuentas de Pago', path: '/payment-accounts', icon: Wallet },
-  { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true },
-  { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true },
-  { name: 'Configuración', path: '/settings', icon: Settings },
+  // Main
+  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, category: 'main' },
+  { name: 'Productos', path: '/products', icon: Package, category: 'main' },
+  // Operations
+  { name: 'Clientes', path: '/clients', icon: Users, category: 'operations' },
+  { name: 'Ventas', path: '/sales', icon: ShoppingCart, category: 'operations' },
+  { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw, category: 'operations' },
+  { name: 'Encargos', path: '/orders', icon: FileText, category: 'operations' },
+  { name: 'Pedidos Web', path: '/web-orders', icon: Globe, category: 'operations' },
+  { name: 'PQRS', path: '/contacts', icon: MessageSquare, category: 'operations' },
+  // Finance (accounting access required)
+  { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true, category: 'finance' },
+  { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true, category: 'finance' },
+  { name: 'Cuentas de Pago', path: '/payment-accounts', icon: Wallet, requiresSuperuser: true, category: 'finance' },
+  // Admin
+  { name: 'Configuración', path: '/settings', icon: Settings, category: 'admin' },
 ];
 
 // Admin navigation (superuser only)
@@ -130,89 +136,149 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="mt-6 px-3 space-y-1">
-          {navigation
-            .filter((item) => !item.requiresAccounting || canAccessAccounting)
-            .map((item) => {
+        <nav className="mt-4 px-3 flex-1 overflow-y-auto pb-48" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+          {/* Filter navigation items based on permissions */}
+          {(() => {
+            const filteredNav = navigation.filter((item) => {
+              if (item.requiresSuperuser && !isSuperuser) return false;
+              if (item.requiresAccounting && !canAccessAccounting) return false;
+              return true;
+            });
+
+            // Group by category
+            const mainItems = filteredNav.filter(i => i.category === 'main');
+            const operationsItems = filteredNav.filter(i => i.category === 'operations');
+            const financeItems = filteredNav.filter(i => i.category === 'finance');
+            const adminItems = filteredNav.filter(i => i.category === 'admin');
+
+            const renderNavItem = (item: NavItem) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
-
               return (
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
-                  className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
-                      ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/20 font-medium'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 group ${isActive
+                      ? 'bg-brand-600 text-white shadow-md'
+                      : 'text-slate-300 hover:bg-white/10 hover:text-white'
                     }`}
                 >
-                  <Icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-white'}`} />
-                  <span className="font-medium">{item.name}</span>
+                  <Icon className={`w-4 h-4 mr-2.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
+                  <span className="text-sm font-medium truncate">{item.name}</span>
                 </button>
               );
-            })}
+            };
+
+            return (
+              <div className="space-y-4">
+                {/* Main Section */}
+                {mainItems.length > 0 && (
+                  <div className="space-y-1">
+                    {mainItems.map(renderNavItem)}
+                  </div>
+                )}
+
+                {/* Operations Section */}
+                {operationsItems.length > 0 && (
+                  <div>
+                    <p className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Operaciones</p>
+                    <div className="space-y-0.5">
+                      {operationsItems.map(renderNavItem)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Finance Section */}
+                {financeItems.length > 0 && (
+                  <div>
+                    <p className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Finanzas</p>
+                    <div className="space-y-0.5">
+                      {financeItems.map(renderNavItem)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin Section */}
+                {adminItems.length > 0 && (
+                  <div>
+                    <p className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Sistema</p>
+                    <div className="space-y-0.5">
+                      {adminItems.map(renderNavItem)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Admin Navigation (Superuser Only) */}
           {isSuperuser && (
-            <>
-              <div className="border-t border-white/10 my-3"></div>
-              {adminNavigation.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-
-                return (
-                  <button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
-                        ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/20 font-medium'
-                        : 'text-amber-300 hover:bg-amber-500/10 hover:text-amber-200'
-                      }`}
-                  >
-                    <Icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-white' : 'text-amber-400 group-hover:text-amber-200'}`} />
-                    <span className="font-medium">{item.name}</span>
-                  </button>
-                );
-              })}
-            </>
+            <div className="mt-4">
+              <p className="px-3 py-1.5 text-[10px] font-semibold text-amber-400/70 uppercase tracking-wider">Admin</p>
+              <div className="space-y-0.5">
+                {adminNavigation.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <button
+                      key={item.path}
+                      onClick={() => navigate(item.path)}
+                      className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 group ${isActive
+                          ? 'bg-amber-600 text-white shadow-md'
+                          : 'text-amber-300 hover:bg-amber-500/20 hover:text-amber-200'
+                        }`}
+                    >
+                      <Icon className={`w-4 h-4 mr-2.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-amber-400 group-hover:text-amber-200'}`} />
+                      <span className="text-sm font-medium truncate">{item.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </nav>
 
-        {/* User Profile */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-primary-light border-t border-white/5">
-          <div className="flex items-center mb-3">
-            <div className="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white shadow-lg ring-2 ring-brand-500/30">
-              <span className="text-sm font-bold font-display">
-                {user?.username.charAt(0).toUpperCase()}
-              </span>
+        {/* User Profile - Compact */}
+        <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-primary via-primary to-transparent">
+          <div className="bg-white/5 rounded-xl p-3 backdrop-blur-sm border border-white/10">
+            <div className="flex items-center mb-2">
+              <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-white shadow-lg">
+                <span className="text-sm font-bold">
+                  {user?.username.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div className="ml-2.5 flex-1 overflow-hidden">
+                <p className="text-sm font-semibold text-white truncate">{user?.username}</p>
+                <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
+              </div>
             </div>
-            <div className="ml-3 flex-1 overflow-hidden">
-              <p className="text-sm font-semibold text-white truncate font-display">{user?.username}</p>
-              <p className="text-xs text-slate-400 truncate">{user?.email}</p>
-            </div>
+
+            {/* Role Badge */}
+            {(role || isSuperuser) && (
+              <div className="mb-2 flex items-center justify-center">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                  isSuperuser
+                    ? 'bg-gradient-to-r from-amber-500/30 to-orange-500/30 text-amber-200 border border-amber-400/40'
+                    : role === 'seller'
+                      ? 'bg-gradient-to-r from-emerald-500/30 to-green-500/30 text-emerald-200 border border-emerald-400/40'
+                      : role === 'admin'
+                        ? 'bg-gradient-to-r from-blue-500/30 to-indigo-500/30 text-blue-200 border border-blue-400/40'
+                        : 'bg-slate-500/30 text-slate-200 border border-slate-400/40'
+                }`}>
+                  <Shield className="w-3 h-3" />
+                  {isSuperuser ? 'Superusuario' : role ? getRoleDisplayName(role) : ''}
+                </span>
+              </div>
+            )}
+
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-red-500/20 rounded-lg transition-all border border-white/10 hover:border-red-400/30"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Cerrar Sesión
+            </button>
           </div>
-
-          {/* Role Badge */}
-          {(role || isSuperuser) && (
-            <div className="mb-3 flex items-center justify-center">
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-                isSuperuser
-                  ? 'bg-amber-500/20 text-amber-200 border border-amber-500/30'
-                  : role ? getRoleBadgeColor(role).replace('text-', 'text-').replace('bg-', 'bg-opacity-20 bg-') : ''
-              }`}>
-                <Shield className="w-3 h-3" />
-                {isSuperuser ? 'Superusuario' : role ? getRoleDisplayName(role) : ''}
-              </span>
-            </div>
-          )}
-
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-red-200 bg-red-500/10 hover:bg-red-500/20 hover:text-red-100 rounded-lg transition-colors border border-red-500/20"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Cerrar Sesión
-          </button>
         </div>
       </div>
 
