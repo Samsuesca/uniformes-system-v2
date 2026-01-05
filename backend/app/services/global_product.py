@@ -7,9 +7,10 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.product import GlobalGarmentType, GlobalProduct, GlobalInventory
+from app.models.product import GlobalGarmentType, GlobalGarmentTypeImage, GlobalProduct, GlobalInventory
 from app.schemas.product import (
     GlobalGarmentTypeCreate, GlobalGarmentTypeUpdate,
+    GlobalGarmentTypeImageResponse,
     GlobalProductCreate, GlobalProductUpdate,
     GlobalInventoryCreate, GlobalInventoryUpdate, GlobalInventoryAdjust,
     GlobalProductWithInventory
@@ -154,12 +155,16 @@ class GlobalProductService:
     async def get_with_inventory(
         self,
         skip: int = 0,
-        limit: int = 500
+        limit: int = 500,
+        with_images: bool = True
     ) -> list[GlobalProductWithInventory]:
-        """Get global products with their inventory"""
+        """Get global products with their inventory and optionally garment type images"""
         query = (
             select(GlobalProduct)
-            .options(selectinload(GlobalProduct.inventory))
+            .options(
+                selectinload(GlobalProduct.inventory),
+                selectinload(GlobalProduct.garment_type).selectinload(GlobalGarmentType.images) if with_images else selectinload(GlobalProduct.garment_type)
+            )
             .where(GlobalProduct.is_active == True)
             .order_by(GlobalProduct.code)
             .offset(skip)
@@ -168,8 +173,22 @@ class GlobalProductService:
         result = await self.db.execute(query)
         products = result.scalars().all()
 
-        return [
-            GlobalProductWithInventory(
+        responses = []
+        for p in products:
+            # Get images from garment type if available
+            images = []
+            primary_image_url = None
+            if with_images and p.garment_type and p.garment_type.images:
+                sorted_images = sorted(p.garment_type.images, key=lambda x: x.display_order)
+                images = [GlobalGarmentTypeImageResponse.model_validate(img) for img in sorted_images]
+                # Find primary image
+                primary = next((img for img in sorted_images if img.is_primary), None)
+                if primary:
+                    primary_image_url = primary.image_url
+                elif sorted_images:
+                    primary_image_url = sorted_images[0].image_url
+
+            responses.append(GlobalProductWithInventory(
                 id=p.id,
                 code=p.code,
                 name=p.name,
@@ -185,10 +204,12 @@ class GlobalProductService:
                 created_at=p.created_at,
                 updated_at=p.updated_at,
                 inventory_quantity=p.inventory.quantity if p.inventory else 0,
-                inventory_min_stock=p.inventory.min_stock_alert if p.inventory else 5
-            )
-            for p in products
-        ]
+                inventory_min_stock=p.inventory.min_stock_alert if p.inventory else 5,
+                garment_type_images=images,
+                garment_type_primary_image_url=primary_image_url
+            ))
+
+        return responses
 
     async def get_by_garment_type(
         self,

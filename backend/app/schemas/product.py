@@ -338,6 +338,9 @@ class GlobalProductWithInventory(GlobalProductResponse):
     """Global Product with inventory information"""
     inventory_quantity: int = 0
     inventory_min_stock: int = 5
+    # Images from global garment type
+    garment_type_images: list[GlobalGarmentTypeImageResponse] = []
+    garment_type_primary_image_url: str | None = None
 
 
 # ============================================

@@ -454,13 +454,14 @@ async def list_global_products(
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    with_inventory: bool = Query(True)
+    with_inventory: bool = Query(True),
+    with_images: bool = Query(True, description="Include garment type images for catalog display")
 ):
-    """List all global products with inventory"""
+    """List all global products with inventory and optionally garment type images"""
     service = GlobalProductService(db)
 
     if with_inventory:
-        return await service.get_with_inventory(skip=skip, limit=limit)
+        return await service.get_with_inventory(skip=skip, limit=limit, with_images=with_images)
     else:
         products = await service.get_all(skip=skip, limit=limit)
         return [GlobalProductResponse.model_validate(p) for p in products]
