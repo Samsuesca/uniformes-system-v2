@@ -106,6 +106,13 @@ const getPresetDates = (preset: DatePreset): DateFilters => {
   }
 };
 
+// Helper to validate UUID format
+const isValidUUID = (str: string): boolean => {
+  if (!str) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
 export default function Reports() {
   const { currentSchool } = useSchoolStore();
   const [loading, setLoading] = useState(true);
@@ -223,6 +230,13 @@ export default function Reports() {
   };
 
   const loadAllReports = async () => {
+    // Validate schoolId is a valid UUID before making API calls
+    if (!isValidUUID(schoolId)) {
+      setError('Por favor selecciona un colegio válido para ver reportes de ventas');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);

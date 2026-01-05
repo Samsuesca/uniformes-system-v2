@@ -104,6 +104,18 @@ class ExpenseCreate(ExpenseBase, SchoolIsolatedSchema):
         return self
 
 
+class GlobalExpenseCreate(ExpenseBase):
+    """Schema for creating a GLOBAL expense (school_id optional/null)"""
+    school_id: UUID | None = None
+
+    @model_validator(mode='after')
+    def validate_recurring(self):
+        """Validate recurring_period is set when is_recurring is True"""
+        if self.is_recurring and not self.recurring_period:
+            raise ValueError("recurring_period is required when is_recurring is True")
+        return self
+
+
 class ExpenseUpdate(BaseSchema):
     """Schema for updating an expense"""
     category: ExpenseCategory | None = None

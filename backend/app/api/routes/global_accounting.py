@@ -23,6 +23,7 @@ from app.models.accounting import (
 from app.models.school import School
 from app.schemas.accounting import (
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
+    GlobalExpenseCreate,
     BalanceAccountResponse, BalanceAccountListResponse, BalanceAccountUpdate,
     GlobalBalanceAccountCreate, GlobalBalanceAccountResponse,
     GlobalAccountsPayableCreate, GlobalAccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
@@ -620,7 +621,7 @@ async def get_global_balance_general_detailed(
     dependencies=[Depends(require_any_school_admin)]
 )
 async def create_global_expense(
-    expense_data: ExpenseCreate,
+    expense_data: GlobalExpenseCreate,
     db: DatabaseSession,
     current_user: CurrentUser
 ):
