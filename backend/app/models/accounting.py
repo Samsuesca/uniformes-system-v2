@@ -190,7 +190,12 @@ class Expense(Base):
 
     # Expense details
     category: Mapped[ExpenseCategory] = mapped_column(
-        SQLEnum(ExpenseCategory, name="expense_category_enum"),
+        SQLEnum(
+            ExpenseCategory,
+            name="expense_category_enum",
+            values_callable=lambda x: [e.value for e in x],
+            create_constraint=False
+        ),
         nullable=False,
         index=True
     )
