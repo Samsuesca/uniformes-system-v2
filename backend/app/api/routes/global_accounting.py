@@ -637,19 +637,12 @@ async def create_global_expense(
         expense_date=expense_data.expense_date,
         due_date=expense_data.due_date,
         vendor=expense_data.vendor,
-        invoice_number=expense_data.invoice_number,
-        payment_method=expense_data.payment_method,
+        receipt_number=expense_data.receipt_number,
         is_recurring=expense_data.is_recurring,
-        recurrence_period=expense_data.recurrence_period,
+        recurring_period=expense_data.recurring_period,
         notes=expense_data.notes,
         created_by=current_user.id
     )
-
-    # If marked as paid, set payment info
-    if expense_data.is_paid:
-        expense.is_paid = True
-        expense.amount_paid = expense.amount
-        expense.paid_date = expense_data.expense_date
 
     db.add(expense)
     await db.commit()
@@ -853,7 +846,6 @@ async def pay_global_expense(
     expense.amount_paid = (expense.amount_paid or Decimal("0")) + payment.amount
     if expense.amount_paid >= expense.amount:
         expense.is_paid = True
-        expense.paid_date = date.today()
 
     # Update global balance account (deduct from Caja or Banco)
     from app.services.balance_integration import BalanceIntegrationService
@@ -1072,7 +1064,6 @@ async def pay_global_payable(
     payable.amount_paid = (payable.amount_paid or Decimal("0")) + payment.amount
     if payable.amount_paid >= payable.amount:
         payable.is_paid = True
-        payable.paid_date = date.today()
 
     # Update global balance account (deduct from Caja or Banco)
     from app.services.balance_integration import BalanceIntegrationService
@@ -1433,7 +1424,6 @@ async def pay_global_receivable(
     receivable.amount_paid = (receivable.amount_paid or Decimal("0")) + payment.amount
     if receivable.amount_paid >= receivable.amount:
         receivable.is_paid = True
-        receivable.paid_date = date.today()
 
     # Update global balance account (add to Caja or Banco)
     from app.services.balance_integration import BalanceIntegrationService
