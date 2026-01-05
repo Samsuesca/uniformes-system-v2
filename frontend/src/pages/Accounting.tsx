@@ -97,6 +97,7 @@ export default function Accounting() {
   // Modal states
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [showBalanceAccountModal, setShowBalanceAccountModal] = useState(false);
   const [showReceivableModal, setShowReceivableModal] = useState(false);
   const [showPayableModal, setShowPayableModal] = useState(false);
@@ -198,13 +199,19 @@ export default function Accounting() {
 
         // Build dashboard summary from global data
         const allExpenses = await globalAccountingService.getGlobalExpenses();
-        const totalExpenses = allExpenses.reduce((sum, e) => sum + e.amount, 0);
-        const pendingExpensesAmount = pendingData.reduce((sum, e) => sum + (e.amount - e.amount_paid), 0);
+        const totalExpenses = allExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const paidExpensesAmount = allExpenses
+          .filter(e => e.is_paid)
+          .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const pendingExpensesAmount = pendingData.reduce(
+          (sum, e) => sum + (Number(e.amount || 0) - Number(e.amount_paid || 0)), 0
+        );
 
         setDashboard({
           total_expenses: totalExpenses,
           cash_balance: cashData.total_liquid,
           expenses_pending: pendingExpensesAmount,
+          expenses_paid: paidExpensesAmount,
           transaction_count: allExpenses.length
         });
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
@@ -278,6 +285,7 @@ export default function Accounting() {
     if (!selectedExpense || paymentAmount <= 0) return;
     try {
       setSubmitting(true);
+      setModalError(null);
       // Use global accounting service for expense payment
       await globalAccountingService.payGlobalExpense(selectedExpense.id, {
         amount: paymentAmount,
@@ -286,10 +294,12 @@ export default function Accounting() {
       setShowPaymentModal(false);
       setSelectedExpense(null);
       setPaymentAmount(0);
+      setModalError(null);
       await loadData();
     } catch (err: any) {
       console.error('Error paying expense:', err);
-      setError(getErrorMessage(err, 'Error al registrar pago'));
+      // Show error in modal instead of global error
+      setModalError(getErrorMessage(err, 'Error al registrar pago'));
     } finally {
       setSubmitting(false);
     }
@@ -909,7 +919,7 @@ export default function Accounting() {
               </div>
               <div className="flex items-center justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-600">Gastos Pagados</span>
-                <span className="font-semibold text-green-600">{formatCurrency((dashboard?.total_expenses || 0) - (dashboard?.expenses_pending || 0))}</span>
+                <span className="font-semibold text-green-600">{formatCurrency(dashboard?.expenses_paid || 0)}</span>
               </div>
               <div className="flex items-center justify-between py-2">
                 <span className="text-gray-600">Gastos Por Pagar</span>
@@ -1651,7 +1661,7 @@ export default function Accounting() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h3 className="text-lg font-semibold">Registrar Pago</h3>
-              <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setShowPaymentModal(false); setModalError(null); }} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1685,14 +1695,25 @@ export default function Accounting() {
                   ))}
                 </select>
               </div>
+              {/* Error Message */}
+              {modalError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-red-700">{modalError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 text-gray-600 hover:text-gray-800">
+              <button onClick={() => { setShowPaymentModal(false); setModalError(null); }} className="px-4 py-2 text-gray-600 hover:text-gray-800">
                 Cancelar
               </button>
               <button
                 onClick={handlePayExpense}
-                disabled={submitting || paymentAmount <= 0 || paymentAmount > selectedExpense.balance}
+                disabled={submitting || paymentAmount <= 0 || paymentAmount > Number(selectedExpense.balance)}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
