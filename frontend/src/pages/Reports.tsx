@@ -149,8 +149,15 @@ export default function Reports() {
 
     if (Object.keys(activeFilters).length > 0 || datePreset === 'all') {
       if (activeTab === 'sales') {
-        loadAllReports();
+        // Sales tab requires a valid schoolId - wait until it's available
+        if (schoolId) {
+          loadAllReports();
+        } else {
+          // No school selected yet - show empty state, not error
+          setLoading(false);
+        }
       } else {
+        // Financial tab is global, doesn't need schoolId
         loadFinancialReports();
       }
     }
@@ -418,8 +425,23 @@ export default function Reports() {
       {/* ===== SALES TAB CONTENT ===== */}
       {activeTab === 'sales' && (
         <>
+      {/* No school selected warning */}
+      {!schoolId && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+          <div className="flex items-start">
+            <AlertTriangle className="w-6 h-6 text-yellow-600 mr-3 flex-shrink-0" />
+            <div>
+              <h3 className="text-sm font-medium text-yellow-800">Selecciona un colegio</h3>
+              <p className="mt-1 text-sm text-yellow-700">
+                Para ver los reportes de ventas, selecciona un colegio en el menú superior.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sales Summary for Period */}
-      {salesSummary && (
+      {schoolId && salesSummary && (
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm p-6 mb-6 text-white">
           <h2 className="text-lg font-semibold mb-4 flex items-center">
             <TrendingUp className="w-5 h-5 mr-2" />
@@ -456,7 +478,8 @@ export default function Reports() {
         </div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI Cards - only show when school is selected */}
+      {schoolId && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {/* Today's Sales */}
         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -530,8 +553,10 @@ export default function Reports() {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Two Column Layout */}
+      {/* Two Column Layout - only show when school is selected */}
+      {schoolId && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Top Products */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -655,9 +680,10 @@ export default function Reports() {
           )}
         </div>
       </div>
+      )}
 
-      {/* Low Stock Alert */}
-      {lowStock.length > 0 && (
+      {/* Low Stock Alert - only show when school is selected */}
+      {schoolId && lowStock.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-200 bg-red-50">
             <h2 className="text-lg font-semibold text-red-800 flex items-center">
