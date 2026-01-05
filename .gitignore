@@ -1,7 +1,13 @@
 # ============================================
+# Project specific - Excluded folders
+# ============================================
+ListasPrecios/
+ListaPrecios/
+.claude/
+
+# ============================================
 # Python / Backend
 # ============================================
-ListaPrecios/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -230,8 +236,9 @@ temp/
 docs/_build/
 docs/.doctrees/
 site/
-.claude/
+
 # ============================================
 # Project specific
 # ============================================
-# Agregar aquí archivos específicos del proyecto que no deban subirse
+# Local development files
+*.tex

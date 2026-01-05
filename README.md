@@ -1,381 +1,224 @@
 # Uniformes System v2.0
 
-Sistema de gestión de uniformes profesional con **arquitectura multi-tenant**, diseñado para gestionar múltiples colegios desde una sola aplicación.
+Sistema de gestion de uniformes escolares con arquitectura **multi-tenant**, aplicacion de escritorio nativa y portal web para pedidos online.
 
-## 🎯 Características Principales
+## Caracteristicas Principales
 
-- ✅ **Multi-Colegio (Multi-Tenant)**: Gestiona múltiples instituciones con datos completamente aislados
-- ✅ **Inventario Inteligente**: Control de stock por colegio, tallas, tipos de prenda
-- ✅ **Ventas y Encargos**: Sistema completo de POS con pedidos personalizados
-- ✅ **Cambios y Devoluciones**: Sistema completo de gestión de cambios con ajuste automático de inventario y contabilidad
-- ✅ **Contabilidad Integrada**: Movimientos, gastos, cuentas por pagar
-- ✅ **Aplicación Nativa**: Desktop app multiplataforma (Windows, macOS, Linux)
-- ✅ **API REST**: Backend robusto con documentación automática
+- **Multi-Colegio**: Gestiona 4+ instituciones con datos aislados (Caracas, Pumarejo, Pinal, CONFAMA)
+- **Contabilidad Global**: Un negocio, una caja, un banco - colegios como fuentes de ingreso
+- **Inventario Inteligente**: Control de stock por colegio, tallas y tipos de prenda
+- **Ventas y Encargos**: Sistema POS completo con pedidos personalizados
+- **Cambios y Devoluciones**: Gestion de cambios con ajuste automatico de inventario
+- **Portal Web**: Catalogo online para padres de familia
+- **App Desktop**: Aplicacion nativa multiplataforma con Tauri
 
-## 🚀 Stack Tecnológico
+## Stack Tecnologico
 
-### Backend
-- **Framework**: FastAPI (Python 3.10+)
-- **Base de Datos**: PostgreSQL 15 (async con SQLAlchemy 2.0)
-- **Cache**: Redis 7
-- **Migraciones**: Alembic
-- **Validación**: Pydantic v2
+| Componente | Tecnologia |
+|------------|------------|
+| **Backend** | FastAPI, Python 3.10+, PostgreSQL 15, SQLAlchemy 2.0 |
+| **Frontend Desktop** | Tauri (Rust), React 18, TypeScript, Tailwind CSS |
+| **Portal Web** | Next.js 14, TypeScript, Tailwind CSS |
+| **Estado** | Zustand |
+| **Servidor** | VPS Vultr, Nginx, Systemd, Certbot SSL |
 
-### Frontend
-- **Desktop App**: Tauri (Rust + WebView)
-- **UI Framework**: React 18 + TypeScript
-- **Estilos**: Tailwind CSS
-- **Estado**: Zustand
-- **HTTP Client**: Axios + React Query
-- **Build Tool**: Vite
-
-### DevOps
-- **Contenedores**: Docker + Docker Compose
-- **CI/CD**: GitHub Actions (próximamente)
-
-## 📋 Requisitos del Sistema
-
-### Obligatorios
-- **Docker Desktop**: Para PostgreSQL y Redis
-- **Node.js**: v18+ (recomendado v22+)
-- **Python**: 3.10+ (recomendado 3.11+)
-- **Rust**: Latest stable (para Tauri)
-- **Git**: Control de versiones
-
-### Opcionales
-- **Postico** o **DBeaver**: Cliente GUI para PostgreSQL
-- **VSCode**: Editor recomendado con extensiones Python y TypeScript
-
-## 🛠️ Setup Inicial (Primera Vez)
-
-### 1. Clonar el repositorio
-```bash
-git clone <repo-url>
-cd uniformes-system-v2
-```
-
-### 2. Instalar Rust (si no lo tienes)
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-```
-
-### 3. Configurar Backend
-```bash
-cd backend
-
-# Crear entorno virtual
-python3 -m venv venv
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate    # Windows
-
-# Instalar dependencias
-pip install -r requirements.txt
-```
-
-### 4. Configurar Frontend
-```bash
-cd frontend
-npm install
-```
-
-### 5. Variables de Entorno
-El proyecto ya incluye `.env` con configuración de desarrollo. Para producción, crear `.env.production`:
-
-```bash
-# Backend (.env)
-DATABASE_URL=postgresql+asyncpg://uniformes_user:dev_password@localhost:5432/uniformes_db
-REDIS_URL=redis://localhost:6379
-SECRET_KEY=your-secret-key-change-in-production
-ENV=development
-DEBUG=true
-```
-
-## 🚀 Desarrollo Diario
-
-### Opción 1: Con Docker (Recomendado)
-
-#### Terminal 1: Servicios (PostgreSQL + Redis)
-```bash
-docker-compose -f docker/docker-compose.dev.yml up -d postgres redis
-
-# Verificar estado
-docker ps
-# Debe mostrar postgres y redis con STATUS "healthy"
-```
-
-#### Terminal 2: Backend API
-```bash
-cd backend
-source venv/bin/activate
-uvicorn app.main:app --reload
-
-# ✅ API disponible en: http://localhost:8000
-# ✅ Docs automáticas: http://localhost:8000/docs
-```
-
-#### Terminal 3: Frontend Tauri
-```bash
-cd frontend
-npm run tauri:dev
-
-# ✅ Se abre ventana nativa con la aplicación
-```
-
-### Opción 2: Desarrollo Solo Frontend (sin Backend)
-```bash
-cd frontend
-npm run dev
-
-# ✅ Vite dev server: http://localhost:5173
-```
-
-## 🗄️ Gestión de Base de Datos
-
-### Ver y Explorar Datos
-
-**Opción A: GUI (Recomendado para desarrollo)**
-- Instalar [Postico](https://eggerapps.at/postico2/) (macOS) o [DBeaver](https://dbeaver.io/) (multiplataforma)
-- Configuración:
-  ```
-  Host: localhost
-  Port: 5432
-  Database: uniformes_db
-  User: uniformes_user
-  Password: dev_password
-  ```
-
-**Opción B: psql desde Docker**
-```bash
-docker exec -it docker-postgres-1 psql -U uniformes_user -d uniformes_db
-
-# Comandos útiles:
-\dt          # Listar tablas
-\d tabla     # Estructura de tabla
-\q           # Salir
-```
-
-### Migraciones (Alembic)
-
-```bash
-cd backend
-source venv/bin/activate
-
-# Crear migración automática (detecta cambios en modelos)
-alembic revision --autogenerate -m "Descripción del cambio"
-
-# Aplicar migraciones pendientes
-alembic upgrade head
-
-# Ver historial
-alembic history
-
-# Rollback (revertir última migración)
-alembic downgrade -1
-```
-
-## 📁 Estructura del Proyecto
+## Arquitectura
 
 ```
 uniformes-system-v2/
-├── backend/
+├── backend/               # API REST (FastAPI)
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── routes/         # Endpoints REST
-│   │   ├── core/
-│   │   │   └── config.py       # Configuración
-│   │   ├── models/             # Modelos SQLAlchemy (TO DO)
-│   │   ├── schemas/            # Schemas Pydantic (TO DO)
-│   │   ├── services/           # Lógica de negocio (TO DO)
-│   │   └── main.py             # App FastAPI
-│   ├── alembic/                # Migraciones de BD
-│   ├── tests/                  # Tests unitarios
-│   ├── requirements.txt        # Dependencias Python
-│   └── Dockerfile.dev          # Imagen Docker desarrollo
+│   │   ├── api/routes/    # Endpoints
+│   │   ├── models/        # SQLAlchemy models
+│   │   ├── schemas/       # Pydantic schemas
+│   │   └── services/      # Logica de negocio
+│   ├── alembic/           # Migraciones DB
+│   └── tests/             # Tests unitarios e integracion
 │
-├── frontend/
+├── frontend/              # App Desktop (Tauri + React)
 │   ├── src/
-│   │   ├── components/         # Componentes React (TO DO)
-│   │   ├── pages/              # Páginas/vistas (TO DO)
-│   │   ├── stores/             # Estado Zustand (TO DO)
-│   │   ├── hooks/              # Custom hooks
-│   │   ├── types/              # TypeScript types
-│   │   ├── utils/              # Utilidades
-│   │   ├── App.tsx             # Componente raíz
-│   │   └── main.tsx            # Entry point
-│   ├── src-tauri/              # Configuración Tauri
-│   └── package.json
+│   │   ├── pages/         # Vistas principales
+│   │   ├── components/    # Componentes React
+│   │   ├── services/      # API clients
+│   │   └── stores/        # Estado Zustand
+│   └── src-tauri/         # Configuracion Tauri
 │
-├── docker/
-│   └── docker-compose.dev.yml  # Servicios desarrollo
+├── web-portal/            # Portal Web (Next.js)
+│   ├── app/               # App Router pages
+│   ├── components/        # Componentes React
+│   └── lib/               # Utilidades y API
 │
-├── docs/
-│   ├── SETUP.md                # Guía de instalación detallada
-│   ├── DATABASE.md             # Arquitectura de base de datos
-│   ├── API.md                  # Documentación API
-│   └── DEPLOYMENT.md           # Guía de despliegue
-│
-└── shared/                     # Código compartido (futuro)
+└── docs/                  # Documentacion
 ```
 
-## 🔗 URLs Útiles
+## Desarrollo Local
 
-| Servicio | URL | Descripción |
-|----------|-----|-------------|
-| Backend API | http://localhost:8000 | API REST |
-| API Docs (Swagger) | http://localhost:8000/docs | Documentación interactiva |
-| API Docs (ReDoc) | http://localhost:8000/redoc | Docs alternativas |
-| PostgreSQL | localhost:5432 | Base de datos |
-| Redis | localhost:6379 | Cache |
-| Frontend Dev | App nativa | Tauri window |
+### Requisitos
 
-## 🏗️ Arquitectura Multi-Tenant
+- Python 3.10+
+- Node.js 18+
+- Rust (para Tauri)
+- PostgreSQL 15 (o Docker)
 
-El sistema permite gestionar **múltiples colegios** desde una sola instalación:
-
-- **Aislamiento total de datos**: Cada colegio tiene sus propios productos, clientes, ventas
-- **Catálogos independientes**: Precios y tipos de prendas configurables por colegio
-- **Usuarios multi-colegio**: Un usuario puede tener diferentes roles en diferentes colegios
-- **Reportes separados**: Cada colegio ve solo su información
-
-Ver [docs/DATABASE.md](docs/DATABASE.md) para detalles de la arquitectura.
-
-## 🔄 Sistema de Cambios y Devoluciones
-
-El sistema incluye un módulo completo para gestionar cambios de productos ya vendidos:
-
-### Tipos de Cambios Soportados
-- **Cambio de Talla** (`size_change`): Ej. Camisa T14 → T16
-- **Cambio de Producto** (`product_change`): Cambiar a un producto completamente diferente
-- **Devolución** (`return`): Devolución sin reemplazo (reembolso)
-- **Defecto** (`defect`): Cambio por producto defectuoso
-
-### Flujo de Trabajo
-1. **Vendedor crea solicitud**: Se valida stock y se calcula ajuste de precio automáticamente
-2. **Sistema crea registro PENDING**: Queda pendiente de aprobación
-3. **Admin aprueba/rechaza**:
-   - **Aprobado**: Se ajusta inventario automáticamente (+1 producto devuelto, -1 producto nuevo)
-   - **Rechazado**: No se realizan cambios en inventario
-
-### Características
-- ✅ Validación automática de stock antes de aprobar
-- ✅ Cálculo automático de diferencia de precio
-- ✅ Ajustes de inventario atómicos
-- ✅ Auditoría completa de todos los cambios
-- ✅ Restricciones por roles (SELLER crea, ADMIN aprueba)
-
-### Ejemplo de Uso
-```http
-POST /api/v1/schools/{school_id}/sales/{sale_id}/changes
-{
-  "change_type": "size_change",
-  "original_item_id": "uuid-del-item-original",
-  "new_product_id": "uuid-del-nuevo-producto",
-  "returned_quantity": 1,
-  "new_quantity": 1,
-  "reason": "Cliente necesita talla más grande"
-}
-```
-
-Ver documentación completa en [docs/SALE_CHANGES.md](docs/SALE_CHANGES.md)
-
-## 🧪 Testing
+### Setup
 
 ```bash
+# Clonar repositorio
+git clone https://github.com/Samsuesca/uniformes-system-v2.git
+cd uniformes-system-v2
+
 # Backend
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Editar .env con credenciales de DB
+uvicorn app.main:app --reload
+
+# Frontend (otra terminal)
+cd frontend
+npm install
+npm run tauri:dev
+
+# Web Portal (otra terminal)
+cd web-portal
+npm install
+npm run dev
+```
+
+### URLs Desarrollo
+
+| Servicio | URL |
+|----------|-----|
+| Backend API | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
+| Web Portal | http://localhost:3000 |
+| Desktop App | Ventana nativa |
+
+## Produccion
+
+### URLs Produccion
+
+| Servicio | URL |
+|----------|-----|
+| API | https://api.uniformesconsuelorios.com |
+| Portal Web | https://uniformesconsuelorios.com |
+| Servidor | 104.156.247.226 |
+
+### Desplegar Cambios
+
+```bash
+# Backend (en servidor)
+cd /var/www/uniformes-system-v2
+git pull origin main
+systemctl restart uniformes-api
+
+# Web Portal (en servidor)
+cd /var/www/uniformes-system-v2/web-portal
+npm run build
+pm2 restart web-portal
+
+# Ver logs
+journalctl -u uniformes-api -f
+```
+
+### Build App Desktop
+
+```bash
+cd frontend
+npm run tauri build
+
+# Instaladores generados en:
+# src-tauri/target/release/bundle/msi/   (Windows)
+# src-tauri/target/release/bundle/dmg/   (macOS)
+```
+
+## Base de Datos
+
+### Migraciones
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Crear migracion
+alembic revision --autogenerate -m "descripcion"
+
+# Aplicar migraciones
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+```
+
+### Conexion
+
+```
+Host: localhost (dev) / 104.156.247.226 (prod)
+Port: 5432
+Database: uniformes_db
+User: uniformes_user
+```
+
+## Contabilidad Global
+
+El sistema maneja contabilidad a nivel de **negocio**, no por colegio:
+
+- **Una sola Caja** y **un solo Banco**
+- Colegios son fuentes de ingreso (filtros para reportes)
+- Endpoints en `/api/v1/global/accounting/*`
+
+```python
+# school_id es OPCIONAL en:
+- Expenses (gastos)
+- Transactions
+- AccountsReceivable (CxC)
+- AccountsPayable (CxP)
+```
+
+## Tests
+
+```bash
 cd backend
 source venv/bin/activate
 pytest
 
-# Frontend
-cd frontend
-npm test
+# Con coverage
+pytest --cov=app --cov-report=html
 ```
 
-## 📦 Build para Producción
-
-### Backend (Docker)
-```bash
-docker build -t uniformes-backend -f backend/Dockerfile.prod .
-```
-
-### Frontend (Aplicación Nativa)
-```bash
-cd frontend
-
-# Build para tu sistema actual
-npm run tauri:build
-
-# Build para Windows (desde macOS/Linux)
-npm run tauri:build-windows
-
-# Los instaladores se generan en:
-# frontend/src-tauri/target/release/bundle/
-```
-
-## 🛑 Detener Servicios
+## Git Workflow
 
 ```bash
-# Detener contenedores Docker (datos se mantienen)
-docker-compose -f docker/docker-compose.dev.yml down
+# Desarrollo en develop
+git checkout develop
+git pull origin develop
 
-# Detener y eliminar volúmenes (BORRA DATOS)
-docker-compose -f docker/docker-compose.dev.yml down -v
+# Nueva feature
+git checkout -b feature/nombre
+# ... cambios ...
+git add . && git commit -m "feat: descripcion"
+git push -u origin feature/nombre
+
+# Merge a main para produccion
+git checkout main
+git merge develop
+git push origin main
 ```
 
-## 📚 Documentación Adicional
+## Documentacion
 
-- [Setup Detallado](docs/SETUP.md) - Guía paso a paso de instalación
-- [Arquitectura de BD](docs/DATABASE.md) - Diseño multi-tenant y esquema
-- [API Reference](docs/API.md) - Endpoints y ejemplos
-- [Deployment](docs/DEPLOYMENT.md) - Guía de despliegue en producción
+- [CLAUDE.md](CLAUDE.md) - Contexto del proyecto para AI
+- [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md) - Guia de despliegue
+- [docs/SALE_CHANGES.md](docs/SALE_CHANGES.md) - Sistema de cambios/devoluciones
+- [docs/GIT_WORKFLOW.md](docs/GIT_WORKFLOW.md) - Flujo de trabajo Git
 
-## 🐛 Troubleshooting
+## Autor
 
-### Backend no conecta a PostgreSQL
-```bash
-# Verificar que los contenedores estén corriendo
-docker ps
+**Angel Samuel Suesca Rios**
+- GitHub: [@Samsuesca](https://github.com/Samsuesca)
 
-# Ver logs de PostgreSQL
-docker logs docker-postgres-1
+## Licencia
 
-# Reiniciar servicios
-docker-compose -f docker/docker-compose.dev.yml restart
-```
-
-### Frontend no compila
-```bash
-# Limpiar cache
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-
-# Verificar Rust
-rustc --version
-```
-
-### Port 8000 already in use
-```bash
-# Encontrar proceso usando el puerto
-lsof -ti:8000
-
-# Matar el proceso
-kill -9 $(lsof -ti:8000)
-```
-
-## 🤝 Contribución
-
-1. Fork del proyecto
-2. Crear rama feature (`git checkout -b feature/NuevaFuncionalidad`)
-3. Commit cambios (`git commit -m 'Agregar nueva funcionalidad'`)
-4. Push a la rama (`git push origin feature/NuevaFuncionalidad`)
-5. Abrir Pull Request
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
-
-## 📞 Soporte
-
-Para preguntas o reportar bugs, abrir un [Issue](../../issues) en GitHub.
+MIT License
