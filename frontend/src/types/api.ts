@@ -134,6 +134,17 @@ export interface ProductWithInventory extends Product {
   inventory_min_stock: number;
 }
 
+// GarmentType Image (for multiple images per garment type)
+export interface GarmentTypeImage {
+  id: string;
+  garment_type_id: string;
+  school_id: string;
+  image_url: string;
+  display_order: number;
+  is_primary: boolean;
+  created_at: string;
+}
+
 export interface GarmentType {
   id: string;
   school_id: string;
@@ -145,6 +156,9 @@ export interface GarmentType {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Image fields (when included by backend)
+  images?: GarmentTypeImage[];
+  primary_image_url?: string | null;
 }
 
 // ============================================

@@ -194,7 +194,7 @@ export function groupProductsByGarmentType(
         if (!a.is_primary && b.is_primary) return 1;
         return (a.display_order || 0) - (b.display_order || 0);
       });
-      imageUrl = sortedImages[0]?.url || null;
+      imageUrl = sortedImages[0]?.image_url || null;
     }
     if (!imageUrl) {
       // Fallback to first product's image

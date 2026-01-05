@@ -129,17 +129,17 @@ export default function ProductImageGallery({
         />
       </div>
 
-      {/* Navigation Arrows - Only visible on hover */}
+      {/* Navigation Arrows - Visible on mobile, hover on desktop */}
       <button
         onClick={handlePrevious}
-        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 hover:bg-white rounded-full shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 hover:bg-white rounded-full shadow-lg flex items-center justify-center opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10"
         aria-label="Imagen anterior"
       >
         <ChevronLeft className="w-5 h-5 text-gray-700" />
       </button>
       <button
         onClick={handleNext}
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 hover:bg-white rounded-full shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 hover:bg-white rounded-full shadow-lg flex items-center justify-center opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10"
         aria-label="Siguiente imagen"
       >
         <ChevronRight className="w-5 h-5 text-gray-700" />
