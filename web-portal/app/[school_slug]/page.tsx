@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown, Eye } from 'lucide-react';
-import { productsApi, schoolsApi, type Product, type School, getProductImage } from '@/lib/api';
+import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { productsApi, schoolsApi, type Product, type School } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 import { formatNumber } from '@/lib/utils';
-import ProductImageGallery from '@/components/ProductImageGallery';
+import { groupProductsByGarmentType, type ProductGroup } from '@/lib/types';
+import ProductGroupCard from '@/components/ProductGroupCard';
 import ProductDetailModal from '@/components/ProductDetailModal';
 
 export default function CatalogPage() {
@@ -17,6 +18,7 @@ export default function CatalogPage() {
     const [school, setSchool] = useState<School | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
     const [globalProducts, setGlobalProducts] = useState<Product[]>([]);
+    const [productGroups, setProductGroups] = useState<ProductGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
     const [sizeFilter, setSizeFilter] = useState('all');
@@ -170,6 +172,11 @@ export default function CatalogPage() {
             setProducts(schoolProductsData);
             setGlobalProducts(globalProductsData);
 
+            // Create product groups
+            const schoolGroups = groupProductsByGarmentType(schoolProductsData, schoolData, false);
+            const globalGroups = groupProductsByGarmentType(globalProductsData, schoolData, true);
+            setProductGroups([...schoolGroups, ...globalGroups]);
+
             // Update categories and sizes with BOTH loaded
             updateCategoriesAndSizes(schoolProductsData, globalProductsData);
 
@@ -296,9 +303,75 @@ export default function CatalogPage() {
         return searchMatch && categoryMatch && sizeMatch && priceMatch && stockMatch;
     });
 
+    // Filter product groups (similar logic but for groups)
+    const filteredGroups = productGroups.filter(group => {
+        const name = group.name.toLowerCase();
+        const filterLower = filter.toLowerCase();
+
+        // Filter by search query
+        let searchMatch = true;
+        if (searchQuery.trim().length > 0) {
+            const query = searchQuery.toLowerCase();
+            searchMatch = name.includes(query);
+        }
+
+        // Filter by category
+        let categoryMatch = true;
+        if (filter !== 'all') {
+            if (filterLower === 'otros') {
+                categoryMatch = group.isGlobal;
+            } else {
+                categoryMatch = !group.isGlobal && (
+                    (filterLower === 'camisas' && (name.includes('camisa') || name.includes('blusa') || name.includes('camiseta'))) ||
+                    (filterLower === 'chompas' && name.includes('chompa')) ||
+                    (filterLower === 'pantalones' && (name.includes('pantalon') || name.includes('falda'))) ||
+                    (filterLower === 'sudaderas' && (name.includes('sudadera') || name.includes('buzo') || name.includes('chaqueta'))) ||
+                    (filterLower === 'yomber' && name.includes('yomber')) ||
+                    (filterLower === 'calzado' && (name.includes('zapato') || name.includes('tennis') || name.includes('media') || name.includes('jean')))
+                );
+            }
+        }
+
+        // Filter by size - check if any variant matches the size filter
+        const sizeMatch = sizeFilter === 'all' || group.variants.some(v => v.size === sizeFilter);
+
+        // Filter by price range
+        let priceMatch = true;
+        if (priceStats && (priceRange[0] !== priceStats.min_price || priceRange[1] !== priceStats.max_price)) {
+            priceMatch = group.basePrice <= priceRange[1] && group.maxPrice >= priceRange[0];
+        }
+
+        // Filter by stock - check if any variant has stock
+        let stockMatch = true;
+        if (showInStock) {
+            stockMatch = group.variants.some(v => v.stock > 0);
+        }
+
+        return searchMatch && categoryMatch && sizeMatch && priceMatch && stockMatch;
+    });
+
     const handleAddToCart = (product: Product, isOrder: boolean = false) => {
         if (school) {
             addItem(product, school, isOrder);
+        }
+    };
+
+    // Handle add to cart by product ID (used by ProductGroupCard)
+    const handleAddToCartById = (productId: string, isOrder: boolean = false) => {
+        const allProds = [...products, ...globalProducts];
+        const product = allProds.find(p => p.id === productId);
+        if (product && school) {
+            addItem(product, school, isOrder);
+        }
+    };
+
+    // Handle group click - open detail modal with the first product of the group
+    const handleGroupClick = (group: ProductGroup) => {
+        const allProds = [...products, ...globalProducts];
+        const product = allProds.find(p => p.id === group.variants[0]?.id);
+        if (product) {
+            setSelectedProduct(product);
+            setShowProductModal(true);
         }
     };
 
@@ -569,7 +642,7 @@ export default function CatalogPage() {
                         <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand-200 border-t-brand-600"></div>
                         <p className="mt-4 text-slate-600">Cargando productos...</p>
                     </div>
-                ) : filteredProducts.length === 0 ? (
+                ) : filteredGroups.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-xl border border-surface-200">
                         {searchQuery ? (
                             <>
@@ -607,112 +680,14 @@ export default function CatalogPage() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {filteredProducts.map((product) => {
-                            const stock = getProductStock(product);
-                            const isYomber = isYomberProduct(product);
-
-                            return (
-                                <div
-                                    key={product.id}
-                                    className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer ${
-                                        isYomber ? 'border-purple-200' : 'border-surface-200'
-                                    }`}
-                                    onClick={() => handleProductClick(product)}
-                                >
-                                    {/* Yomber Badge */}
-                                    {isYomber && (
-                                        <div className="bg-purple-600 text-white text-xs font-semibold px-3 py-1 text-center">
-                                            ✂️ Confección Personalizada
-                                        </div>
-                                    )}
-
-                                    <div className="relative group/image">
-                                        <ProductImageGallery
-                                            images={product.garment_type_images}
-                                            primaryImageUrl={product.garment_type_primary_image_url}
-                                            productName={product.name}
-                                        />
-                                        {/* Hover overlay with "View details" */}
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
-                                            <div className="flex items-center gap-2 px-4 py-2 bg-white/90 rounded-full text-sm font-medium text-gray-700">
-                                                <Eye className="w-4 h-4" />
-                                                Ver detalles
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="p-4">
-                                        <h3 className="font-semibold text-primary font-display mb-1">
-                                            {product.name}
-                                        </h3>
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <p className="text-sm text-slate-600">
-                                                {product.size
-                                                    ? (/^\d+$/.test(product.size) ? `Talla ${product.size}` : product.size)
-                                                    : 'Talla única'}
-                                            </p>
-                                            {product.color && (
-                                                <>
-                                                    <span className="text-slate-300">•</span>
-                                                    <p className="text-sm text-slate-600">
-                                                        {product.color}
-                                                    </p>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-2xl font-bold text-brand-600 font-display">
-                                                ${formatNumber(product.price)}
-                                            </span>
-
-                                            {/* Yomber: Show contact button */}
-                                            {isYomber ? (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleYomberClick(product); }}
-                                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                                                >
-                                                    Consultar
-                                                </button>
-                                            ) : stock > 0 ? (
-                                                /* Has stock: Add to cart */
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleAddToCart(product, false); }}
-                                                    className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium"
-                                                >
-                                                    Agregar
-                                                </button>
-                                            ) : (
-                                                /* No stock: Add as order */
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleAddToCart(product, true); }}
-                                                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium flex items-center gap-1"
-                                                >
-                                                    <Package className="w-4 h-4" />
-                                                    Encargar
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Stock status */}
-                                        {isYomber ? (
-                                            <p className="text-xs text-purple-600 mt-2">
-                                                <span className="font-semibold">Requiere medidas personalizadas</span>
-                                            </p>
-                                        ) : (
-                                            <p className={`text-xs mt-2 ${stock > 0 ? 'text-green-600' : 'text-orange-500'}`}>
-                                                {stock > 0 ? (
-                                                    <>
-                                                        <span className="font-semibold">Disponible</span>
-                                                        <span className="text-slate-400 ml-1">({stock} unidades)</span>
-                                                    </>
-                                                ) : (
-                                                    <span className="font-semibold">📦 Disponible por encargo</span>
-                                                )}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        {filteredGroups.map((group) => (
+                            <ProductGroupCard
+                                key={group.garmentTypeId}
+                                group={group}
+                                onAddToCart={handleAddToCartById}
+                                onOpenDetail={() => handleGroupClick(group)}
+                            />
+                        ))}
                     </div>
                 )}
             </main>

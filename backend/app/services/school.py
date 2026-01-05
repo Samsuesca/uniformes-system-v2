@@ -87,16 +87,36 @@ class SchoolService(BaseService[School]):
 
     async def get_active_schools(self, skip: int = 0, limit: int = 100) -> list[School]:
         """
-        Get all active schools
+        Get all active schools ordered by display_order
 
         Args:
             skip: Pagination offset
             limit: Maximum results
 
         Returns:
-            List of active schools
+            List of active schools ordered by display_order
         """
-        return await self.get_multi(skip=skip, limit=limit, filters={"is_active": True})
+        result = await self.db.execute(
+            select(School)
+            .where(School.is_active == True)
+            .order_by(School.display_order, School.name)
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def reorder_schools(self, order_data: list[dict]) -> None:
+        """
+        Update display_order for multiple schools
+
+        Args:
+            order_data: List of {id: UUID, display_order: int}
+        """
+        for item in order_data:
+            school = await self.get(item["id"])
+            if school:
+                school.display_order = item["display_order"]
+        await self.db.flush()
 
     async def get_school_summary(self, school_id: UUID) -> SchoolSummary | None:
         """

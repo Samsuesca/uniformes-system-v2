@@ -123,7 +123,14 @@
       "Bash(SSHPASS='2-jR5H2g*XfY$tD4' sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o ConnectTimeout=20 root@104.156.247.226 \"pm2 list && pm2 restart all\")",
       "Bash(NODE_ENV=production npm run build:*)",
       "Bash(rsync -avz --delete -e \"sshpass -p ''2-jR5H2g*XfY$tD4'' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no\" .next/ root@104.156.247.226:/var/www/uniformes-system-v2/web-portal/.next/)",
-      "Bash(SSHPASS='2-jR5H2g*XfY$tD4' sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o ConnectTimeout=20 root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api && echo ''API reiniciada exitosamente''\")"
+      "Bash(SSHPASS='2-jR5H2g*XfY$tD4' sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o ConnectTimeout=20 root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api && echo ''API reiniciada exitosamente''\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@104.156.247.226 \"PGPASSWORD=Uniformes2025 psql -h localhost -U uniformes_user -d uniformes_db -c \"\"SELECT gt.id, gt.name, gt.school_id, s.name as school_name FROM garment_types gt JOIN schools s ON gt.school_id = s.id WHERE s.name = ''CONFAMA'' ORDER BY gt.name;\"\"\")",
+      "Bash(SSHPASS='2-jR5H2g*XfY$tD4' sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o ConnectTimeout=20 root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git reset --hard HEAD && git clean -fd && git pull origin develop && systemctl restart uniformes-api && echo ''API reiniciada exitosamente''\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@104.156.247.226 \"curl -s ''http://localhost:8000/api/v1/global/products?limit=5'' | head -300\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@104.156.247.226 \"cd /var/www/uniformes-system-v2 && git log --oneline -3\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@104.156.247.226 \"curl -s ''http://localhost:8000/api/v1/products?limit=2&with_images=true''\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@104.156.247.226 \"curl -s http://localhost:8000/api/v1/global/products?limit=5 | python3 -m json.tool | head -100\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@104.156.247.226 \"systemctl restart uniformes-api && sleep 2 && systemctl status uniformes-api | head -10\")"
     ],
     "deny": [],
     "ask": []

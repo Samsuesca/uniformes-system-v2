@@ -2,7 +2,7 @@
 School (Tenant) Models
 """
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, Text
+from sqlalchemy import String, Boolean, DateTime, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
@@ -48,6 +48,10 @@ class School(Base):
     # }
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Display order for web portal (lower = first)
+    display_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

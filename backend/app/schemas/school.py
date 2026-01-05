@@ -81,6 +81,18 @@ class SchoolListResponse(BaseSchema):
     slug: str
     logo_url: str | None
     is_active: bool
+    display_order: int = 100
+
+
+class SchoolReorderItem(BaseSchema):
+    """Single item for reordering schools"""
+    id: UUID
+    display_order: int = Field(..., ge=0)
+
+
+class SchoolReorderRequest(BaseSchema):
+    """Request schema for reordering schools"""
+    schools: list[SchoolReorderItem]
 
 
 class SchoolSummary(BaseSchema):

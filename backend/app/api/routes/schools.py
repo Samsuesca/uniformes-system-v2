@@ -10,7 +10,8 @@ from app.schemas.school import (
     SchoolUpdate,
     SchoolResponse,
     SchoolListResponse,
-    SchoolSummary
+    SchoolSummary,
+    SchoolReorderRequest
 )
 from app.services.school import SchoolService
 
@@ -200,4 +201,29 @@ async def search_schools_by_name(
     school_service = SchoolService(db)
     schools = await school_service.search_by_name(name, limit=limit)
 
+    return [SchoolListResponse.model_validate(s) for s in schools]
+
+
+@router.put("/reorder", response_model=list[SchoolListResponse])
+async def reorder_schools(
+    reorder_data: SchoolReorderRequest,
+    db: DatabaseSession,
+    _: CurrentSuperuser  # Only superusers can reorder schools
+):
+    """
+    Reorder schools for web portal display (superuser only)
+
+    Updates the display_order field for each school in the request.
+    Schools with lower display_order appear first.
+    """
+    school_service = SchoolService(db)
+
+    # Convert to list of dicts for the service
+    order_data = [{"id": item.id, "display_order": item.display_order} for item in reorder_data.schools]
+    await school_service.reorder_schools(order_data)
+
+    await db.commit()
+
+    # Return updated schools list
+    schools = await school_service.get_active_schools()
     return [SchoolListResponse.model_validate(s) for s in schools]
