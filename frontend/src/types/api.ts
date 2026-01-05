@@ -127,6 +127,9 @@ export interface Product {
   // Extra fields from multi-school endpoint
   garment_type_name?: string;
   school_name?: string;
+  // Garment type images (when with_images=true)
+  garment_type_images?: GarmentTypeImage[];
+  garment_type_primary_image_url?: string | null;
 }
 
 export interface ProductWithInventory extends Product {

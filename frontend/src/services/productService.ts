@@ -14,6 +14,7 @@ export interface ProductFilters {
   search?: string;
   active_only?: boolean;
   with_stock?: boolean;
+  with_images?: boolean;
   skip?: number;
   limit?: number;
 }
@@ -29,6 +30,7 @@ export const productService = {
     if (filters?.search) params.append('search', filters.search);
     if (filters?.active_only !== undefined) params.append('active_only', String(filters.active_only));
     if (filters?.with_stock !== undefined) params.append('with_stock', String(filters.with_stock));
+    if (filters?.with_images !== undefined) params.append('with_images', String(filters.with_images));
     if (filters?.skip) params.append('skip', String(filters.skip));
     if (filters?.limit) params.append('limit', String(filters.limit));
 
@@ -41,16 +43,18 @@ export const productService = {
   /**
    * Get all products for a school (backwards compatible)
    * Uses multi-school endpoint with school filter
+   * with_images=true by default to show garment type images in product selectors
    */
   async getProducts(schoolId?: string, withInventory: boolean = true, limit: number = 500): Promise<Product[]> {
     if (schoolId) {
       return this.getAllProducts({
         school_id: schoolId,
         with_stock: withInventory,
+        with_images: true,
         limit
       });
     }
-    return this.getAllProducts({ with_stock: withInventory, limit });
+    return this.getAllProducts({ with_stock: withInventory, with_images: true, limit });
   },
 
   /**

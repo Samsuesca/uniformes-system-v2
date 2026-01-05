@@ -139,12 +139,22 @@ export function groupProductsByGarmentType(
   garmentTypes.forEach(gt => garmentTypeMap.set(gt.id, gt));
 
   // Group products by garment_type_id
+  // Also track garment type images from the first product in each group
   const groupsMap = new Map<string, ProductVariant[]>();
+  const groupImagesMap = new Map<string, { images: any[]; primaryUrl: string | null }>();
 
   products.forEach(product => {
     const gtId = product.garment_type_id;
     if (!groupsMap.has(gtId)) {
       groupsMap.set(gtId, []);
+      // Store garment type images from the first product we see
+      // (all products in same garment type should have same images)
+      if (product.garment_type_images || product.garment_type_primary_image_url) {
+        groupImagesMap.set(gtId, {
+          images: product.garment_type_images || [],
+          primaryUrl: product.garment_type_primary_image_url || null
+        });
+      }
     }
 
     const stock = product.stock ?? product.inventory_quantity ?? 0;
@@ -185,10 +195,25 @@ export function groupProductsByGarmentType(
       totalStock += v.stock;
     });
 
-    // Get image: prefer garment type image, fallback to first product image
+    // Get image: prefer garment type image from product data, then garmentType, then fallback to product image
     let imageUrl: string | null = null;
-    if (garmentType.images && garmentType.images.length > 0) {
+
+    // First, try to get from product's garment_type_images (from API response)
+    const productImages = groupImagesMap.get(garmentTypeId);
+    if (productImages?.primaryUrl) {
+      imageUrl = productImages.primaryUrl;
+    } else if (productImages?.images && productImages.images.length > 0) {
       // Sort by display_order and get primary or first
+      const sortedImages = [...productImages.images].sort((a: any, b: any) => {
+        if (a.is_primary && !b.is_primary) return -1;
+        if (!a.is_primary && b.is_primary) return 1;
+        return (a.display_order || 0) - (b.display_order || 0);
+      });
+      imageUrl = sortedImages[0]?.image_url || null;
+    }
+
+    // Fallback: try garmentType.images (from garment types list)
+    if (!imageUrl && garmentType.images && garmentType.images.length > 0) {
       const sortedImages = [...garmentType.images].sort((a, b) => {
         if (a.is_primary && !b.is_primary) return -1;
         if (!a.is_primary && b.is_primary) return 1;
@@ -196,8 +221,9 @@ export function groupProductsByGarmentType(
       });
       imageUrl = sortedImages[0]?.image_url || null;
     }
+
+    // Last fallback: first product's image
     if (!imageUrl) {
-      // Fallback to first product's image
       imageUrl = sortedVariants.find(v => v.imageUrl)?.imageUrl || null;
     }
 

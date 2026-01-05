@@ -18,6 +18,11 @@ interface PriceTableData {
   prices: { size: string; price: number }[];
 }
 
+interface ConsolidatedTableData {
+  baseType: string;
+  variants: { color: string; prices: { size: string; price: number }[] }[];
+}
+
 /**
  * Modal de Lista de Precios imprimible
  * Organiza los productos por tipo de prenda con sus tallas y precios
@@ -33,13 +38,40 @@ export default function PriceListModal({
 
   if (!isOpen) return null;
 
+  // Función para ordenar tallas
+  const sortSizes = (a: { size: string; price: number }, b: { size: string; price: number }) => {
+    const numA = parseInt(a.size);
+    const numB = parseInt(b.size);
+    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+    const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL'];
+    const idxA = sizeOrder.indexOf(a.size.toUpperCase());
+    const idxB = sizeOrder.indexOf(b.size.toUpperCase());
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    return a.size.localeCompare(b.size);
+  };
+
+  // Detectar el tipo base de un producto (sin color)
+  const getBaseType = (name: string): string => {
+    const lower = name.toLowerCase();
+    if (lower.includes('camiseta') || lower.includes('camisa')) return 'Camiseta';
+    if (lower.includes('sudadera') || lower.includes('buzo')) return 'Sudadera';
+    if (lower.includes('chompa')) return 'Chompa';
+    if (lower.includes('yomber')) return 'Yomber';
+    return name;
+  };
+
+  // Extraer color del nombre
+  const getColor = (name: string): string => {
+    const colorMatch = name.match(/\b(Azul|Gris|Amarillo|Morado|Fuxia|Rojo|Verde|Blanco|Negro)\b/i);
+    return colorMatch ? colorMatch[1] : '';
+  };
+
   // Agrupar productos por garment_type_id y extraer precios por talla
   const groupProducts = (prods: Product[]): PriceTableData[] => {
     const groups = new Map<string, { name: string; prices: Map<string, number> }>();
 
     prods.forEach(product => {
       const key = product.garment_type_id;
-      // Extraer nombre base (sin color si ya está separado)
       const baseName = product.name
         .replace(/\s*-?\s*[Tt]alla\s*\d+\s*$/i, '')
         .replace(/\s*-?\s*T\d+(-T\d+)?\s*$/i, '')
@@ -52,37 +84,70 @@ export default function PriceListModal({
 
       const group = groups.get(key)!;
       const size = product.size || 'Única';
-      // Guardar el precio más bajo si hay duplicados
       if (!group.prices.has(size) || group.prices.get(size)! > product.price) {
         group.prices.set(size, product.price);
       }
     });
 
-    // Convertir a array y ordenar precios por talla
     return Array.from(groups.values()).map(g => ({
       name: g.name,
       prices: Array.from(g.prices.entries())
         .map(([size, price]) => ({ size, price }))
-        .sort((a, b) => {
-          // Ordenar tallas numéricamente si es posible
-          const numA = parseInt(a.size);
-          const numB = parseInt(b.size);
-          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-
-          // Orden de tallas de letras
-          const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL'];
-          const idxA = sizeOrder.indexOf(a.size.toUpperCase());
-          const idxB = sizeOrder.indexOf(b.size.toUpperCase());
-          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-
-          return a.size.localeCompare(b.size);
-        })
+        .sort(sortSizes)
     }));
+  };
+
+  // Agrupar productos consolidando colores del mismo tipo
+  const groupProductsConsolidated = (prods: Product[]): ConsolidatedTableData[] => {
+    const groups = new Map<string, Map<string, Map<string, number>>>();
+
+    prods.forEach(product => {
+      const baseName = product.name
+        .replace(/\s*-?\s*[Tt]alla\s*\d+\s*$/i, '')
+        .replace(/\s*-?\s*T\d+(-T\d+)?\s*$/i, '')
+        .replace(/\s+\d+\s*$/, '')
+        .trim();
+
+      const baseType = getBaseType(baseName);
+      const color = getColor(baseName) || 'default';
+      const size = product.size || 'Única';
+
+      if (!groups.has(baseType)) {
+        groups.set(baseType, new Map());
+      }
+      const typeGroup = groups.get(baseType)!;
+
+      if (!typeGroup.has(color)) {
+        typeGroup.set(color, new Map());
+      }
+      const colorGroup = typeGroup.get(color)!;
+
+      if (!colorGroup.has(size) || colorGroup.get(size)! > product.price) {
+        colorGroup.set(size, product.price);
+      }
+    });
+
+    const result: ConsolidatedTableData[] = [];
+    groups.forEach((colorMap, baseType) => {
+      const variants = Array.from(colorMap.entries()).map(([color, priceMap]) => ({
+        color: color === 'default' ? '' : color,
+        prices: Array.from(priceMap.entries())
+          .map(([size, price]) => ({ size, price }))
+          .sort(sortSizes)
+      }));
+      result.push({ baseType, variants });
+    });
+
+    return result;
   };
 
   // Separar productos del colegio y globales
   const schoolTables = groupProducts(products);
+  const consolidatedTables = groupProductsConsolidated(products);
   const globalTables = groupProducts(globalProducts);
+
+  // Determinar si usar tablas consolidadas (cuando hay múltiples colores del mismo tipo)
+  const hasMultipleColors = consolidatedTables.some(t => t.variants.length > 1);
 
   // Categorizar las tablas del colegio
   const camisetas = schoolTables.filter(t =>
@@ -104,6 +169,28 @@ export default function PriceListModal({
     !t.name.toLowerCase().includes('buzo') &&
     !t.name.toLowerCase().includes('chompa') &&
     !t.name.toLowerCase().includes('yomber')
+  );
+
+  // Tablas consolidadas por tipo
+  const consolidatedCamisetas = consolidatedTables.filter(t =>
+    t.baseType.toLowerCase().includes('camiseta') || t.baseType.toLowerCase().includes('camisa')
+  );
+  const consolidatedSudaderas = consolidatedTables.filter(t =>
+    t.baseType.toLowerCase().includes('sudadera') || t.baseType.toLowerCase().includes('buzo')
+  );
+  const consolidatedChompas = consolidatedTables.filter(t =>
+    t.baseType.toLowerCase().includes('chompa')
+  );
+  const consolidatedYomber = consolidatedTables.filter(t =>
+    t.baseType.toLowerCase().includes('yomber')
+  );
+  const consolidatedOtros = consolidatedTables.filter(t =>
+    !t.baseType.toLowerCase().includes('camiseta') &&
+    !t.baseType.toLowerCase().includes('camisa') &&
+    !t.baseType.toLowerCase().includes('sudadera') &&
+    !t.baseType.toLowerCase().includes('buzo') &&
+    !t.baseType.toLowerCase().includes('chompa') &&
+    !t.baseType.toLowerCase().includes('yomber')
   );
 
   const handlePrint = () => {
@@ -136,6 +223,69 @@ export default function PriceListModal({
       </table>
     </div>
   );
+
+  // Componente de tabla consolidada con múltiples colores
+  const ConsolidatedTable = ({ data }: { data: ConsolidatedTableData }) => {
+    // Si solo hay un color (o ninguno), mostrar tabla simple
+    if (data.variants.length === 1 && !data.variants[0].color) {
+      return (
+        <PriceTable data={{ name: data.baseType, prices: data.variants[0].prices }} />
+      );
+    }
+
+    // Obtener todas las tallas únicas ordenadas
+    const allSizes = new Set<string>();
+    data.variants.forEach(v => v.prices.forEach(p => allSizes.add(p.size)));
+    const sortedSizes = Array.from(allSizes).sort((a, b) => {
+      const numA = parseInt(a);
+      const numB = parseInt(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    // Crear mapa de precios por color y talla
+    const priceMap = new Map<string, Map<string, number>>();
+    data.variants.forEach(v => {
+      const colorPrices = new Map<string, number>();
+      v.prices.forEach(p => colorPrices.set(p.size, p.price));
+      priceMap.set(v.color, colorPrices);
+    });
+
+    const colors = data.variants.map(v => v.color).filter(c => c);
+
+    return (
+      <div className="border-2 border-gray-800">
+        <div className="bg-gray-100 border-b-2 border-gray-800 px-3 py-2">
+          <h3 className="font-bold text-center text-sm uppercase tracking-wide">{data.baseType}</h3>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-400 bg-gray-50">
+              <th className="px-2 py-1 text-left font-semibold text-xs">TALLA</th>
+              {colors.map(color => (
+                <th key={color} className="px-2 py-1 text-right font-semibold text-xs">{color.toUpperCase()}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedSizes.map((size, idx) => (
+              <tr key={size} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                <td className="px-2 py-1 border-t border-gray-200 font-medium">{size}</td>
+                {colors.map(color => {
+                  const price = priceMap.get(color)?.get(size);
+                  return (
+                    <td key={color} className="px-2 py-1 border-t border-gray-200 text-right">
+                      {price ? `$${formatNumber(price)}` : '-'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   // Componente de tabla compacta para productos globales
   const CompactTable = ({ data }: { data: PriceTableData }) => (
@@ -224,34 +374,58 @@ export default function PriceListModal({
               </p>
             </div>
 
-            {/* Productos del Colegio - Grid de 3 columnas */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 print:grid-cols-3 print:gap-2 print:mb-4">
-              {/* Camisetas */}
-              {camisetas.length > 0 && camisetas.map((table, idx) => (
-                <PriceTable key={`cam-${idx}`} data={table} />
-              ))}
-
-              {/* Sudaderas */}
-              {sudaderas.length > 0 && sudaderas.map((table, idx) => (
-                <PriceTable key={`sud-${idx}`} data={table} />
-              ))}
-
-              {/* Chompas */}
-              {chompas.length > 0 && chompas.map((table, idx) => (
-                <PriceTable key={`cho-${idx}`} data={table} />
-              ))}
-            </div>
-
-            {/* Yomber y Otros productos del colegio */}
-            {(yomber.length > 0 || otros.length > 0) && (
+            {/* Productos del Colegio */}
+            {hasMultipleColors ? (
+              /* Vista consolidada para colegios con múltiples colores (ej: CONFAMA) */
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 print:grid-cols-3 print:gap-2 print:mb-4">
-                {yomber.map((table, idx) => (
-                  <PriceTable key={`yom-${idx}`} data={table} />
+                {consolidatedCamisetas.map((table, idx) => (
+                  <ConsolidatedTable key={`cam-${idx}`} data={table} />
                 ))}
-                {otros.map((table, idx) => (
-                  <PriceTable key={`otr-${idx}`} data={table} />
+                {consolidatedSudaderas.map((table, idx) => (
+                  <ConsolidatedTable key={`sud-${idx}`} data={table} />
+                ))}
+                {consolidatedChompas.map((table, idx) => (
+                  <ConsolidatedTable key={`cho-${idx}`} data={table} />
+                ))}
+                {consolidatedYomber.map((table, idx) => (
+                  <ConsolidatedTable key={`yom-${idx}`} data={table} />
+                ))}
+                {consolidatedOtros.map((table, idx) => (
+                  <ConsolidatedTable key={`otr-${idx}`} data={table} />
                 ))}
               </div>
+            ) : (
+              /* Vista normal para colegios sin múltiples colores */
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 print:grid-cols-3 print:gap-2 print:mb-4">
+                  {/* Camisetas */}
+                  {camisetas.length > 0 && camisetas.map((table, idx) => (
+                    <PriceTable key={`cam-${idx}`} data={table} />
+                  ))}
+
+                  {/* Sudaderas */}
+                  {sudaderas.length > 0 && sudaderas.map((table, idx) => (
+                    <PriceTable key={`sud-${idx}`} data={table} />
+                  ))}
+
+                  {/* Chompas */}
+                  {chompas.length > 0 && chompas.map((table, idx) => (
+                    <PriceTable key={`cho-${idx}`} data={table} />
+                  ))}
+                </div>
+
+                {/* Yomber y Otros productos del colegio */}
+                {(yomber.length > 0 || otros.length > 0) && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 print:grid-cols-3 print:gap-2 print:mb-4">
+                    {yomber.map((table, idx) => (
+                      <PriceTable key={`yom-${idx}`} data={table} />
+                    ))}
+                    {otros.map((table, idx) => (
+                      <PriceTable key={`otr-${idx}`} data={table} />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Productos Globales */}

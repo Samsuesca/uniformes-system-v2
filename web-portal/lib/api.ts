@@ -211,6 +211,7 @@ export const productsApi = {
         params: {
           school_id: schoolId,
           with_stock: true,
+          with_images: true,
           is_active: true
         }
       });
