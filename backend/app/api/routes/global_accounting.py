@@ -1469,10 +1469,10 @@ EXPENSE_CATEGORY_LABELS = {
 )
 async def list_global_transactions(
     db: DatabaseSession,
-    start_date: date = Query(None, description="Filter from date"),
-    end_date: date = Query(None, description="Filter to date"),
-    transaction_type: TransactionType = Query(None, description="Filter by type (income/expense)"),
-    school_id: UUID = Query(None, description="Filter by school"),
+    start_date: date | None = Query(None, description="Filter from date"),
+    end_date: date | None = Query(None, description="Filter to date"),
+    transaction_type: TransactionType | None = Query(None, description="Filter by type (income/expense)"),
+    school_id: UUID | None = Query(None, description="Filter by school"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200)
 ):
@@ -1526,8 +1526,8 @@ async def list_global_transactions(
 )
 async def get_expenses_summary_by_category(
     db: DatabaseSession,
-    start_date: date = Query(None, description="Filter from date"),
-    end_date: date = Query(None, description="Filter to date")
+    start_date: date | None = Query(None, description="Filter from date"),
+    end_date: date | None = Query(None, description="Filter to date")
 ):
     """
     Get expenses grouped by category
