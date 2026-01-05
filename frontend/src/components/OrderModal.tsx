@@ -1164,6 +1164,7 @@ export default function OrderModal({
         filterByStock="without_stock"
         allowGlobalProducts={false}
         excludeProductIds={items.map(i => i.product_id || '')}
+        excludeGarmentTypeIds={yomberGarmentTypeIds}
         title="Seleccionar Producto del Catálogo"
         emptyMessage="No hay productos sin stock disponibles"
       />

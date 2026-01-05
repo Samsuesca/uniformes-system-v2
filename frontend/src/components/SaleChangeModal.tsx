@@ -268,13 +268,16 @@ export default function SaleChangeModal({
                     {products.map((product) => {
                       const stock = product.inventory_quantity ?? 0;
                       return (
-                        <option key={product.id} value={product.id} disabled={stock === 0}>
+                        <option key={product.id} value={product.id}>
                           {product.name} - {product.size} - ${Number(product.price).toLocaleString()}
-                          {stock === 0 ? ' [SIN STOCK]' : ` [Stock: ${stock}]`}
+                          {stock === 0 ? ' [Sin stock actual]' : ` [Stock: ${stock}]`}
                         </option>
                       );
                     })}
                   </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Nota: El inventario se ajustará automáticamente al aprobar el cambio (se devolverá el producto original y se descontará el nuevo).
+                  </p>
                 </div>
 
                 <div className="mb-6">

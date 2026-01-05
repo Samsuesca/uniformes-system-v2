@@ -29,6 +29,7 @@ interface ProductSelectorModalProps {
   filterByStock?: 'with_stock' | 'without_stock' | 'all';
   allowGlobalProducts?: boolean;
   excludeProductIds?: string[];
+  excludeGarmentTypeIds?: string[]; // Exclude products from these garment types
   includeProductIds?: string[]; // If provided, only show these products
 
   // UI customization
@@ -44,6 +45,7 @@ export default function ProductSelectorModal({
   filterByStock = 'all',
   allowGlobalProducts = false,
   excludeProductIds = [],
+  excludeGarmentTypeIds = [],
   includeProductIds,
   title = 'Seleccionar Producto',
   emptyMessage = 'No se encontraron productos',
@@ -134,6 +136,11 @@ export default function ProductSelectorModal({
       filtered = filtered.filter(p => !excludeProductIds.includes(p.id));
     }
 
+    // Exclude products from specific garment types (e.g., yombers)
+    if (excludeGarmentTypeIds.length > 0) {
+      filtered = filtered.filter(p => !excludeGarmentTypeIds.includes(p.garment_type_id));
+    }
+
     // Search query (fuzzy)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -169,6 +176,7 @@ export default function ProductSelectorModal({
     productSource,
     filterByStock,
     excludeProductIds,
+    excludeGarmentTypeIds,
     includeProductIds,
     searchQuery,
     garmentTypeFilter,
