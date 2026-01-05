@@ -116,6 +116,24 @@ class GlobalExpenseCreate(ExpenseBase):
         return self
 
 
+class GlobalExpenseInDB(ExpenseBase, IDModelSchema):
+    """Global expense as stored in database (school_id is optional)"""
+    school_id: UUID | None = None
+    amount_paid: Decimal
+    is_paid: bool
+    created_by: UUID | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class GlobalExpenseResponse(GlobalExpenseInDB):
+    """Global expense for API responses"""
+    balance: Decimal = Field(..., description="Remaining balance to pay")
+
+    model_config = {"from_attributes": True}
+
+
 class ExpenseUpdate(BaseSchema):
     """Schema for updating an expense"""
     category: ExpenseCategory | None = None

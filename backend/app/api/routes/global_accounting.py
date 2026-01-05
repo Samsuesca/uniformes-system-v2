@@ -23,7 +23,7 @@ from app.models.accounting import (
 from app.models.school import School
 from app.schemas.accounting import (
     ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseListResponse, ExpensePayment,
-    GlobalExpenseCreate,
+    GlobalExpenseCreate, GlobalExpenseResponse,
     BalanceAccountResponse, BalanceAccountListResponse, BalanceAccountUpdate,
     GlobalBalanceAccountCreate, GlobalBalanceAccountResponse,
     GlobalAccountsPayableCreate, GlobalAccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
@@ -616,7 +616,7 @@ async def get_global_balance_general_detailed(
 
 @router.post(
     "/expenses",
-    response_model=ExpenseResponse,
+    response_model=GlobalExpenseResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_any_school_admin)]
 )
@@ -649,7 +649,7 @@ async def create_global_expense(
     await db.commit()
     await db.refresh(expense)
 
-    return ExpenseResponse.model_validate(expense)
+    return GlobalExpenseResponse.model_validate(expense)
 
 
 @router.get(
