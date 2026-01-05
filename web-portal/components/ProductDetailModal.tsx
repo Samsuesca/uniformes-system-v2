@@ -15,42 +15,44 @@ import {
   Phone,
   Check
 } from 'lucide-react';
-import { type Product, type GarmentTypeImage, API_BASE_URL, getProductImage } from '@/lib/api';
+import { type GarmentTypeImage, API_BASE_URL, getProductImage } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
+import { type ProductGroup, type ProductVariant, compareSizes } from '@/lib/types';
 
 interface ProductDetailModalProps {
-  product: Product;
+  group: ProductGroup;
   isOpen: boolean;
   onClose: () => void;
-  onAddToCart: (product: Product, isOrder: boolean) => void;
-  stock: number;
-  isYomber?: boolean;
+  onAddToCart: (productId: string, isOrder: boolean) => void;
+  initialSize?: string; // Talla pre-seleccionada (opcional)
 }
 
 /**
  * Modal de detalle de producto estilo e-commerce
  * - Galería de imágenes con navegación
- * - Zoom en imágenes
- * - Información detallada del producto
- * - Espacio para guía de tallas (futuro)
+ * - Selector de tallas con precios y stock
+ * - Botón de agregar al carrito
  */
 export default function ProductDetailModal({
-  product,
+  group,
   isOpen,
   onClose,
   onAddToCart,
-  stock,
-  isYomber = false
+  initialSize
 }: ProductDetailModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'sizes' | 'care'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'sizes'>('info');
   const [addedToCart, setAddedToCart] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
 
   // Get sorted images
-  const images = product.garment_type_images || [];
+  const images = group.images || [];
   const sortedImages = [...images].sort((a, b) => a.display_order - b.display_order);
-  const hasImages = sortedImages.length > 0 || product.garment_type_primary_image_url;
+  const hasImages = sortedImages.length > 0 || group.primaryImageUrl;
+
+  // Sort variants by size
+  const sortedVariants = [...group.variants].sort((a, b) => compareSizes(a.size, b.size));
 
   // Get full image URL
   const getFullImageUrl = (imageUrl: string) => {
@@ -63,8 +65,8 @@ export default function ProductDetailModal({
     if (sortedImages.length > 0) {
       return getFullImageUrl(sortedImages[currentImageIndex].image_url);
     }
-    if (product.garment_type_primary_image_url) {
-      return getFullImageUrl(product.garment_type_primary_image_url);
+    if (group.primaryImageUrl) {
+      return getFullImageUrl(group.primaryImageUrl);
     }
     return null;
   };
@@ -114,13 +116,25 @@ export default function ProductDetailModal({
       setCurrentImageIndex(0);
       setIsZoomed(false);
       setAddedToCart(false);
+      setActiveTab('info');
+
+      // Seleccionar talla inicial o primera disponible
+      if (initialSize) {
+        const variant = sortedVariants.find(v => v.size === initialSize);
+        setSelectedVariant(variant || sortedVariants[0] || null);
+      } else {
+        // Seleccionar primera variante con stock, o primera si ninguna tiene
+        const withStock = sortedVariants.find(v => v.stock > 0);
+        setSelectedVariant(withStock || sortedVariants[0] || null);
+      }
+
       // Find primary image index
       const primaryIdx = sortedImages.findIndex(img => img.is_primary);
       if (primaryIdx >= 0) {
         setCurrentImageIndex(primaryIdx);
       }
     }
-  }, [isOpen, product.id]);
+  }, [isOpen, group.garmentTypeId, initialSize]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -135,8 +149,9 @@ export default function ProductDetailModal({
   }, [isOpen]);
 
   // Handle add to cart with feedback
-  const handleAddToCart = (isOrder: boolean) => {
-    onAddToCart(product, isOrder);
+  const handleAddToCart = () => {
+    if (!selectedVariant) return;
+    onAddToCart(selectedVariant.id, selectedVariant.isOrder);
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
   };
@@ -144,6 +159,9 @@ export default function ProductDetailModal({
   if (!isOpen) return null;
 
   const currentImageUrl = getCurrentImageUrl();
+  const currentPrice = selectedVariant?.price ?? group.basePrice;
+  const currentStock = selectedVariant?.stock ?? 0;
+  const isOrder = selectedVariant?.isOrder ?? true;
 
   return (
     <>
@@ -181,7 +199,7 @@ export default function ProductDetailModal({
                     >
                       <img
                         src={currentImageUrl}
-                        alt={product.name}
+                        alt={group.name}
                         className={`w-full h-full transition-transform duration-300 ${
                           isZoomed
                             ? 'object-contain scale-150 cursor-move'
@@ -192,7 +210,7 @@ export default function ProductDetailModal({
                     </div>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-9xl">{getProductImage(product.name)}</span>
+                      <span className="text-9xl">{getProductImage(group.name)}</span>
                     </div>
                   )}
 
@@ -255,7 +273,7 @@ export default function ProductDetailModal({
                         >
                           <img
                             src={getFullImageUrl(img.image_url)}
-                            alt={`${product.name} - Miniatura ${idx + 1}`}
+                            alt={`${group.name} - Miniatura ${idx + 1}`}
                             className="w-full h-full object-cover"
                           />
                         </button>
@@ -268,77 +286,95 @@ export default function ProductDetailModal({
               {/* Right: Product Info */}
               <div className="lg:w-2/5 p-6 lg:p-8 overflow-y-auto max-h-[50vh] lg:max-h-[90vh]">
                 {/* Yomber Badge */}
-                {isYomber && (
+                {group.isYomber && (
                   <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium mb-4">
                     <span>✂️</span>
                     Confección Personalizada
                   </div>
                 )}
 
-                {/* Product Code */}
-                <p className="text-sm text-gray-500 mb-1">
-                  Código: {product.code}
-                </p>
+                {/* Global Badge */}
+                {group.isGlobal && (
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium mb-4">
+                    <span>🌐</span>
+                    Disponible para todos los colegios
+                  </div>
+                )}
 
                 {/* Product Name */}
                 <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
-                  {product.name}
+                  {group.name}
                 </h2>
 
                 {/* Price */}
                 <div className="mb-6">
                   <span className="text-3xl lg:text-4xl font-bold text-brand-600">
-                    ${formatNumber(product.price)}
+                    ${formatNumber(currentPrice)}
                   </span>
+                  {group.basePrice !== group.maxPrice && !selectedVariant && (
+                    <span className="text-lg text-gray-400 ml-2">
+                      - ${formatNumber(group.maxPrice)}
+                    </span>
+                  )}
                 </div>
 
-                {/* Size & Color */}
-                <div className="flex flex-wrap gap-3 mb-6">
-                  {product.size && (
-                    <div className="px-4 py-2 bg-gray-100 rounded-lg">
-                      <span className="text-sm text-gray-500">Talla</span>
-                      <p className="font-semibold text-gray-900">
-                        {/^\d+$/.test(product.size) ? `Talla ${product.size}` : product.size}
-                      </p>
-                    </div>
-                  )}
-                  {product.color && (
-                    <div className="px-4 py-2 bg-gray-100 rounded-lg">
-                      <span className="text-sm text-gray-500">Color</span>
-                      <p className="font-semibold text-gray-900">{product.color}</p>
-                    </div>
-                  )}
-                  {product.gender && product.gender !== 'unisex' && (
-                    <div className="px-4 py-2 bg-gray-100 rounded-lg">
-                      <span className="text-sm text-gray-500">Género</span>
-                      <p className="font-semibold text-gray-900 capitalize">{product.gender}</p>
-                    </div>
-                  )}
+                {/* Size Selector */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Selecciona una talla:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {sortedVariants.map(variant => (
+                      <button
+                        key={variant.id}
+                        onClick={() => setSelectedVariant(variant)}
+                        className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                          selectedVariant?.id === variant.id
+                            ? 'bg-brand-600 text-white border-brand-600'
+                            : variant.stock > 0
+                              ? 'bg-white text-gray-700 border-gray-200 hover:border-brand-400'
+                              : 'bg-orange-50 text-orange-600 border-orange-200 hover:border-orange-400'
+                        }`}
+                      >
+                        {variant.size}
+                        {variant.stock === 0 && selectedVariant?.id !== variant.id && (
+                          <span className="ml-1 text-xs">📦</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Stock Status */}
                 <div className="mb-6">
-                  {isYomber ? (
+                  {group.isYomber ? (
                     <div className="flex items-center gap-2 text-purple-600">
                       <Ruler className="w-5 h-5" />
                       <span className="font-medium">Requiere medidas personalizadas</span>
                     </div>
-                  ) : stock > 0 ? (
-                    <div className="flex items-center gap-2 text-green-600">
-                      <Check className="w-5 h-5" />
-                      <span className="font-medium">Disponible ({stock} unidades)</span>
-                    </div>
+                  ) : selectedVariant ? (
+                    currentStock > 0 ? (
+                      <div className="flex items-center gap-2 text-green-600">
+                        <Check className="w-5 h-5" />
+                        <span className="font-medium">Disponible ({currentStock} unidades)</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-orange-500">
+                        <Package className="w-5 h-5" />
+                        <span className="font-medium">Disponible por encargo</span>
+                      </div>
+                    )
                   ) : (
-                    <div className="flex items-center gap-2 text-orange-500">
-                      <Package className="w-5 h-5" />
-                      <span className="font-medium">Disponible por encargo</span>
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <Info className="w-5 h-5" />
+                      <span className="font-medium">Selecciona una talla</span>
                     </div>
                   )}
                 </div>
 
                 {/* Action Buttons */}
                 <div className="space-y-3 mb-8">
-                  {isYomber ? (
+                  {group.isYomber ? (
                     <>
                       <a
                         href="https://wa.me/573105997451?text=Hola, estoy interesado en un yomber personalizado"
@@ -357,49 +393,59 @@ export default function ProductDetailModal({
                         Llamar para cita
                       </a>
                     </>
-                  ) : stock > 0 ? (
-                    <button
-                      onClick={() => handleAddToCart(false)}
-                      disabled={addedToCart}
-                      className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-lg transition-all ${
-                        addedToCart
-                          ? 'bg-green-500 text-white'
-                          : 'bg-brand-600 text-white hover:bg-brand-700'
-                      }`}
-                    >
-                      {addedToCart ? (
-                        <>
-                          <Check className="w-5 h-5" />
-                          ¡Agregado al carrito!
-                        </>
-                      ) : (
-                        <>
-                          <ShoppingCart className="w-5 h-5" />
-                          Agregar al carrito
-                        </>
-                      )}
-                    </button>
+                  ) : selectedVariant ? (
+                    currentStock > 0 ? (
+                      <button
+                        onClick={handleAddToCart}
+                        disabled={addedToCart}
+                        className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-lg transition-all ${
+                          addedToCart
+                            ? 'bg-green-500 text-white'
+                            : 'bg-brand-600 text-white hover:bg-brand-700'
+                        }`}
+                      >
+                        {addedToCart ? (
+                          <>
+                            <Check className="w-5 h-5" />
+                            ¡Agregado al carrito!
+                          </>
+                        ) : (
+                          <>
+                            <ShoppingCart className="w-5 h-5" />
+                            Agregar al carrito
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleAddToCart}
+                        disabled={addedToCart}
+                        className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-lg transition-all ${
+                          addedToCart
+                            ? 'bg-green-500 text-white'
+                            : 'bg-orange-500 text-white hover:bg-orange-600'
+                        }`}
+                      >
+                        {addedToCart ? (
+                          <>
+                            <Check className="w-5 h-5" />
+                            ¡Agregado como encargo!
+                          </>
+                        ) : (
+                          <>
+                            <Package className="w-5 h-5" />
+                            Encargar producto
+                          </>
+                        )}
+                      </button>
+                    )
                   ) : (
                     <button
-                      onClick={() => handleAddToCart(true)}
-                      disabled={addedToCart}
-                      className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-lg transition-all ${
-                        addedToCart
-                          ? 'bg-green-500 text-white'
-                          : 'bg-orange-500 text-white hover:bg-orange-600'
-                      }`}
+                      disabled
+                      className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-lg bg-gray-200 text-gray-500 cursor-not-allowed"
                     >
-                      {addedToCart ? (
-                        <>
-                          <Check className="w-5 h-5" />
-                          ¡Agregado como encargo!
-                        </>
-                      ) : (
-                        <>
-                          <Package className="w-5 h-5" />
-                          Encargar producto
-                        </>
-                      )}
+                      <ShoppingCart className="w-5 h-5" />
+                      Selecciona una talla
                     </button>
                   )}
                 </div>
@@ -435,14 +481,10 @@ export default function ProductDetailModal({
                   <div className="text-sm text-gray-600">
                     {activeTab === 'info' && (
                       <div className="space-y-3">
-                        {product.description ? (
-                          <p>{product.description}</p>
-                        ) : (
-                          <p>
-                            Uniforme escolar de alta calidad, confeccionado con materiales
-                            duraderos y cómodos para el uso diario.
-                          </p>
-                        )}
+                        <p>
+                          Uniforme escolar de alta calidad, confeccionado con materiales
+                          duraderos y cómodos para el uso diario.
+                        </p>
                         <ul className="space-y-2 mt-4">
                           <li className="flex items-start gap-2">
                             <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
@@ -475,19 +517,20 @@ export default function ProductDetailModal({
 
                         <div className="mt-4">
                           <p className="font-medium text-gray-700 mb-2">
-                            Tallas disponibles:
+                            Tallas disponibles para este producto:
                           </p>
                           <div className="flex flex-wrap gap-2">
-                            {['6', '8', '10', '12', '14', '16', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
+                            {sortedVariants.map(variant => (
                               <span
-                                key={size}
+                                key={variant.id}
                                 className={`px-3 py-1 rounded-full text-sm ${
-                                  product.size === size
-                                    ? 'bg-brand-600 text-white font-medium'
-                                    : 'bg-gray-100 text-gray-600'
+                                  variant.stock > 0
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-orange-100 text-orange-700'
                                 }`}
                               >
-                                {size}
+                                {variant.size}
+                                {variant.stock === 0 && ' (encargo)'}
                               </span>
                             ))}
                           </div>

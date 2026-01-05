@@ -529,7 +529,8 @@ class BalanceIntegrationService:
         amount: Decimal,
         payment_method: AccPaymentMethod,
         description: str,
-        created_by: UUID | None = None
+        created_by: UUID | None = None,
+        allow_negative: bool = False
     ) -> BalanceEntry | None:
         """
         Registra el pago de un gasto (reduce Caja o Banco).
@@ -539,9 +540,13 @@ class BalanceIntegrationService:
             payment_method: Método de pago (CASH -> Caja, TRANSFER/CARD -> Banco)
             description: Descripción del pago
             created_by: ID del usuario
+            allow_negative: Si es True, permite balance negativo (default False)
 
         Returns:
             BalanceEntry creado, o None si no aplica (ej: CREDIT)
+
+        Raises:
+            ValueError: Si no hay fondos suficientes y allow_negative es False
         """
         # CREDIT no afecta cuentas
         if payment_method == AccPaymentMethod.CREDIT:
@@ -562,8 +567,15 @@ class BalanceIntegrationService:
         if not account:
             return None
 
-        # Restar del balance (gasto = dinero sale)
+        # Validar fondos suficientes
         new_balance = account.balance - amount
+        if new_balance < 0 and not allow_negative:
+            raise ValueError(
+                f"Fondos insuficientes en {account.name}. "
+                f"Disponible: ${account.balance:,.2f}, Requerido: ${amount:,.2f}"
+            )
+
+        # Restar del balance (gasto = dinero sale)
         account.balance = new_balance
 
         # Crear BalanceEntry para auditoría

@@ -46,7 +46,8 @@ export default function CatalogPage() {
 
     // Product detail modal state
     const [showProductModal, setShowProductModal] = useState(false);
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [selectedGroup, setSelectedGroup] = useState<ProductGroup | null>(null);
+    const [selectedInitialSize, setSelectedInitialSize] = useState<string | undefined>(undefined);
 
     // Price list modal state
     const [showPriceListModal, setShowPriceListModal] = useState(false);
@@ -68,9 +69,10 @@ export default function CatalogPage() {
         setShowYomberModal(true);
     };
 
-    // Handle product click - show detail modal
-    const handleProductClick = (product: Product) => {
-        setSelectedProduct(product);
+    // Handle group click - open detail modal with the group
+    const handleGroupClick = (group: ProductGroup, initialSize?: string) => {
+        setSelectedGroup(group);
+        setSelectedInitialSize(initialSize);
         setShowProductModal(true);
     };
 
@@ -369,20 +371,6 @@ export default function CatalogPage() {
         }
     };
 
-    // Handle group click - open detail modal with the first product of the group
-    const handleGroupClick = (group: ProductGroup) => {
-        const allProds = [...products, ...globalProducts];
-        const product = allProds.find(p => p.id === group.variants[0]?.id);
-        if (product) {
-            setSelectedProduct(product);
-            setShowProductModal(true);
-        }
-    };
-
-    // Helper para obtener el stock del producto
-    const getProductStock = (product: Product): number => {
-        return product.stock ?? product.stock_quantity ?? product.inventory_quantity ?? 0;
-    };
 
     return (
         <div className="min-h-screen bg-surface-50">
@@ -702,7 +690,7 @@ export default function CatalogPage() {
                                 key={group.garmentTypeId}
                                 group={group}
                                 onAddToCart={handleAddToCartById}
-                                onOpenDetail={() => handleGroupClick(group)}
+                                onOpenDetail={(size) => handleGroupClick(group, size)}
                             />
                         ))}
                     </div>
@@ -710,17 +698,17 @@ export default function CatalogPage() {
             </main>
 
             {/* Product Detail Modal */}
-            {selectedProduct && (
+            {selectedGroup && (
                 <ProductDetailModal
-                    product={selectedProduct}
+                    group={selectedGroup}
                     isOpen={showProductModal}
                     onClose={() => {
                         setShowProductModal(false);
-                        setSelectedProduct(null);
+                        setSelectedGroup(null);
+                        setSelectedInitialSize(undefined);
                     }}
-                    onAddToCart={handleAddToCart}
-                    stock={getProductStock(selectedProduct)}
-                    isYomber={isYomberProduct(selectedProduct)}
+                    onAddToCart={handleAddToCartById}
+                    initialSize={selectedInitialSize}
                 />
             )}
 

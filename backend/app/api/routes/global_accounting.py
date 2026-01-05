@@ -843,21 +843,27 @@ async def pay_global_expense(
             detail=f"Payment amount ({payment.amount}) exceeds balance ({remaining})"
         )
 
-    # Update expense
-    expense.amount_paid = (expense.amount_paid or Decimal("0")) + payment.amount
-    if expense.amount_paid >= expense.amount:
-        expense.is_paid = True
-
     # Update global balance account (deduct from Caja or Banco)
     from app.services.balance_integration import BalanceIntegrationService
     balance_service = BalanceIntegrationService(db)
 
-    await balance_service.record_expense_payment(
-        amount=payment.amount,
-        payment_method=payment.payment_method,
-        description=f"Pago gasto: {expense.description}",
-        created_by=current_user.id
-    )
+    try:
+        await balance_service.record_expense_payment(
+            amount=payment.amount,
+            payment_method=payment.payment_method,
+            description=f"Pago gasto: {expense.description}",
+            created_by=current_user.id
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Update expense only after successful balance deduction
+    expense.amount_paid = (expense.amount_paid or Decimal("0")) + payment.amount
+    if expense.amount_paid >= expense.amount:
+        expense.is_paid = True
 
     await db.commit()
     await db.refresh(expense)

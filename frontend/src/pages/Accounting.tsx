@@ -508,7 +508,10 @@ export default function Accounting() {
     });
   };
 
-  const formatCurrency = (amount: number) => `$${Number(amount).toLocaleString('es-CO')}`;
+  const formatCurrency = (amount: number | string | null | undefined) => {
+    const num = Number(amount ?? 0);
+    return `$${isNaN(num) ? 0 : num.toLocaleString('es-CO')}`;
+  };
   const formatDate = (dateStr: string) => formatDateSpanish(dateStr);
 
 

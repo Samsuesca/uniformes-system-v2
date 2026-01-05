@@ -29,7 +29,8 @@ export interface ProductGroup {
 }
 
 /**
- * Ordena tallas de forma natural: 2, 4, 6, 8... o XS, S, M, L, XL...
+ * Ordena tallas de forma natural: 4, 6, 8, 10... XS, S, M, L, XL...
+ * Los números van primero (ordenados numéricamente), luego las letras
  */
 export function compareSizes(a: string, b: string): number {
   const numA = parseInt(a);
@@ -38,12 +39,16 @@ export function compareSizes(a: string, b: string): number {
   // Si ambos son números, ordenar numéricamente
   if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
 
-  // Orden estándar de tallas
+  // Orden estándar de tallas de letras
   const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL'];
   const idxA = sizeOrder.indexOf(a.toUpperCase());
   const idxB = sizeOrder.indexOf(b.toUpperCase());
 
-  // Si ambos están en el orden definido
+  // Si uno es número y otro es letra, el número va primero
+  if (!isNaN(numA) && isNaN(numB)) return -1;  // a es número, b es letra
+  if (isNaN(numA) && !isNaN(numB)) return 1;   // a es letra, b es número
+
+  // Si ambos están en el orden de letras definido
   if (idxA !== -1 && idxB !== -1) return idxA - idxB;
 
   // Si solo uno está en el orden, ese va primero

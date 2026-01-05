@@ -146,7 +146,8 @@
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@104.156.247.226 \"cat /etc/systemd/system/uniformes-api.service\")",
       "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"PGPASSWORD=Uniformes2025 psql -h localhost -U uniformes_user -d uniformes_db -c \"\"SELECT p.id, p.code, p.name, p.size, p.price, gt.name as garment_type FROM products p JOIN garment_types gt ON p.garment_type_id = gt.id WHERE p.school_id IS NULL ORDER BY gt.name, p.size;\"\"\")",
       "Bash(SSHPASS='2-jR5H2g*XfY$tD4' sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@104.156.247.226 \"cat /etc/systemd/system/uniformes-api.service\")",
-      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"PGPASSWORD=Uniformes2025 psql -h localhost -U uniformes_user -d uniformes_db << ''SQL''\n\\\\d garment_types\nSQL\")"
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no root@104.156.247.226 \"PGPASSWORD=Uniformes2025 psql -h localhost -U uniformes_user -d uniformes_db << ''SQL''\n\\\\d garment_types\nSQL\")",
+      "Bash(sshpass -p '2-jR5H2g*XfY$tD4' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@104.156.247.226 \"grep -A 15 ''class ExpenseCategory'' /var/www/uniformes-system-v2/backend/app/models/accounting.py\")"
     ],
     "deny": [],
     "ask": []

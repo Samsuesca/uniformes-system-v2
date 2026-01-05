@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Package, Eye } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
-import type { ProductGroup } from '@/lib/types';
+import { type ProductGroup, compareSizes } from '@/lib/types';
 import ProductImageOptimized from './ProductImageOptimized';
 
 interface ProductGroupCardProps {
   group: ProductGroup;
   onAddToCart: (productId: string, isOrder: boolean) => void;
-  onOpenDetail: () => void;
+  onOpenDetail: (selectedSize?: string) => void;
   onYomberClick?: () => void;
   priority?: boolean; // Para imágenes above-the-fold
 }
@@ -27,8 +27,14 @@ export default function ProductGroupCard({
 }: ProductGroupCardProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
 
-  const selectedVariant = group.variants.find(v => v.size === selectedSize);
-  const hasAnyStock = group.variants.some(v => v.stock > 0);
+  // Ordenar variantes por talla
+  const sortedVariants = useMemo(() =>
+    [...group.variants].sort((a, b) => compareSizes(a.size, b.size)),
+    [group.variants]
+  );
+
+  const selectedVariant = sortedVariants.find(v => v.size === selectedSize);
+  const hasAnyStock = sortedVariants.some(v => v.stock > 0);
 
   // Manejar clic en botón de agregar
   const handleAddClick = (e: React.MouseEvent) => {
@@ -41,7 +47,7 @@ export default function ProductGroupCard({
 
     if (!selectedVariant) {
       // Si no hay talla seleccionada, seleccionar la primera con stock o la primera disponible
-      const firstAvailable = group.variants.find(v => v.stock > 0) || group.variants[0];
+      const firstAvailable = sortedVariants.find(v => v.stock > 0) || sortedVariants[0];
       setSelectedSize(firstAvailable.size);
       return;
     }
@@ -89,7 +95,7 @@ export default function ProductGroupCard({
       {/* Imagen con overlay de detalles */}
       <div
         className="relative group/image cursor-pointer"
-        onClick={onOpenDetail}
+        onClick={() => onOpenDetail(selectedSize || undefined)}
       >
         <ProductImageOptimized
           images={group.images}
@@ -113,9 +119,9 @@ export default function ProductGroupCard({
         </h3>
 
         {/* Selector de Tallas */}
-        {!group.isYomber && group.variants.length > 0 && (
+        {!group.isYomber && sortedVariants.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {group.variants.map(variant => (
+            {sortedVariants.map(variant => (
               <button
                 key={variant.id}
                 onClick={(e) => {
