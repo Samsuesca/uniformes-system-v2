@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { ShoppingCart, ArrowLeft, Filter, Phone, MessageCircle, Package, X, Search, SlidersHorizontal, Globe, Clock, ChevronUp, ChevronDown, FileText } from 'lucide-react';
 import { productsApi, schoolsApi, type Product, type School } from '@/lib/api';
 import { useCartStore } from '@/lib/store';
 import { formatNumber } from '@/lib/utils';
 import { groupProductsByGarmentType, type ProductGroup } from '@/lib/types';
 import ProductGroupCard from '@/components/ProductGroupCard';
 import ProductDetailModal from '@/components/ProductDetailModal';
+import PriceListModal from '@/components/PriceListModal';
 
 export default function CatalogPage() {
     const params = useParams();
@@ -46,6 +47,9 @@ export default function CatalogPage() {
     // Product detail modal state
     const [showProductModal, setShowProductModal] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+    // Price list modal state
+    const [showPriceListModal, setShowPriceListModal] = useState(false);
 
     // Prevent hydration mismatch by only showing cart count after mount
     useEffect(() => {
@@ -401,17 +405,30 @@ export default function CatalogPage() {
                                 Catálogo de Uniformes
                             </p>
                         </div>
-                        <button
-                            onClick={() => router.push(`/${schoolSlug}/cart`)}
-                            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors relative"
-                        >
-                            <ShoppingCart className="w-5 h-5" />
-                            {mounted && getTotalItems() > 0 && (
-                                <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-                                    {getTotalItems()}
-                                </span>
-                            )}
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {/* Price List Button */}
+                            <button
+                                onClick={() => setShowPriceListModal(true)}
+                                className="flex items-center gap-2 px-3 py-2 border-2 border-brand-600 text-brand-600 rounded-xl hover:bg-brand-50 transition-colors"
+                                title="Ver Lista de Precios"
+                            >
+                                <FileText className="w-5 h-5" />
+                                <span className="hidden sm:inline text-sm font-medium">Precios</span>
+                            </button>
+
+                            {/* Cart Button */}
+                            <button
+                                onClick={() => router.push(`/${schoolSlug}/cart`)}
+                                className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors relative"
+                            >
+                                <ShoppingCart className="w-5 h-5" />
+                                {mounted && getTotalItems() > 0 && (
+                                    <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                                        {getTotalItems()}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -788,6 +805,17 @@ export default function CatalogPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Price List Modal */}
+            {school && (
+                <PriceListModal
+                    isOpen={showPriceListModal}
+                    onClose={() => setShowPriceListModal(false)}
+                    school={school}
+                    products={products}
+                    globalProducts={globalProducts}
+                />
             )}
         </div>
     );

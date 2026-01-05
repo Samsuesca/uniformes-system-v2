@@ -1563,9 +1563,15 @@ async def get_expenses_summary_by_category(
         pending_amount = total_amount - paid_amount
         percentage = Decimal(str(round((float(total_amount) / total_expenses * 100) if total_expenses > 0 else 0, 2)))
 
+        # Handle None category gracefully
+        if row.category is None:
+            category_label = "Sin Categoría"
+        else:
+            category_label = EXPENSE_CATEGORY_LABELS.get(row.category, str(row.category.value))
+
         summaries.append(ExpenseCategorySummary(
             category=row.category,
-            category_label=EXPENSE_CATEGORY_LABELS.get(row.category, str(row.category.value)),
+            category_label=category_label,
             total_amount=total_amount,
             paid_amount=paid_amount,
             pending_amount=pending_amount,

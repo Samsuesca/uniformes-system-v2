@@ -104,7 +104,8 @@ export interface Product {
   location?: string;
   barcode?: string;
   is_active: boolean;
-  // Garment type images for catalog display
+  // Garment type info for catalog display
+  garment_type_name?: string; // Nombre del tipo de prenda (ej: "Camiseta Amarillo")
   garment_type_images?: GarmentTypeImage[];
   garment_type_primary_image_url?: string | null;
 }

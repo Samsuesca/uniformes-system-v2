@@ -84,16 +84,20 @@ export function groupProductsByGarmentType(
     const key = product.garment_type_id;
 
     if (!groups.has(key)) {
+      // Usar garment_type_name del backend si está disponible,
+      // de lo contrario derivar del nombre del producto
+      const groupName = product.garment_type_name || getBaseName(product.name);
+
       groups.set(key, {
         garmentTypeId: key,
-        name: getBaseName(product.name),
+        name: groupName,
         basePrice: product.price,
         maxPrice: product.price,
         images: product.garment_type_images || [],
         primaryImageUrl: product.garment_type_primary_image_url || null,
         variants: [],
         school,
-        isYomber: product.name.toLowerCase().includes('yomber'),
+        isYomber: groupName.toLowerCase().includes('yomber'),
         isGlobal
       });
     }

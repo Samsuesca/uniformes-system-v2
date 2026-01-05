@@ -748,7 +748,7 @@ class TransactionListItemResponse(BaseSchema):
 
 class ExpenseCategorySummary(BaseSchema):
     """Summary of expenses by category"""
-    category: ExpenseCategory
+    category: ExpenseCategory | None  # Can be None for uncategorized expenses
     category_label: str  # Human-readable label
     total_amount: Decimal
     paid_amount: Decimal
