@@ -22,14 +22,12 @@ def upgrade() -> None:
     # Add display_order column with default 100
     op.add_column('schools', sa.Column('display_order', sa.Integer(), nullable=False, server_default='100'))
 
-    # Set initial order for known schools
+    # Set initial order for known schools (each UPDATE must be separate for asyncpg)
     # Caracas = 1, Pumarejo = 2, Pinal = 3, CONFAMA = 4
-    op.execute("""
-        UPDATE schools SET display_order = 1 WHERE slug = 'caracas' OR name ILIKE '%caracas%';
-        UPDATE schools SET display_order = 2 WHERE slug = 'pumarejo' OR name ILIKE '%pumarejo%';
-        UPDATE schools SET display_order = 3 WHERE slug = 'pinal' OR name ILIKE '%pinal%';
-        UPDATE schools SET display_order = 4 WHERE slug = 'confama' OR name ILIKE '%confama%';
-    """)
+    op.execute("UPDATE schools SET display_order = 1 WHERE slug = 'caracas' OR name ILIKE '%caracas%'")
+    op.execute("UPDATE schools SET display_order = 2 WHERE slug = 'pumarejo' OR name ILIKE '%pumarejo%'")
+    op.execute("UPDATE schools SET display_order = 3 WHERE slug = 'pinal' OR name ILIKE '%pinal%'")
+    op.execute("UPDATE schools SET display_order = 4 WHERE slug = 'confama' OR name ILIKE '%confama%'")
 
 
 def downgrade() -> None:
