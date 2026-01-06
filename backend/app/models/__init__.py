@@ -31,6 +31,7 @@ from app.models.accounting import (
     AccountsReceivable,
     AccountsPayable,
 )
+from app.models.document import DocumentFolder, BusinessDocument
 
 __all__ = [
     "Base",
@@ -91,4 +92,7 @@ __all__ = [
     "BalanceEntry",
     "AccountsReceivable",
     "AccountsPayable",
+    # Document models
+    "DocumentFolder",
+    "BusinessDocument",
 ]

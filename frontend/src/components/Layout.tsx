@@ -29,7 +29,8 @@ import {
   WifiOff,
   Globe,
   MessageSquare,
-  Wallet
+  Wallet,
+  FolderOpen
 } from 'lucide-react';
 import { useConfigStore } from '../stores/configStore';
 
@@ -68,6 +69,7 @@ const navigation: NavItem[] = [
 // Admin navigation (superuser only)
 const adminNavigation: NavItem[] = [
   { name: 'Panel Admin', path: '/admin', icon: ShieldCheck },
+  { name: 'Documentos', path: '/documents', icon: FolderOpen },
 ];
 
 export default function Layout({ children }: LayoutProps) {
