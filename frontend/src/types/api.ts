@@ -575,6 +575,7 @@ export interface ExpenseListItem {
   expense_date: string;
   due_date: string | null;
   vendor: string | null;
+  notes: string | null;
   is_recurring: boolean;
   balance: number;
 }
@@ -597,6 +598,7 @@ export interface ExpensePayment {
   amount: number;
   payment_method: AccPaymentMethod;
   notes?: string;
+  use_fallback?: boolean;
 }
 
 export interface DailyCashRegister {

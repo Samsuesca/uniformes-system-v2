@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from app.api.dependencies import DatabaseSession, CurrentUser, require_any_school_admin
 from app.models.user import UserRole
 from app.models.accounting import (
-    TransactionType, ExpenseCategory, AccountType,
+    TransactionType, ExpenseCategory, AccountType, AccPaymentMethod,
     BalanceAccount, BalanceEntry, Expense, AccountsPayable, AccountsReceivable, Transaction
 )
 from app.models.school import School
@@ -802,6 +802,72 @@ async def get_expenses_summary_by_category(
     return summaries
 
 
+@router.post(
+    "/expenses/check-balance",
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def check_expense_balance(
+    amount: Decimal = Query(..., gt=0, description="Monto a verificar"),
+    payment_method: AccPaymentMethod = Query(..., description="Método de pago"),
+    db: DatabaseSession = None
+):
+    """
+    Verifica si hay fondos suficientes para pagar un gasto.
+
+    Si el pago es en efectivo y Caja Menor no alcanza, informa sobre
+    la disponibilidad de Caja Mayor como fallback.
+
+    Returns:
+        can_pay: bool - Si se puede realizar el pago
+        source: str - Cuenta que se usaría (caja_menor, nequi, banco)
+        source_balance: Decimal - Balance disponible en la cuenta
+        fallback_available: bool - Si hay fallback disponible
+        fallback_source: str | None - Cuenta de fallback (caja_mayor)
+        fallback_balance: Decimal | None - Balance del fallback
+    """
+    from app.services.balance_integration import BalanceIntegrationService, PAYMENT_METHOD_TO_ACCOUNT
+
+    balance_service = BalanceIntegrationService(db)
+
+    # Determinar cuenta principal
+    account_key = PAYMENT_METHOD_TO_ACCOUNT.get(payment_method)
+    if not account_key:
+        return {
+            "can_pay": False,
+            "source": None,
+            "source_balance": Decimal("0"),
+            "fallback_available": False,
+            "fallback_source": None,
+            "fallback_balance": None,
+            "message": "Método de pago no requiere verificación de fondos"
+        }
+
+    # Obtener balance de la cuenta principal
+    source_balance = await balance_service.get_account_balance(account_key) or Decimal("0")
+
+    # Verificar si alcanza
+    can_pay = source_balance >= amount
+
+    # Si es CASH y no alcanza, verificar Caja Mayor como fallback
+    fallback_available = False
+    fallback_source = None
+    fallback_balance = None
+
+    if payment_method == AccPaymentMethod.CASH and not can_pay:
+        fallback_source = "caja_mayor"
+        fallback_balance = await balance_service.get_account_balance("caja_mayor") or Decimal("0")
+        fallback_available = fallback_balance >= amount
+
+    return {
+        "can_pay": can_pay,
+        "source": account_key,
+        "source_balance": source_balance,
+        "fallback_available": fallback_available,
+        "fallback_source": fallback_source,
+        "fallback_balance": fallback_balance
+    }
+
+
 @router.get(
     "/expenses/{expense_id}",
     response_model=GlobalExpenseResponse,
@@ -913,12 +979,21 @@ async def pay_global_expense(
     balance_service = BalanceIntegrationService(db)
 
     try:
-        await balance_service.record_expense_payment(
-            amount=payment.amount,
-            payment_method=payment.payment_method,
-            description=f"Pago gasto: {expense.description}",
-            created_by=current_user.id
-        )
+        # Si use_fallback es True y el pago es en efectivo, usar Caja Mayor directamente
+        if payment.use_fallback and payment.payment_method == AccPaymentMethod.CASH:
+            await balance_service.record_expense_payment_from_account(
+                amount=payment.amount,
+                account_key="caja_mayor",
+                description=f"Pago gasto (desde Caja Mayor): {expense.description}",
+                created_by=current_user.id
+            )
+        else:
+            await balance_service.record_expense_payment(
+                amount=payment.amount,
+                payment_method=payment.payment_method,
+                description=f"Pago gasto: {expense.description}",
+                created_by=current_user.id
+            )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1501,7 +1576,7 @@ async def pay_global_receivable(
     from app.services.balance_integration import BalanceIntegrationService
     balance_service = BalanceIntegrationService(db)
 
-    await balance_service.record_income_payment(
+    await balance_service.record_income(
         amount=payment.amount,
         payment_method=payment.payment_method,
         description=f"Cobro CxC: {receivable.description}",

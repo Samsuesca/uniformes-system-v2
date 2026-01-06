@@ -153,6 +153,10 @@ class ExpensePayment(BaseSchema):
     amount: Decimal = Field(..., gt=0)
     payment_method: AccPaymentMethod
     notes: str | None = None
+    use_fallback: bool = Field(
+        default=False,
+        description="Si True y pago en efectivo, usa Caja Mayor cuando Caja Menor no alcanza"
+    )
 
 
 class ExpenseInDB(ExpenseBase, SchoolIsolatedSchema, IDModelSchema):

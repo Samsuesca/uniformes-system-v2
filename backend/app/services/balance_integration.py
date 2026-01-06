@@ -653,3 +653,103 @@ class BalanceIntegrationService:
         await self.db.flush()
 
         return entry
+
+    async def get_account_balance(self, account_key: str) -> Decimal | None:
+        """
+        Obtiene el balance de una cuenta por su clave.
+
+        Args:
+            account_key: Clave de la cuenta (caja_menor, caja_mayor, nequi, banco)
+
+        Returns:
+            Balance actual o None si no existe
+        """
+        # Resolver alias
+        account_key = LEGACY_ACCOUNT_ALIASES.get(account_key, account_key)
+
+        account_info = DEFAULT_ACCOUNTS.get(account_key)
+        if not account_info:
+            return None
+
+        result = await self.db.execute(
+            select(BalanceAccount).where(
+                BalanceAccount.code == account_info["code"],
+                BalanceAccount.school_id.is_(None)
+            )
+        )
+        account = result.scalar_one_or_none()
+
+        return account.balance if account else None
+
+    async def record_expense_payment_from_account(
+        self,
+        amount: Decimal,
+        account_key: str,
+        description: str,
+        created_by: UUID | None = None,
+        allow_negative: bool = False
+    ) -> BalanceEntry | None:
+        """
+        Registra el pago de un gasto desde una cuenta específica.
+
+        A diferencia de record_expense_payment que usa el mapeo de payment_method,
+        este método permite especificar directamente la cuenta (ej: caja_mayor).
+
+        Args:
+            amount: Monto del pago
+            account_key: Clave de la cuenta (caja_menor, caja_mayor, nequi, banco)
+            description: Descripción del pago
+            created_by: ID del usuario
+            allow_negative: Si es True, permite balance negativo (default False)
+
+        Returns:
+            BalanceEntry creado, o None si la cuenta no existe
+
+        Raises:
+            ValueError: Si no hay fondos suficientes y allow_negative es False
+        """
+        # Resolver alias
+        account_key = LEGACY_ACCOUNT_ALIASES.get(account_key, account_key)
+
+        account_info = DEFAULT_ACCOUNTS.get(account_key)
+        if not account_info:
+            return None
+
+        # Obtener cuenta por código
+        result = await self.db.execute(
+            select(BalanceAccount).where(
+                BalanceAccount.code == account_info["code"],
+                BalanceAccount.school_id.is_(None)
+            )
+        )
+        account = result.scalar_one_or_none()
+
+        if not account:
+            return None
+
+        # Validar fondos suficientes
+        new_balance = account.balance - amount
+        if new_balance < 0 and not allow_negative:
+            raise ValueError(
+                f"Fondos insuficientes en {account.name}. "
+                f"Disponible: ${account.balance:,.2f}, Requerido: ${amount:,.2f}"
+            )
+
+        # Restar del balance (gasto = dinero sale)
+        account.balance = new_balance
+
+        # Crear BalanceEntry para auditoría
+        entry = BalanceEntry(
+            account_id=account.id,
+            school_id=None,
+            entry_date=date.today(),
+            amount=-amount,
+            balance_after=new_balance,
+            description=description,
+            created_by=created_by
+        )
+        self.db.add(entry)
+
+        await self.db.flush()
+
+        return entry

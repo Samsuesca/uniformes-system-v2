@@ -75,8 +75,8 @@ export const documentService = {
   }): Promise<BusinessDocumentListItem[]> {
     const searchParams = new URLSearchParams();
 
-    if (params?.folder_id !== undefined) {
-      searchParams.append('folder_id', params.folder_id || '');
+    if (params?.folder_id) {
+      searchParams.append('folder_id', params.folder_id);
     }
     if (params?.search) {
       searchParams.append('search', params.search);

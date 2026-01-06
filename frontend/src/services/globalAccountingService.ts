@@ -20,7 +20,8 @@ import type {
   AccountsPayablePayment,
   AccountsPayableListItem,
   AccountType,
-  ExpenseCategory
+  ExpenseCategory,
+  AccPaymentMethod
 } from '../types/api';
 
 const BASE_URL = '/global/accounting';
@@ -387,6 +388,34 @@ export const payGlobalExpense = async (
   return response.data;
 };
 
+// Check if expense can be paid (validates balance)
+export interface CheckBalanceResponse {
+  can_pay: boolean;
+  source: string | null;
+  source_balance: number;
+  fallback_available: boolean;
+  fallback_source: string | null;
+  fallback_balance: number | null;
+  message?: string;
+}
+
+export const checkExpenseBalance = async (
+  amount: number,
+  paymentMethod: AccPaymentMethod
+): Promise<CheckBalanceResponse> => {
+  const response = await apiClient.post<CheckBalanceResponse>(
+    `${BASE_URL}/expenses/check-balance`,
+    null,
+    {
+      params: {
+        amount,
+        payment_method: paymentMethod
+      }
+    }
+  );
+  return response.data;
+};
+
 // ============================================
 // Global Accounts Payable (Cuentas por Pagar)
 // ============================================
@@ -706,6 +735,7 @@ export const globalAccountingService = {
   createGlobalExpense,
   updateGlobalExpense,
   payGlobalExpense,
+  checkExpenseBalance,
   // Payables
   getGlobalPayables,
   getPendingGlobalPayables,

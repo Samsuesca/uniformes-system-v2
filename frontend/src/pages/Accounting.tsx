@@ -44,6 +44,7 @@ interface GlobalDashboardSummary {
   total_expenses: number;
   cash_balance: number;
   expenses_pending: number;
+  expenses_paid: number;
   transaction_count: number;
 }
 
@@ -109,6 +110,19 @@ export default function Accounting() {
   const [showEditBalanceModal, setShowEditBalanceModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<'caja_menor' | 'caja_mayor' | 'nequi' | 'banco' | null>(null);
   const [newBalanceValue, setNewBalanceValue] = useState<number>(0);
+
+  // Edit Expense states
+  const [showEditExpenseModal, setShowEditExpenseModal] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<ExpenseListItem | null>(null);
+
+  // Cash Fallback Modal states (when Caja Menor doesn't have enough funds)
+  const [showCashFallbackModal, setShowCashFallbackModal] = useState(false);
+  const [pendingPaymentData, setPendingPaymentData] = useState<{
+    expense: ExpenseListItem;
+    amount: number;
+    sourceBalance: number;
+    fallbackBalance: number;
+  } | null>(null);
 
   // Fixed Assets / Liabilities Management Modal states
   const [showAssetsModal, setShowAssetsModal] = useState(false);
@@ -281,15 +295,48 @@ export default function Accounting() {
     }
   };
 
-  const handlePayExpense = async () => {
+  const handlePayExpense = async (useFallback: boolean = false) => {
     if (!selectedExpense || paymentAmount <= 0) return;
     try {
       setSubmitting(true);
       setModalError(null);
-      // Use global accounting service for expense payment
+
+      // For cash payments, check balance first (unless using fallback)
+      if (paymentMethod === 'cash' && !useFallback) {
+        const balanceCheck = await globalAccountingService.checkExpenseBalance(paymentAmount, paymentMethod);
+
+        if (!balanceCheck.can_pay) {
+          // Not enough in Caja Menor - check if fallback available
+          if (balanceCheck.fallback_available) {
+            // Show fallback modal
+            setPendingPaymentData({
+              expense: selectedExpense,
+              amount: paymentAmount,
+              sourceBalance: balanceCheck.source_balance,
+              fallbackBalance: balanceCheck.fallback_balance || 0
+            });
+            setShowPaymentModal(false);
+            setShowCashFallbackModal(true);
+            setSubmitting(false);
+            return;
+          } else {
+            // Neither Caja Menor nor Caja Mayor have enough
+            setModalError(
+              `Fondos insuficientes. Caja Menor: ${formatCurrency(balanceCheck.source_balance)}, ` +
+              `Caja Mayor: ${formatCurrency(balanceCheck.fallback_balance || 0)}. ` +
+              `Requerido: ${formatCurrency(paymentAmount)}`
+            );
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+
+      // Proceed with payment
       await globalAccountingService.payGlobalExpense(selectedExpense.id, {
         amount: paymentAmount,
-        payment_method: paymentMethod
+        payment_method: paymentMethod,
+        use_fallback: useFallback
       });
       setShowPaymentModal(false);
       setSelectedExpense(null);
@@ -298,8 +345,81 @@ export default function Accounting() {
       await loadData();
     } catch (err: any) {
       console.error('Error paying expense:', err);
-      // Show error in modal instead of global error
       setModalError(getErrorMessage(err, 'Error al registrar pago'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle payment from Caja Mayor (fallback)
+  const handlePayExpenseFromCajaMayor = async () => {
+    if (!pendingPaymentData) return;
+    try {
+      setSubmitting(true);
+      setSelectedExpense(pendingPaymentData.expense);
+      setPaymentAmount(pendingPaymentData.amount);
+
+      await globalAccountingService.payGlobalExpense(pendingPaymentData.expense.id, {
+        amount: pendingPaymentData.amount,
+        payment_method: 'cash',
+        use_fallback: true
+      });
+
+      setShowCashFallbackModal(false);
+      setPendingPaymentData(null);
+      setSelectedExpense(null);
+      setPaymentAmount(0);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error paying expense from Caja Mayor:', err);
+      setModalError(getErrorMessage(err, 'Error al pagar desde Caja Mayor'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle opening edit expense modal
+  const handleOpenEditExpense = (expense: ExpenseListItem) => {
+    // Check if expense has partial payments
+    if (expense.amount_paid > 0) {
+      setModalError('No se puede editar un gasto con pagos parciales');
+      return;
+    }
+    setEditingExpense(expense);
+    setExpenseForm({
+      category: expense.category,
+      description: expense.description,
+      amount: expense.amount,
+      expense_date: expense.expense_date,
+      vendor: expense.vendor || '',
+      notes: expense.notes || '',
+      due_date: expense.due_date || undefined
+    });
+    setShowEditExpenseModal(true);
+  };
+
+  // Handle updating expense
+  const handleUpdateExpense = async () => {
+    if (!editingExpense || !expenseForm.description || !expenseForm.amount) return;
+    try {
+      setSubmitting(true);
+      setModalError(null);
+      await globalAccountingService.updateGlobalExpense(editingExpense.id, {
+        category: expenseForm.category,
+        description: expenseForm.description,
+        amount: expenseForm.amount,
+        expense_date: expenseForm.expense_date,
+        vendor: expenseForm.vendor,
+        notes: expenseForm.notes,
+        due_date: expenseForm.due_date
+      });
+      setShowEditExpenseModal(false);
+      setEditingExpense(null);
+      resetExpenseForm();
+      await loadData();
+    } catch (err: any) {
+      console.error('Error updating expense:', err);
+      setModalError(getErrorMessage(err, 'Error al actualizar gasto'));
     } finally {
       setSubmitting(false);
     }
@@ -966,16 +1086,27 @@ export default function Accounting() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-red-600">{formatCurrency(expense.balance)}</p>
-                      <button
-                        onClick={() => {
-                          setSelectedExpense(expense);
-                          setPaymentAmount(expense.balance);
-                          setShowPaymentModal(true);
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        Pagar
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        {expense.amount_paid === 0 && (
+                          <button
+                            onClick={() => handleOpenEditExpense(expense)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                            title="Editar gasto"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedExpense(expense);
+                            setPaymentAmount(expense.balance);
+                            setShowPaymentModal(true);
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Pagar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1712,12 +1843,173 @@ export default function Accounting() {
                 Cancelar
               </button>
               <button
-                onClick={handlePayExpense}
+                onClick={() => handlePayExpense(false)}
                 disabled={submitting || paymentAmount <= 0 || paymentAmount > Number(selectedExpense.balance)}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 Registrar Pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Modal */}
+      {showEditExpenseModal && editingExpense && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold">Editar Gasto</h3>
+              <button onClick={() => { setShowEditExpenseModal(false); setEditingExpense(null); setModalError(null); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                <select
+                  value={expenseForm.category || 'other'}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value as ExpenseCategory })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {EXPENSE_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>{getExpenseCategoryLabel(cat)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción *</label>
+                <input
+                  type="text"
+                  value={expenseForm.description || ''}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                  <input
+                    type="number"
+                    value={expenseForm.amount || ''}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
+                  <DatePicker
+                    value={expenseForm.expense_date || ''}
+                    onChange={(value) => setExpenseForm({ ...expenseForm, expense_date: value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                  <input
+                    type="text"
+                    value={expenseForm.vendor || ''}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha vencimiento</label>
+                  <DatePicker
+                    value={expenseForm.due_date || ''}
+                    onChange={(value) => setExpenseForm({ ...expenseForm, due_date: value })}
+                    minDate={expenseForm.expense_date}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                <textarea
+                  value={expenseForm.notes || ''}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={2}
+                />
+              </div>
+              {modalError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-700">{modalError}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button onClick={() => { setShowEditExpenseModal(false); setEditingExpense(null); setModalError(null); }} className="px-4 py-2 text-gray-600 hover:text-gray-800">
+                Cancelar
+              </button>
+              <button
+                onClick={handleUpdateExpense}
+                disabled={submitting || !expenseForm.description || !expenseForm.amount}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Fallback Modal (Caja Menor insufficient, use Caja Mayor?) */}
+      {showCashFallbackModal && pendingPaymentData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold text-orange-600">Fondos Insuficientes</h3>
+              <button onClick={() => { setShowCashFallbackModal(false); setPendingPaymentData(null); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-orange-50 rounded-lg p-4">
+                <p className="text-sm text-gray-600 mb-2">Gasto a pagar:</p>
+                <p className="font-medium">{pendingPaymentData.expense.description}</p>
+                <p className="text-lg font-bold text-orange-600 mt-2">{formatCurrency(pendingPaymentData.amount)}</p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Caja Menor</p>
+                    <p className="text-xs text-gray-500">Saldo insuficiente</p>
+                  </div>
+                  <p className="font-semibold text-red-600">{formatCurrency(pendingPaymentData.sourceBalance)}</p>
+                </div>
+
+                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Caja Mayor</p>
+                    <p className="text-xs text-gray-500">Disponible</p>
+                  </div>
+                  <p className="font-semibold text-green-600">{formatCurrency(pendingPaymentData.fallbackBalance)}</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-600 text-center">
+                ¿Deseas pagar este gasto desde <strong>Caja Mayor</strong>?
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button onClick={() => { setShowCashFallbackModal(false); setPendingPaymentData(null); }} className="px-4 py-2 text-gray-600 hover:text-gray-800">
+                Cancelar
+              </button>
+              <button
+                onClick={handlePayExpenseFromCajaMayor}
+                disabled={submitting}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                Usar Caja Mayor
               </button>
             </div>
           </div>
