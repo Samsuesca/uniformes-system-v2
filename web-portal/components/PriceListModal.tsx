@@ -5,7 +5,6 @@ import { X, Printer, FileText, Download, Loader2 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import type { Product, School } from '@/lib/api';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface PriceListModalProps {
   isOpen: boolean;
@@ -196,52 +195,275 @@ export default function PriceListModal({
     !t.baseType.toLowerCase().includes('yomber')
   );
 
+  // Generar PDF directamente con jsPDF (sin html2canvas)
+  const generatePDF = (): jsPDF => {
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter'
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const margin = 15;
+    let y = 20;
+
+    // Header
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.text('CONSUELO RIOS', pageWidth / 2, y, { align: 'center' });
+    y += 7;
+
+    pdf.setFontSize(12);
+    pdf.text('Confección y Venta de Uniformes', pageWidth / 2, y, { align: 'center' });
+    y += 6;
+
+    pdf.setFontSize(14);
+    pdf.text(`${new Date().getFullYear()}`, pageWidth / 2, y, { align: 'center' });
+    y += 8;
+
+    pdf.setFontSize(11);
+    pdf.text(school.name.toUpperCase(), pageWidth / 2, y, { align: 'center' });
+    y += 5;
+
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('TELÉFONO: 3105997451', pageWidth / 2, y, { align: 'center' });
+    y += 3;
+
+    // Línea separadora
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    // Función para dibujar una tabla
+    const drawTable = (title: string, prices: { size: string; price: number }[], startX: number, startY: number, width: number): number => {
+      const rowHeight = 5;
+      const headerHeight = 6;
+      let currentY = startY;
+
+      // Título de la tabla
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(startX, currentY, width, headerHeight, 'F');
+      pdf.setDrawColor(50, 50, 50);
+      pdf.rect(startX, currentY, width, headerHeight, 'S');
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text(title.toUpperCase(), startX + width / 2, currentY + 4, { align: 'center' });
+      currentY += headerHeight;
+
+      // Header de columnas
+      pdf.setFillColor(250, 250, 250);
+      pdf.rect(startX, currentY, width, rowHeight, 'F');
+      pdf.rect(startX, currentY, width, rowHeight, 'S');
+
+      pdf.setFontSize(8);
+      pdf.text('TALLA', startX + 3, currentY + 3.5);
+      pdf.text('PRECIO', startX + width - 3, currentY + 3.5, { align: 'right' });
+      currentY += rowHeight;
+
+      // Filas de datos
+      pdf.setFont('helvetica', 'normal');
+      prices.forEach((item, idx) => {
+        if (idx % 2 === 0) {
+          pdf.setFillColor(255, 255, 255);
+        } else {
+          pdf.setFillColor(248, 248, 248);
+        }
+        pdf.rect(startX, currentY, width, rowHeight, 'F');
+        pdf.rect(startX, currentY, width, rowHeight, 'S');
+
+        pdf.text(item.size, startX + 3, currentY + 3.5);
+        pdf.text(`$ ${formatNumber(item.price)}`, startX + width - 3, currentY + 3.5, { align: 'right' });
+        currentY += rowHeight;
+      });
+
+      return currentY;
+    };
+
+    // Función para dibujar tabla consolidada (múltiples colores)
+    const drawConsolidatedTable = (data: ConsolidatedTableData, startX: number, startY: number, width: number): number => {
+      if (data.variants.length === 1 && !data.variants[0].color) {
+        return drawTable(data.baseType, data.variants[0].prices, startX, startY, width);
+      }
+
+      const rowHeight = 5;
+      const headerHeight = 6;
+      let currentY = startY;
+
+      const colors = data.variants.map(v => v.color).filter(c => c);
+      const allSizes = new Set<string>();
+      data.variants.forEach(v => v.prices.forEach(p => allSizes.add(p.size)));
+      const sortedSizes = Array.from(allSizes).sort((a, b) => {
+        const numA = parseInt(a);
+        const numB = parseInt(b);
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return a.localeCompare(b);
+      });
+
+      // Título
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(startX, currentY, width, headerHeight, 'F');
+      pdf.setDrawColor(50, 50, 50);
+      pdf.rect(startX, currentY, width, headerHeight, 'S');
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text(data.baseType.toUpperCase(), startX + width / 2, currentY + 4, { align: 'center' });
+      currentY += headerHeight;
+
+      // Header con colores
+      const colWidth = (width - 15) / colors.length;
+      pdf.setFillColor(250, 250, 250);
+      pdf.rect(startX, currentY, width, rowHeight, 'F');
+      pdf.rect(startX, currentY, width, rowHeight, 'S');
+
+      pdf.setFontSize(7);
+      pdf.text('TALLA', startX + 3, currentY + 3.5);
+      colors.forEach((color, idx) => {
+        pdf.text(color.toUpperCase(), startX + 15 + (idx * colWidth) + colWidth / 2, currentY + 3.5, { align: 'center' });
+      });
+      currentY += rowHeight;
+
+      // Crear mapa de precios
+      const priceMap = new Map<string, Map<string, number>>();
+      data.variants.forEach(v => {
+        const colorPrices = new Map<string, number>();
+        v.prices.forEach(p => colorPrices.set(p.size, p.price));
+        priceMap.set(v.color, colorPrices);
+      });
+
+      // Filas
+      pdf.setFont('helvetica', 'normal');
+      sortedSizes.forEach((size, idx) => {
+        if (idx % 2 === 0) {
+          pdf.setFillColor(255, 255, 255);
+        } else {
+          pdf.setFillColor(248, 248, 248);
+        }
+        pdf.rect(startX, currentY, width, rowHeight, 'F');
+        pdf.rect(startX, currentY, width, rowHeight, 'S');
+
+        pdf.text(size, startX + 3, currentY + 3.5);
+        colors.forEach((color, colIdx) => {
+          const price = priceMap.get(color)?.get(size);
+          const text = price ? `$${formatNumber(price)}` : '-';
+          pdf.text(text, startX + 15 + (colIdx * colWidth) + colWidth / 2, currentY + 3.5, { align: 'center' });
+        });
+        currentY += rowHeight;
+      });
+
+      return currentY;
+    };
+
+    // Calcular disposición de tablas (3 columnas)
+    const tableWidth = (pageWidth - margin * 2 - 10) / 3;
+    let currentX = margin;
+    let currentY = y;
+    let maxY = y;
+    let columnIndex = 0;
+
+    // Obtener todas las tablas a dibujar
+    const allTables: { type: 'simple' | 'consolidated'; data: PriceTableData | ConsolidatedTableData }[] = [];
+
+    if (hasMultipleColors) {
+      consolidatedCamisetas.forEach(t => allTables.push({ type: 'consolidated', data: t }));
+      consolidatedSudaderas.forEach(t => allTables.push({ type: 'consolidated', data: t }));
+      consolidatedChompas.forEach(t => allTables.push({ type: 'consolidated', data: t }));
+      consolidatedYomber.forEach(t => allTables.push({ type: 'consolidated', data: t }));
+      consolidatedOtros.forEach(t => allTables.push({ type: 'consolidated', data: t }));
+    } else {
+      camisetas.forEach(t => allTables.push({ type: 'simple', data: t }));
+      sudaderas.forEach(t => allTables.push({ type: 'simple', data: t }));
+      chompas.forEach(t => allTables.push({ type: 'simple', data: t }));
+      yomber.forEach(t => allTables.push({ type: 'simple', data: t }));
+      otros.forEach(t => allTables.push({ type: 'simple', data: t }));
+    }
+
+    // Dibujar tablas del colegio
+    allTables.forEach((table) => {
+      let tableEndY: number;
+
+      if (table.type === 'consolidated') {
+        tableEndY = drawConsolidatedTable(table.data as ConsolidatedTableData, currentX, currentY, tableWidth);
+      } else {
+        const simpleData = table.data as PriceTableData;
+        tableEndY = drawTable(simpleData.name, simpleData.prices, currentX, currentY, tableWidth);
+      }
+
+      maxY = Math.max(maxY, tableEndY);
+      columnIndex++;
+
+      if (columnIndex >= 3) {
+        columnIndex = 0;
+        currentX = margin;
+        currentY = maxY + 5;
+        maxY = currentY;
+      } else {
+        currentX += tableWidth + 5;
+      }
+    });
+
+    // Productos Globales
+    if (globalTables.length > 0) {
+      y = maxY + 10;
+
+      // Verificar si necesitamos nueva página
+      if (y > pdf.internal.pageSize.getHeight() - 50) {
+        pdf.addPage();
+        y = 20;
+      }
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text('PRODUCTOS ADICIONALES (Disponibles para todos los colegios)', pageWidth / 2, y, { align: 'center' });
+      y += 6;
+
+      const smallTableWidth = (pageWidth - margin * 2 - 15) / 4;
+      currentX = margin;
+      currentY = y;
+      maxY = y;
+      columnIndex = 0;
+
+      globalTables.forEach((table) => {
+        const tableEndY = drawTable(table.name, table.prices, currentX, currentY, smallTableWidth);
+        maxY = Math.max(maxY, tableEndY);
+        columnIndex++;
+
+        if (columnIndex >= 4) {
+          columnIndex = 0;
+          currentX = margin;
+          currentY = maxY + 3;
+          maxY = currentY;
+        } else {
+          currentX += smallTableWidth + 5;
+        }
+      });
+    }
+
+    // Footer
+    y = Math.max(maxY, y) + 10;
+    if (y > pdf.internal.pageSize.getHeight() - 20) {
+      y = pdf.internal.pageSize.getHeight() - 15;
+    }
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(128, 128, 128);
+    pdf.text('* Precios sujetos a cambios sin previo aviso', pageWidth / 2, y, { align: 'center' });
+    y += 4;
+    pdf.text('www.uniformesconsuelorios.com', pageWidth / 2, y, { align: 'center' });
+
+    return pdf;
+  };
+
   const handleGeneratePDF = async () => {
-    if (!printRef.current || isGenerating) return;
+    if (isGenerating) return;
 
     setIsGenerating(true);
 
     try {
-      const element = printRef.current;
-
-      // Capturar el contenido como imagen
-      const canvas = await html2canvas(element, {
-        scale: 2, // Mayor resolución
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-
-      // Crear PDF tamaño carta
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'letter'
-      });
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      // Calcular dimensiones manteniendo proporción
-      const imgWidth = pageWidth - 20; // 10mm margen cada lado
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      // Si la imagen es más alta que la página, escalar
-      let finalWidth = imgWidth;
-      let finalHeight = imgHeight;
-
-      if (imgHeight > pageHeight - 20) {
-        finalHeight = pageHeight - 20;
-        finalWidth = (canvas.width * finalHeight) / canvas.height;
-      }
-
-      // Centrar en la página
-      const x = (pageWidth - finalWidth) / 2;
-      const y = 10;
-
-      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+      const pdf = generatePDF();
 
       // Generar nombre del archivo
       const schoolSlug = school.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -258,48 +480,12 @@ export default function PriceListModal({
   };
 
   const handlePrint = async () => {
-    if (!printRef.current || isGenerating) return;
+    if (isGenerating) return;
 
     setIsGenerating(true);
 
     try {
-      const element = printRef.current;
-
-      // Capturar el contenido como imagen
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-
-      // Crear PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'letter'
-      });
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgWidth = pageWidth - 20;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      let finalWidth = imgWidth;
-      let finalHeight = imgHeight;
-
-      if (imgHeight > pageHeight - 20) {
-        finalHeight = pageHeight - 20;
-        finalWidth = (canvas.width * finalHeight) / canvas.height;
-      }
-
-      const x = (pageWidth - finalWidth) / 2;
-      const y = 10;
-
-      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+      const pdf = generatePDF();
 
       // Abrir en nueva ventana para imprimir
       const pdfBlob = pdf.output('blob');
@@ -447,19 +633,19 @@ export default function PriceListModal({
       {/* Modal */}
       <div className="fixed inset-4 md:inset-8 lg:inset-12 bg-white rounded-xl z-50 flex flex-col overflow-hidden print:fixed print:inset-0 print:rounded-none">
         {/* Header - No se imprime */}
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-brand-600 to-brand-700 print:hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-amber-600 to-amber-700 print:hidden">
           <div className="flex items-center gap-3 text-white">
             <FileText className="w-6 h-6" />
             <div>
               <h2 className="text-xl font-bold">Lista de Precios</h2>
-              <p className="text-sm text-brand-100">{school.name}</p>
+              <p className="text-sm text-amber-100">{school.name}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleGeneratePDF}
               disabled={isGenerating}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-brand-700 rounded-lg font-medium hover:bg-brand-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-white text-amber-700 rounded-lg font-medium hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -471,7 +657,7 @@ export default function PriceListModal({
             <button
               onClick={handlePrint}
               disabled={isGenerating}
-              className="flex items-center gap-2 px-4 py-2 bg-brand-100 text-brand-700 rounded-lg font-medium hover:bg-brand-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg font-medium hover:bg-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Printer className="w-5 h-5" />
               Imprimir
