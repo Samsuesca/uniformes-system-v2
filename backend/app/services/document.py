@@ -256,7 +256,13 @@ class BusinessDocumentService(BaseService[BusinessDocument]):
         # Check extension matches MIME type
         ext = Path(filename).suffix.lower()
         expected_ext = ALLOWED_MIME_TYPES[content_type]
-        if ext not in [expected_ext, '.jpeg', '.jpg']:  # Allow both .jpg and .jpeg
+
+        # For images, allow both .jpg and .jpeg
+        valid_extensions = [expected_ext]
+        if content_type in ['image/jpeg', 'image/jpg']:
+            valid_extensions = ['.jpg', '.jpeg']
+
+        if ext not in valid_extensions:
             return f"Extensión de archivo no coincide con el tipo: {ext}"
 
         return None
