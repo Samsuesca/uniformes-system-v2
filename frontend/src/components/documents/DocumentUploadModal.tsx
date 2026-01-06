@@ -115,7 +115,13 @@ export default function DocumentUploadModal({
       });
       handleClose();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al subir el archivo');
+      const detail = err.response?.data?.detail;
+      const errorMessage = typeof detail === 'string'
+        ? detail
+        : typeof detail === 'object' && detail?.msg
+          ? detail.msg
+          : 'Error al subir el archivo';
+      setError(errorMessage);
     }
   };
 
