@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { productService } from '../services/productService';
+import { extractErrorMessage } from '../utils/api-client';
 import type { GlobalProduct, GlobalGarmentType } from '../types/api';
 
 interface GlobalProductModalProps {
@@ -81,21 +82,42 @@ export default function GlobalProductModal({ isOpen, onClose, onSuccess, product
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
+    // === VALIDACIONES FRONTEND ===
+    if (!formData.garment_type_id) {
+      setError('⚠️ Selecciona un tipo de prenda global');
+      return;
+    }
+    if (!formData.size?.trim()) {
+      setError('⚠️ La talla es requerida');
+      return;
+    }
+    const price = parseFloat(formData.price);
+    if (isNaN(price) || price <= 0) {
+      setError('⚠️ El precio debe ser un número mayor a 0');
+      return;
+    }
+    const cost = formData.cost.trim() ? parseFloat(formData.cost) : null;
+    if (cost !== null && (isNaN(cost) || cost < 0)) {
+      setError('⚠️ El costo debe ser un número válido');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      const data: any = {
+      const data: Record<string, unknown> = {
         garment_type_id: formData.garment_type_id,
         size: formData.size,
-        price: parseFloat(formData.price),
+        price,
       };
 
       // Optional fields
       if (formData.name.trim()) data.name = formData.name.trim();
       if (formData.color.trim()) data.color = formData.color.trim();
       if (formData.gender) data.gender = formData.gender;
-      if (formData.cost.trim()) data.cost = parseFloat(formData.cost);
+      if (cost !== null) data.cost = cost;
       if (formData.description.trim()) data.description = formData.description.trim();
       if (formData.image_url.trim()) data.image_url = formData.image_url.trim();
       if (product) data.is_active = formData.is_active;
@@ -110,9 +132,9 @@ export default function GlobalProductModal({ isOpen, onClose, onSuccess, product
 
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving global product:', err);
-      setError(err.response?.data?.detail || 'Error al guardar producto global');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -161,7 +183,7 @@ export default function GlobalProductModal({ isOpen, onClose, onSuccess, product
             {/* Error Message */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700 whitespace-pre-line">{error}</p>
               </div>
             )}
 

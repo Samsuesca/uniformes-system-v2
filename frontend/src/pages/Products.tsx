@@ -16,6 +16,7 @@ import {
   AlertTriangle, PackageX, TrendingUp, BarChart3, ChevronDown, Tag, Image as ImageIcon
 } from 'lucide-react';
 import { productService } from '../services/productService';
+import { extractErrorMessage } from '../utils/api-client';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
@@ -132,9 +133,9 @@ export default function Products() {
         limit: 500
       });
       setProducts(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading products:', err);
-      setError(err.response?.data?.detail || 'Error al cargar productos');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -275,9 +276,9 @@ export default function Products() {
       }
 
       handleCloseInventoryModal();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error adjusting inventory:', err);
-      setError(err.response?.data?.detail || 'Error al ajustar inventario');
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

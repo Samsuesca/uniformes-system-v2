@@ -211,8 +211,9 @@ export default function SaleModal({
   };
 
   // Handler for ProductSelectorModal selection
-  const handleProductSelectorSelect = (product: Product | GlobalProduct, quantity?: number) => {
-    const isGlobal = 'inventory_quantity' in product && !('school_id' in product);
+  const handleProductSelectorSelect = (product: Product | GlobalProduct, quantity?: number, isGlobalParam?: boolean) => {
+    // Use explicit isGlobal param if provided, otherwise detect from product structure
+    const isGlobal = isGlobalParam ?? ('inventory_quantity' in product && !('school_id' in product));
     const schoolId = isGlobal ? selectedSchoolId : (product as Product).school_id;
     const schoolName = getSchoolName(schoolId);
 
@@ -982,6 +983,8 @@ export default function SaleModal({
         schoolId={selectedSchoolId}
         filterByStock={formData.is_historical ? 'all' : 'with_stock'}
         excludeProductIds={items.map(i => i.product_id)}
+        allowGlobalProducts={true}
+        initialProductSource={productSource}
         title="Seleccionar Producto"
         emptyMessage="No se encontraron productos disponibles"
       />

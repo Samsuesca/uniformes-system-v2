@@ -242,3 +242,10 @@ site/
 # ============================================
 # Local development files
 *.tex
+
+# ============================================
+# TypeScript compiled output in src/
+# ============================================
+# Ignore JS files compiled from TS in frontend src
+frontend/src/**/*.js
+!frontend/src/**/*.config.js

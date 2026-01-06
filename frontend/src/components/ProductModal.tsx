@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { productService } from '../services/productService';
+import { extractErrorMessage } from '../utils/api-client';
 import type { Product, GarmentType } from '../types/api';
 
 interface ProductModalProps {
@@ -71,13 +72,37 @@ export default function ProductModal({ isOpen, onClose, onSuccess, schoolId, pro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+
+    // === VALIDACIONES FRONTEND ===
+    if (!schoolId) {
+      setError('⚠️ Debes seleccionar un colegio primero');
+      return;
+    }
+    if (!formData.garment_type_id) {
+      setError('⚠️ Selecciona un tipo de prenda');
+      return;
+    }
+    if (!formData.name?.trim()) {
+      setError('⚠️ El nombre del producto es requerido');
+      return;
+    }
+    if (!formData.size?.trim()) {
+      setError('⚠️ La talla es requerida');
+      return;
+    }
+    const price = parseFloat(formData.price);
+    if (isNaN(price) || price <= 0) {
+      setError('⚠️ El precio debe ser un número mayor a 0');
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const data = {
         ...formData,
-        price: parseFloat(formData.price),
+        price,
       };
 
       if (product) {
@@ -90,9 +115,9 @@ export default function ProductModal({ isOpen, onClose, onSuccess, schoolId, pro
 
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving product:', err);
-      setError(err.response?.data?.detail || 'Error al guardar producto');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -136,7 +161,7 @@ export default function ProductModal({ isOpen, onClose, onSuccess, schoolId, pro
             {/* Error Message */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700 whitespace-pre-line">{error}</p>
               </div>
             )}
 

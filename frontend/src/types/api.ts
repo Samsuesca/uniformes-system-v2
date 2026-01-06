@@ -919,6 +919,7 @@ export interface GlobalGarmentType {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  images?: GarmentTypeImage[];
 }
 
 export interface GlobalProduct {

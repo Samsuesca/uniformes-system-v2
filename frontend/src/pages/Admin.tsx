@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useSchoolStore } from '../stores/schoolStore';
-import apiClient from '../utils/api-client';
+import apiClient, { extractErrorMessage } from '../utils/api-client';
 import type { School, User } from '../types/api';
 
 // Role types matching backend
@@ -126,9 +126,9 @@ export default function Admin() {
 
       setSchools(schoolsRes.data);
       setUsers(usersRes.data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading admin data:', err);
-      setError(err.response?.data?.detail || 'Error al cargar datos');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -136,7 +136,29 @@ export default function Admin() {
 
   // School handlers
   const handleSaveSchool = async () => {
-    if (!schoolForm.code || !schoolForm.name) return;
+    setError(null);
+
+    // === VALIDACIONES FRONTEND ===
+    if (!schoolForm.code?.trim()) {
+      setError('⚠️ El código del colegio es requerido');
+      return;
+    }
+    if (schoolForm.code.length < 2) {
+      setError('⚠️ El código debe tener al menos 2 caracteres');
+      return;
+    }
+    if (!schoolForm.name?.trim()) {
+      setError('⚠️ El nombre del colegio es requerido');
+      return;
+    }
+    if (schoolForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(schoolForm.email)) {
+      setError('⚠️ El email no tiene un formato válido');
+      return;
+    }
+    if (schoolForm.phone && !/^[\d\s\-\+\(\)]{7,}$/.test(schoolForm.phone)) {
+      setError('⚠️ El teléfono no tiene un formato válido');
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -150,8 +172,8 @@ export default function Admin() {
       resetSchoolForm();
       await loadData();
       await loadSchools();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al guardar colegio');
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -176,8 +198,8 @@ export default function Admin() {
       setConfirmDelete(null);
       await loadData();
       await loadSchools();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al eliminar colegio');
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -248,21 +270,9 @@ export default function Admin() {
       setEditingUser(null);
       resetUserForm();
       await loadData();
-    } catch (err: any) {
-      console.error('Error saving user:', err.response?.data);
-      // Handle validation errors from backend
-      const detail = err.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        // Pydantic validation errors
-        const messages = detail.map((e: { msg: string; loc: string[] }) =>
-          `${e.loc[e.loc.length - 1]}: ${e.msg}`
-        ).join(', ');
-        setError(messages);
-      } else if (typeof detail === 'string') {
-        setError(detail);
-      } else {
-        setError('Error al guardar usuario');
-      }
+    } catch (err: unknown) {
+      console.error('Error saving user:', err);
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -287,8 +297,8 @@ export default function Admin() {
       await apiClient.delete(`/users/${id}`);
       setConfirmDelete(null);
       await loadData();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al eliminar usuario');
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -311,9 +321,9 @@ export default function Admin() {
       setLoadingRoles(userId);
       const res = await apiClient.get<UserSchoolRole[]>(`/users/${userId}/schools`);
       setUserRoles(prev => ({ ...prev, [userId]: res.data }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading user roles:', err);
-      setError('Error al cargar roles del usuario');
+      setError(extractErrorMessage(err));
     } finally {
       setLoadingRoles(null);
     }
@@ -347,9 +357,9 @@ export default function Admin() {
       );
       setShowRoleModal(false);
       await loadUserRoles(roleModalUser.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error adding role:', err);
-      setError(err.response?.data?.detail || 'Error al agregar rol');
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -362,9 +372,9 @@ export default function Admin() {
         `/users/${userId}/schools/${schoolId}/role?role=${newRole}`
       );
       await loadUserRoles(userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating role:', err);
-      setError(err.response?.data?.detail || 'Error al actualizar rol');
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -375,9 +385,9 @@ export default function Admin() {
       setSubmitting(true);
       await apiClient.delete(`/users/${userId}/schools/${schoolId}/role`);
       await loadUserRoles(userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error removing role:', err);
-      setError(err.response?.data?.detail || 'Error al eliminar rol');
+      setError(extractErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

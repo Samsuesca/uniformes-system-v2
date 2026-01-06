@@ -6,21 +6,22 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Search, Loader2, Package, Filter } from 'lucide-react';
+import { X, Search, Loader2, Package, Filter, Building2, Globe } from 'lucide-react';
 import { productService } from '../services/productService';
-import type { Product, GarmentType } from '../types/api';
-import { groupProductsByGarmentType, type ProductVariant, type ProductGroup } from '../utils/productGrouping';
+import type { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../types/api';
+import { groupProductsByGarmentType, groupGlobalProductsByGarmentType, type ProductVariant, type ProductGroup } from '../utils/productGrouping';
 import ProductGroupCard from './ProductGroupCard';
 
 interface ProductGroupSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (product: Product, quantity: number) => void;
+  onSelect: (product: Product | GlobalProduct, quantity: number, isGlobal?: boolean) => void;
   schoolId: string;
 
   // Filtering options
   filterByStock?: 'with_stock' | 'without_stock' | 'all';
   allowGlobalProducts?: boolean;
+  initialProductSource?: 'school' | 'global';
   excludeProductIds?: string[];
   excludeGarmentTypeIds?: string[];
 
@@ -36,6 +37,7 @@ export default function ProductGroupSelector({
   schoolId,
   filterByStock = 'all',
   allowGlobalProducts = false,
+  initialProductSource = 'school',
   excludeProductIds = [],
   excludeGarmentTypeIds = [],
   title = 'Seleccionar Producto',
@@ -44,32 +46,57 @@ export default function ProductGroupSelector({
   // Data state
   const [products, setProducts] = useState<Product[]>([]);
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+  const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
+  const [globalGarmentTypes, setGlobalGarmentTypes] = useState<GlobalGarmentType[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [productSource, setProductSource] = useState<'school' | 'global'>(initialProductSource);
+
+  // Reset product source when initialProductSource changes (when modal opens)
+  useEffect(() => {
+    if (isOpen) {
+      setProductSource(initialProductSource);
+      setCategoryFilter(''); // Reset category when source changes
+    }
+  }, [isOpen, initialProductSource]);
 
   // Load data when modal opens
   useEffect(() => {
     if (isOpen && schoolId) {
       loadData();
     }
-  }, [isOpen, schoolId]);
+  }, [isOpen, schoolId, allowGlobalProducts]);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [productsData, garmentTypesData] = await Promise.all([
+      // Build list of promises
+      const promises: Promise<any>[] = [
         productService.getProducts(schoolId, true), // with inventory
         productService.getGarmentTypes(schoolId),
-      ]);
+      ];
 
-      setProducts(productsData || []);
-      setGarmentTypes(garmentTypesData || []);
+      // Also load global products if enabled
+      if (allowGlobalProducts) {
+        promises.push(productService.getGlobalProducts(true));
+        promises.push(productService.getGlobalGarmentTypes());
+      }
+
+      const results = await Promise.all(promises);
+
+      setProducts(results[0] || []);
+      setGarmentTypes(results[1] || []);
+
+      if (allowGlobalProducts) {
+        setGlobalProducts(results[2] || []);
+        setGlobalGarmentTypes(results[3] || []);
+      }
     } catch (err: any) {
       console.error('Error loading products:', err);
       setError('Error al cargar productos');
@@ -78,9 +105,25 @@ export default function ProductGroupSelector({
     }
   };
 
+  // Current garment types based on product source
+  const currentGarmentTypes = useMemo(() => {
+    if (productSource === 'global') {
+      return globalGarmentTypes.filter(gt => !excludeGarmentTypeIds.includes(gt.id));
+    }
+    return garmentTypes.filter(gt => !excludeGarmentTypeIds.includes(gt.id));
+  }, [productSource, garmentTypes, globalGarmentTypes, excludeGarmentTypeIds]);
+
   // Group products by garment type
   const productGroups = useMemo(() => {
-    // Filter garment types first
+    if (productSource === 'global') {
+      // Group global products
+      const filteredGlobalProducts = globalProducts.filter(p =>
+        !excludeGarmentTypeIds.includes(p.garment_type_id)
+      );
+      return groupGlobalProductsByGarmentType(filteredGlobalProducts, globalGarmentTypes);
+    }
+
+    // Group school products
     const filteredGarmentTypes = garmentTypes.filter(gt =>
       !excludeGarmentTypeIds.includes(gt.id)
     );
@@ -91,7 +134,7 @@ export default function ProductGroupSelector({
     );
 
     return groupProductsByGarmentType(filteredProducts, filteredGarmentTypes);
-  }, [products, garmentTypes, excludeGarmentTypeIds]);
+  }, [productSource, products, garmentTypes, globalProducts, globalGarmentTypes, excludeGarmentTypeIds]);
 
   // Apply search and category filters
   const filteredGroups = useMemo(() => {
@@ -130,10 +173,18 @@ export default function ProductGroupSelector({
 
   // Handle variant selection
   const handleVariantSelect = (variant: ProductVariant, quantity: number) => {
-    // Find the full product object
-    const product = products.find(p => p.id === variant.productId);
-    if (product) {
-      onSelect(product, quantity);
+    if (productSource === 'global') {
+      // Find the global product object
+      const globalProduct = globalProducts.find(p => p.id === variant.productId);
+      if (globalProduct) {
+        onSelect(globalProduct, quantity, true);
+      }
+    } else {
+      // Find the school product object
+      const product = products.find(p => p.id === variant.productId);
+      if (product) {
+        onSelect(product, quantity, false);
+      }
     }
   };
 
@@ -170,6 +221,40 @@ export default function ProductGroupSelector({
             </button>
           </div>
 
+          {/* Product Source Tabs (only if global products enabled) */}
+          {allowGlobalProducts && (
+            <div className="flex border-b border-gray-200 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setProductSource('school');
+                  setCategoryFilter('');
+                }}
+                className={`flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  productSource === 'school'
+                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                Productos del Colegio ({products.length})
+              </button>
+              <button
+                onClick={() => {
+                  setProductSource('global');
+                  setCategoryFilter('');
+                }}
+                className={`flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  productSource === 'global'
+                    ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                Productos Globales ({globalProducts.length})
+              </button>
+            </div>
+          )}
+
           {/* Search & Filters */}
           <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <div className="flex gap-3">
@@ -194,13 +279,11 @@ export default function ProductGroupSelector({
                   className="pl-9 pr-8 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white min-w-[180px]"
                 >
                   <option value="">Todas las categorias</option>
-                  {garmentTypes
-                    .filter(gt => !excludeGarmentTypeIds.includes(gt.id))
-                    .map(gt => (
-                      <option key={gt.id} value={gt.id}>
-                        {gt.name}
-                      </option>
-                    ))}
+                  {currentGarmentTypes.map(gt => (
+                    <option key={gt.id} value={gt.id}>
+                      {gt.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

@@ -194,4 +194,60 @@ export async function checkConnection(): Promise<boolean> {
   }
 }
 
+// Función centralizada para extraer mensajes de error legibles
+export function extractErrorMessage(err: unknown): string {
+  // Errores de validación Pydantic (array de detalles)
+  if (
+    err &&
+    typeof err === 'object' &&
+    'response' in err &&
+    (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail &&
+    Array.isArray((err as { response: { data: { detail: unknown[] } } }).response.data.detail)
+  ) {
+    return (err as { response: { data: { detail: Array<{ loc?: string[]; msg?: string }> } } }).response.data.detail
+      .map((e) => {
+        const field = e.loc?.[e.loc.length - 1] || 'Campo';
+        return `${field}: ${e.msg}`;
+      })
+      .join('\n');
+  }
+
+  // Error string del backend (detail como string)
+  if (
+    err &&
+    typeof err === 'object' &&
+    'response' in err &&
+    typeof (err as { response?: { data?: { detail?: string } } }).response?.data?.detail === 'string'
+  ) {
+    return (err as { response: { data: { detail: string } } }).response.data.detail;
+  }
+
+  // Error message directo (de throw new Error en apiClient)
+  if (err instanceof Error && err.message) {
+    if (err.message === 'Unauthorized') return 'Sesión expirada. Inicia sesión nuevamente.';
+    if (err.message.includes('HTTP 400')) return 'Datos inválidos. Revisa los campos.';
+    if (err.message.includes('HTTP 404')) return 'El recurso no fue encontrado.';
+    if (err.message.includes('HTTP 409')) return 'Ya existe un registro con estos datos.';
+    if (err.message.includes('HTTP 422')) return 'Error de validación. Revisa los campos.';
+    if (err.message.includes('HTTP 500')) return 'Error del servidor. Intenta de nuevo.';
+    // Si no es un error HTTP conocido, devolver el mensaje
+    if (!err.message.startsWith('HTTP ')) return err.message;
+  }
+
+  // Error de red
+  if (
+    err &&
+    typeof err === 'object' &&
+    'message' in err &&
+    typeof (err as { message: string }).message === 'string'
+  ) {
+    const msg = (err as { message: string }).message;
+    if (msg.includes('fetch') || msg.includes('network') || msg.includes('Network')) {
+      return 'Error de conexión. Verifica tu internet.';
+    }
+  }
+
+  return (err as { message?: string })?.message || 'Error desconocido. Intenta de nuevo.';
+}
+
 export default apiClient;

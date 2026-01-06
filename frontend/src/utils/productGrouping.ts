@@ -5,7 +5,7 @@
  * Similar to the web portal's product display
  */
 
-import type { Product, GarmentType } from '../types/api';
+import type { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../types/api';
 
 // ============================================
 // Types
@@ -292,4 +292,101 @@ export function formatPriceRange(basePrice: number, maxPrice: number): string {
     return `$${basePrice.toLocaleString()}`;
   }
   return `$${basePrice.toLocaleString()} - $${maxPrice.toLocaleString()}`;
+}
+
+// ============================================
+// Global Products Grouping
+// ============================================
+
+/**
+ * Group global products by garment type
+ * Similar to groupProductsByGarmentType but for GlobalProduct type
+ */
+export function groupGlobalProductsByGarmentType(
+  products: GlobalProduct[],
+  garmentTypes: GlobalGarmentType[]
+): ProductGroup[] {
+  // Create a map for quick garment type lookup
+  const garmentTypeMap = new Map<string, GlobalGarmentType>();
+  garmentTypes.forEach(gt => garmentTypeMap.set(gt.id, gt));
+
+  // Group products by garment_type_id
+  const groupsMap = new Map<string, ProductVariant[]>();
+
+  products.forEach(product => {
+    const gtId = product.garment_type_id;
+    if (!groupsMap.has(gtId)) {
+      groupsMap.set(gtId, []);
+    }
+
+    const stock = product.inventory_quantity ?? 0;
+
+    groupsMap.get(gtId)!.push({
+      productId: product.id,
+      productCode: product.code,
+      size: product.size,
+      color: product.color || null,
+      price: Number(product.price),
+      stock: stock,
+      imageUrl: product.image_url || null,
+    });
+  });
+
+  // Convert to ProductGroup array
+  const groups: ProductGroup[] = [];
+
+  groupsMap.forEach((variants, garmentTypeId) => {
+    const garmentType = garmentTypeMap.get(garmentTypeId);
+    if (!garmentType) return;
+
+    // Sort variants by size
+    const sortedVariants = [...variants].sort((a, b) => compareSizes(a.size, b.size));
+
+    // Get unique sizes and colors
+    const sizesSet = new Set<string>();
+    const colorsSet = new Set<string>();
+    let minPrice = Infinity;
+    let maxPrice = 0;
+    let totalStock = 0;
+
+    sortedVariants.forEach(v => {
+      sizesSet.add(v.size);
+      if (v.color) colorsSet.add(v.color);
+      if (v.price < minPrice) minPrice = v.price;
+      if (v.price > maxPrice) maxPrice = v.price;
+      totalStock += v.stock;
+    });
+
+    // Get image from garment type images
+    let imageUrl: string | null = null;
+    if (garmentType.images && garmentType.images.length > 0) {
+      const sortedImages = [...garmentType.images].sort((a: any, b: any) => {
+        if (a.is_primary && !b.is_primary) return -1;
+        if (!a.is_primary && b.is_primary) return 1;
+        return (a.display_order || 0) - (b.display_order || 0);
+      });
+      imageUrl = sortedImages[0]?.image_url || null;
+    }
+
+    // Fallback: first product's image
+    if (!imageUrl) {
+      imageUrl = sortedVariants.find(v => v.imageUrl)?.imageUrl || null;
+    }
+
+    groups.push({
+      garmentTypeId,
+      garmentTypeName: garmentType.name,
+      garmentTypeImageUrl: imageUrl,
+      basePrice: minPrice === Infinity ? 0 : minPrice,
+      maxPrice: maxPrice,
+      totalStock,
+      variants: sortedVariants,
+      sizes: Array.from(sizesSet).sort(compareSizes),
+      colors: Array.from(colorsSet).sort(),
+      hasCustomMeasurements: false, // Global products don't have custom measurements
+    });
+  });
+
+  // Sort groups by name
+  return groups.sort((a, b) => a.garmentTypeName.localeCompare(b.garmentTypeName));
 }

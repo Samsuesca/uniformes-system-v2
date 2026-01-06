@@ -17,7 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { productService } from '../services/productService';
-import type { Product, GlobalProduct, GarmentType } from '../types/api';
+import type { Product, GlobalProduct, GarmentType, GlobalGarmentType } from '../types/api';
 
 interface ProductSelectorModalProps {
   isOpen: boolean;
@@ -65,6 +65,7 @@ export default function ProductSelectorModal({
   const [products, setProducts] = useState<Product[]>([]);
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+  const [globalGarmentTypes, setGlobalGarmentTypes] = useState<GlobalGarmentType[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +92,7 @@ export default function ProductSelectorModal({
 
       if (allowGlobalProducts) {
         promises.push(productService.getGlobalProducts(true)); // with inventory
+        promises.push(productService.getGlobalGarmentTypes()); // global garment types
       }
 
       const results = await Promise.all(promises);
@@ -98,8 +100,9 @@ export default function ProductSelectorModal({
       setProducts(results[0] || []);
       setGarmentTypes(results[1] || []);
 
-      if (allowGlobalProducts && results[2]) {
-        setGlobalProducts(results[2]);
+      if (allowGlobalProducts) {
+        setGlobalProducts(results[2] || []);
+        setGlobalGarmentTypes(results[3] || []);
       }
     } catch (err: any) {
       console.error('Error loading products:', err);
@@ -109,10 +112,18 @@ export default function ProductSelectorModal({
     }
   };
 
-  // Get garment type name for a product
-  const getGarmentTypeName = (garmentTypeId: string): string => {
+  // Get garment type name for a product (checks both school and global types)
+  const getGarmentTypeName = (garmentTypeId: string, isGlobal: boolean = false): string => {
+    if (isGlobal) {
+      return globalGarmentTypes.find(gt => gt.id === garmentTypeId)?.name || 'Sin tipo';
+    }
     return garmentTypes.find(gt => gt.id === garmentTypeId)?.name || 'Sin tipo';
   };
+
+  // Get current garment types based on product source
+  const currentGarmentTypes = useMemo(() => {
+    return productSource === 'school' ? garmentTypes : globalGarmentTypes;
+  }, [productSource, garmentTypes, globalGarmentTypes]);
 
   // Filtered products based on all filters
   const filteredProducts = useMemo(() => {
@@ -144,13 +155,14 @@ export default function ProductSelectorModal({
     // Search query (fuzzy)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
+      const isGlobal = productSource === 'global';
       filtered = filtered.filter(
         p =>
           p.code.toLowerCase().includes(query) ||
           (p.name && p.name.toLowerCase().includes(query)) ||
           p.size.toLowerCase().includes(query) ||
           (p.color && p.color.toLowerCase().includes(query)) ||
-          getGarmentTypeName(p.garment_type_id).toLowerCase().includes(query)
+          getGarmentTypeName(p.garment_type_id, isGlobal).toLowerCase().includes(query)
       );
     }
 
@@ -309,7 +321,7 @@ export default function ProductSelectorModal({
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                 >
                   <option value="">Todos los tipos</option>
-                  {garmentTypes.map(gt => (
+                  {currentGarmentTypes.map(gt => (
                     <option key={gt.id} value={gt.id}>
                       {gt.name}
                     </option>
@@ -351,7 +363,10 @@ export default function ProductSelectorModal({
           {allowGlobalProducts && (
             <div className="flex border-b border-gray-200 bg-gray-50">
               <button
-                onClick={() => setProductSource('school')}
+                onClick={() => {
+                  setProductSource('school');
+                  setGarmentTypeFilter(''); // Reset filter when changing tabs
+                }}
                 className={`flex-1 px-6 py-3 text-sm font-medium transition ${
                   productSource === 'school'
                     ? 'border-b-2 border-blue-600 text-blue-600 bg-white'
@@ -361,7 +376,10 @@ export default function ProductSelectorModal({
                 📦 Productos del Colegio ({products.length})
               </button>
               <button
-                onClick={() => setProductSource('global')}
+                onClick={() => {
+                  setProductSource('global');
+                  setGarmentTypeFilter(''); // Reset filter when changing tabs
+                }}
                 className={`flex-1 px-6 py-3 text-sm font-medium transition ${
                   productSource === 'global'
                     ? 'border-b-2 border-purple-600 text-purple-600 bg-white'
@@ -415,7 +433,7 @@ export default function ProductSelectorModal({
                   <ProductCardGrid
                     key={product.id}
                     product={product}
-                    garmentTypeName={getGarmentTypeName(product.garment_type_id)}
+                    garmentTypeName={getGarmentTypeName(product.garment_type_id, productSource === 'global')}
                     quantity={quantities[product.id] || 1}
                     onSetQuantity={handleSetQuantity}
                     onSelect={handleSelect}
@@ -429,7 +447,7 @@ export default function ProductSelectorModal({
                   <ProductCardList
                     key={product.id}
                     product={product}
-                    garmentTypeName={getGarmentTypeName(product.garment_type_id)}
+                    garmentTypeName={getGarmentTypeName(product.garment_type_id, productSource === 'global')}
                     quantity={quantities[product.id] || 1}
                     onSetQuantity={handleSetQuantity}
                     onSelect={handleSelect}
