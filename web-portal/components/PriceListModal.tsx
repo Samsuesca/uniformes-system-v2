@@ -1,9 +1,11 @@
 'use client';
 
-import { useRef } from 'react';
-import { X, Printer, FileText } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { X, Printer, FileText, Download, Loader2 } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import type { Product, School } from '@/lib/api';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface PriceListModalProps {
   isOpen: boolean;
@@ -35,6 +37,7 @@ export default function PriceListModal({
   globalProducts
 }: PriceListModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   if (!isOpen) return null;
 
@@ -193,8 +196,127 @@ export default function PriceListModal({
     !t.baseType.toLowerCase().includes('yomber')
   );
 
-  const handlePrint = () => {
-    window.print();
+  const handleGeneratePDF = async () => {
+    if (!printRef.current || isGenerating) return;
+
+    setIsGenerating(true);
+
+    try {
+      const element = printRef.current;
+
+      // Capturar el contenido como imagen
+      const canvas = await html2canvas(element, {
+        scale: 2, // Mayor resolución
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+
+      // Crear PDF tamaño carta
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter'
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Calcular dimensiones manteniendo proporción
+      const imgWidth = pageWidth - 20; // 10mm margen cada lado
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      // Si la imagen es más alta que la página, escalar
+      let finalWidth = imgWidth;
+      let finalHeight = imgHeight;
+
+      if (imgHeight > pageHeight - 20) {
+        finalHeight = pageHeight - 20;
+        finalWidth = (canvas.width * finalHeight) / canvas.height;
+      }
+
+      // Centrar en la página
+      const x = (pageWidth - finalWidth) / 2;
+      const y = 10;
+
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+
+      // Generar nombre del archivo
+      const schoolSlug = school.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const fileName = `lista-precios-${schoolSlug}-${new Date().getFullYear()}.pdf`;
+
+      // Descargar el PDF
+      pdf.save(fileName);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error al generar el PDF. Por favor intenta de nuevo.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!printRef.current || isGenerating) return;
+
+    setIsGenerating(true);
+
+    try {
+      const element = printRef.current;
+
+      // Capturar el contenido como imagen
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+
+      // Crear PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter'
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const imgWidth = pageWidth - 20;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let finalWidth = imgWidth;
+      let finalHeight = imgHeight;
+
+      if (imgHeight > pageHeight - 20) {
+        finalHeight = pageHeight - 20;
+        finalWidth = (canvas.width * finalHeight) / canvas.height;
+      }
+
+      const x = (pageWidth - finalWidth) / 2;
+      const y = 10;
+
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+
+      // Abrir en nueva ventana para imprimir
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const printWindow = window.open(pdfUrl, '_blank');
+
+      if (printWindow) {
+        printWindow.onload = () => {
+          printWindow.print();
+        };
+      }
+    } catch (error) {
+      console.error('Error generating PDF for print:', error);
+      alert('Error al preparar la impresión. Por favor intenta de nuevo.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   // Componente de tabla de precios
@@ -335,8 +457,21 @@ export default function PriceListModal({
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleGeneratePDF}
+              disabled={isGenerating}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-brand-700 rounded-lg font-medium hover:bg-brand-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Download className="w-5 h-5" />
+              )}
+              {isGenerating ? 'Generando...' : 'Descargar PDF'}
+            </button>
+            <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-brand-700 rounded-lg font-medium hover:bg-brand-50 transition-colors"
+              disabled={isGenerating}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-100 text-brand-700 rounded-lg font-medium hover:bg-brand-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Printer className="w-5 h-5" />
               Imprimir
@@ -465,28 +600,6 @@ export default function PriceListModal({
         </div>
       </div>
 
-      {/* Estilos de impresión */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-
-          .print\\:fixed,
-          .print\\:fixed * {
-            visibility: visible;
-          }
-
-          .print\\:hidden {
-            display: none !important;
-          }
-
-          @page {
-            size: letter;
-            margin: 0.5in;
-          }
-        }
-      `}</style>
     </>
   );
 }
