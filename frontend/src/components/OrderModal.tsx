@@ -10,7 +10,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2, CheckCircle } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ClientSelector from './ClientSelector';
-import ProductSelectorModal from './ProductSelectorModal';
 import ProductGroupSelector from './ProductGroupSelector';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
@@ -71,6 +70,7 @@ export default function OrderModal({
 
   // Form state
   const [clientId, setClientId] = useState('');
+  const [selectedClientEmail, setSelectedClientEmail] = useState<string | null>(null);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [advancePayment, setAdvancePayment] = useState<number>(0);
@@ -220,6 +220,7 @@ export default function OrderModal({
 
   const resetForm = () => {
     setClientId('');
+    setSelectedClientEmail(null);
     setDeliveryDate('');
     setNotes('');
     setAdvancePayment(0);
@@ -407,6 +408,12 @@ export default function OrderModal({
       return;
     }
 
+    // Validate client has email for order notifications
+    if (!selectedClientEmail) {
+      setError('El cliente debe tener email para recibir notificaciones del encargo. Por favor selecciona un cliente con email o crea uno nuevo con email.');
+      return;
+    }
+
     if (items.length === 0) {
       setError('Agrega al menos un item al encargo');
       return;
@@ -590,11 +597,20 @@ export default function OrderModal({
                 </label>
                 <ClientSelector
                   value={clientId}
-                  onChange={(id) => setClientId(id)}
+                  onChange={(id, client) => {
+                    setClientId(id);
+                    setSelectedClientEmail(client?.email || null);
+                  }}
                   schoolId={selectedSchoolId}
                   allowNoClient={false}
+                  requireEmail={true}
                   placeholder="Buscar cliente por nombre, teléfono..."
                 />
+                {clientId && !selectedClientEmail && (
+                  <p className="mt-1 text-xs text-orange-600">
+                    ⚠️ Este cliente no tiene email. Los encargos requieren email para notificaciones.
+                  </p>
+                )}
               </div>
 
               {/* Delivery Date */}
@@ -1169,21 +1185,19 @@ export default function OrderModal({
         emptyMessage="No hay productos sin stock disponibles"
       />
 
-      {/* Product Selector Modal for Yomber Tab - Filter to only show yomber products */}
-      {yomberProductSelectorOpen && (
-        <ProductSelectorModal
-          isOpen={yomberProductSelectorOpen}
-          onClose={() => setYomberProductSelectorOpen(false)}
-          onSelect={handleYomberProductSelect}
-          schoolId={selectedSchoolId}
-          filterByStock="all"
-          allowGlobalProducts={false}
-          includeProductIds={yomberProducts.map(p => p.id)}
-          excludeProductIds={yomberProductId ? [yomberProductId, ...items.map(i => i.product_id || '')] : items.map(i => i.product_id || '')}
-          title="Seleccionar Producto Yomber"
-          emptyMessage="No hay productos Yomber configurados"
-        />
-      )}
+      {/* Product Group Selector for Yomber Tab - Shows only Yomber garment types grouped */}
+      <ProductGroupSelector
+        isOpen={yomberProductSelectorOpen}
+        onClose={() => setYomberProductSelectorOpen(false)}
+        onSelect={handleYomberProductSelect}
+        schoolId={selectedSchoolId}
+        filterByStock="all"
+        allowGlobalProducts={false}
+        includeGarmentTypeIds={yomberGarmentTypeIds}
+        excludeProductIds={yomberProductId ? [yomberProductId] : []}
+        title="Seleccionar Producto Yomber"
+        emptyMessage="No hay productos Yomber configurados"
+      />
 
       {/* Success Modal for Multi-School Orders */}
       {showSuccessModal && orderResults.length > 0 && (

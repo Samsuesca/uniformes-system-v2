@@ -358,6 +358,6 @@ type PaymentMethod = 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
 
 ---
 
-**Ultima actualizacion**: 2025-12-16
+**Ultima actualizacion**: 2026-01-06
 **Version del proyecto**: v2.0.0
 **Estado**: **EN PRODUCCION** - Cloud deployment activo

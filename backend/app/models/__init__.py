@@ -14,7 +14,7 @@ from app.models.product import (
     GlobalGarmentType, GlobalGarmentTypeImage, GlobalProduct, GlobalInventory
 )
 from app.models.client import Client, ClientStudent, ClientType
-from app.models.sale import Sale, SaleItem, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
+from app.models.sale import Sale, SaleItem, SalePayment, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
 from app.models.order import Order, OrderItem, OrderStatus, DeliveryType
 from app.models.delivery_zone import DeliveryZone
 from app.models.contact import Contact, ContactType, ContactStatus
@@ -57,6 +57,7 @@ __all__ = [
     # Sale models
     "Sale",
     "SaleItem",
+    "SalePayment",
     "PaymentMethod",
     "SaleStatus",
     "SaleChange",

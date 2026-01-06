@@ -5,8 +5,8 @@
  * Shows one card per garment type with selectable sizes and colors
  */
 
-import { useState, useMemo } from 'react';
-import { Plus, Package, Check, AlertTriangle } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Plus, Package, Check, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { ProductGroup, ProductVariant } from '../utils/productGrouping';
 import { getEmojiForCategory, getVariantsForSize, getColorsForSize } from '../utils/productGrouping';
 
@@ -15,6 +15,7 @@ interface ProductGroupCardProps {
   onSelect: (variant: ProductVariant, quantity: number) => void;
   excludeProductIds?: string[];
   filterByStock?: 'with_stock' | 'without_stock' | 'all';
+  addedQuantity?: number; // Total quantity added in this session (for visual feedback)
 }
 
 export default function ProductGroupCard({
@@ -22,10 +23,24 @@ export default function ProductGroupCard({
   onSelect,
   excludeProductIds = [],
   filterByStock = 'all',
+  addedQuantity = 0,
 }: ProductGroupCardProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [showAddedFeedback, setShowAddedFeedback] = useState(false);
+
+  // Track when addedQuantity increases to show feedback
+  const [prevAddedQuantity, setPrevAddedQuantity] = useState(addedQuantity);
+
+  useEffect(() => {
+    if (addedQuantity > prevAddedQuantity) {
+      setShowAddedFeedback(true);
+      const timer = setTimeout(() => setShowAddedFeedback(false), 1500);
+      return () => clearTimeout(timer);
+    }
+    setPrevAddedQuantity(addedQuantity);
+  }, [addedQuantity, prevAddedQuantity]);
 
   // Filter out excluded products
   const availableVariants = useMemo(() => {
@@ -125,7 +140,29 @@ export default function ProductGroupCard({
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-md transition-all">
+    <div className={`relative bg-white border rounded-xl p-4 transition-all ${
+      addedQuantity > 0
+        ? 'border-green-300 ring-1 ring-green-200'
+        : 'border-gray-200 hover:border-blue-300 hover:shadow-md'
+    }`}>
+      {/* Added quantity badge */}
+      {addedQuantity > 0 && (
+        <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 z-10">
+          <CheckCircle className="w-3 h-3" />
+          +{addedQuantity}
+        </div>
+      )}
+
+      {/* Added feedback overlay */}
+      {showAddedFeedback && (
+        <div className="absolute inset-0 bg-green-100/80 rounded-xl flex items-center justify-center z-20 animate-pulse">
+          <div className="flex items-center gap-2 text-green-700 font-medium">
+            <CheckCircle className="w-6 h-6" />
+            <span>Agregado</span>
+          </div>
+        </div>
+      )}
+
       {/* Header: Image + Name + Price */}
       <div className="flex gap-4 mb-4">
         {/* Image */}

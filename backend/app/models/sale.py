@@ -116,6 +116,10 @@ class Sale(Base):
         back_populates="sale",
         cascade="all, delete-orphan"
     )
+    payments: Mapped[list["SalePayment"]] = relationship(
+        back_populates="sale",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Sale(code='{self.code}', total={self.total}, status='{self.status}')>"
@@ -273,3 +277,50 @@ class SaleChange(Base):
 
     def __repr__(self) -> str:
         return f"<SaleChange(sale_id='{self.sale_id}', type='{self.change_type}', status='{self.status}')>"
+
+
+class SalePayment(Base):
+    """
+    Individual payment for a sale.
+    Allows multiple payment methods per sale (partial payments).
+    Example: 50,000 in cash + 30,000 in transfer = 80,000 total sale
+    """
+    __tablename__ = "sale_payments"
+    __table_args__ = (
+        CheckConstraint('amount > 0', name='chk_sale_payment_amount_positive'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    sale_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        SQLEnum(PaymentMethod, name="payment_method_enum", create_type=False),
+        nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    # Optional link to accounting transaction
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transactions.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    sale: Mapped["Sale"] = relationship(back_populates="payments")
+    transaction: Mapped["Transaction | None"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<SalePayment(sale_id='{self.sale_id}', amount={self.amount}, method='{self.payment_method}')>"

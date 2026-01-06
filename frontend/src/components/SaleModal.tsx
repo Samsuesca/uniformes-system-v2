@@ -4,13 +4,20 @@
  * Creates separate sales (one per school) when items span multiple schools.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Package } from 'lucide-react';
-import { saleService, type SaleCreate, type SaleItemCreate } from '../services/saleService';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Package, CreditCard, DollarSign } from 'lucide-react';
+import { saleService, type SaleCreate, type SaleItemCreate, type SalePaymentCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
 import ProductGroupSelector from './ProductGroupSelector';
 import { useSchoolStore } from '../stores/schoolStore';
-import type { Product, GlobalProduct } from '../types/api';
+import type { Product, GlobalProduct, GarmentType } from '../types/api';
+
+// Payment line for multiple payments
+interface PaymentLine {
+  id: string;
+  amount: number;
+  payment_method: 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
+}
 
 interface SaleModalProps {
   isOpen: boolean;
@@ -56,8 +63,16 @@ export default function SaleModal({
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
+  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [productSource, setProductSource] = useState<'school' | 'global'>('school');
+
+  // Calculate Yomber garment type IDs to exclude from sales selector
+  const yomberGarmentTypeIds = useMemo(() => {
+    return garmentTypes
+      .filter(gt => gt.has_custom_measurements)
+      .map(gt => gt.id);
+  }, [garmentTypes]);
 
   // Product selector modal state
   const [productSelectorOpen, setProductSelectorOpen] = useState(false);
@@ -68,7 +83,6 @@ export default function SaleModal({
 
   const [formData, setFormData] = useState({
     client_id: '',
-    payment_method: 'cash' as 'cash' | 'nequi' | 'credit' | 'transfer' | 'card',
     notes: '',
     is_historical: false,
     sale_date: '',  // ISO date string for historical sales
@@ -77,6 +91,11 @@ export default function SaleModal({
     sale_month: '',
     sale_year: '',
   });
+
+  // Multiple payments support
+  const [payments, setPayments] = useState<PaymentLine[]>([
+    { id: '1', amount: 0, payment_method: 'cash' }
+  ]);
 
   const [items, setItems] = useState<SaleItemCreateExtended[]>([]);
   const [currentItem, setCurrentItem] = useState({
@@ -148,7 +167,6 @@ export default function SaleModal({
   const resetForm = () => {
     setFormData({
       client_id: '',
-      payment_method: 'cash',
       notes: '',
       is_historical: false,
       sale_date: '',
@@ -156,6 +174,7 @@ export default function SaleModal({
       sale_month: '',
       sale_year: '',
     });
+    setPayments([{ id: '1', amount: 0, payment_method: 'cash' }]);
     setItems([]);
     setCurrentItem({
       product_id: '',
@@ -169,17 +188,57 @@ export default function SaleModal({
     setSaleResults([]);
   };
 
+  // Payment helpers
+  const totalPayments = useMemo(() =>
+    payments.reduce((sum, p) => sum + p.amount, 0),
+    [payments]
+  );
+
+  const addPaymentLine = () => {
+    setPayments([
+      ...payments,
+      { id: Date.now().toString(), amount: 0, payment_method: 'cash' }
+    ]);
+  };
+
+  const removePaymentLine = (id: string) => {
+    if (payments.length === 1) return; // Keep at least one
+    setPayments(payments.filter(p => p.id !== id));
+  };
+
+  const updatePaymentAmount = (id: string, amount: number) => {
+    setPayments(payments.map(p =>
+      p.id === id ? { ...p, amount } : p
+    ));
+  };
+
+  const updatePaymentMethod = (id: string, method: PaymentLine['payment_method']) => {
+    setPayments(payments.map(p =>
+      p.id === id ? { ...p, payment_method: method } : p
+    ));
+  };
+
+  // Auto-fill first payment with total when items change
+  useEffect(() => {
+    const total = calculateTotal();
+    if (payments.length === 1 && payments[0].amount === 0 && total > 0) {
+      setPayments([{ ...payments[0], amount: total }]);
+    }
+  }, [items]);
+
   const loadProducts = async (schoolIdToLoad?: string) => {
     const targetSchoolId = schoolIdToLoad || selectedSchoolId;
     if (!targetSchoolId) return;
 
     try {
-      const [productsData, globalProductsData] = await Promise.all([
+      const [productsData, globalProductsData, garmentTypesData] = await Promise.all([
         productService.getProducts(targetSchoolId),
         productService.getGlobalProducts(true),
+        productService.getGarmentTypes(targetSchoolId),
       ]);
       setProducts(productsData);
       setGlobalProducts(globalProductsData);
+      setGarmentTypes(garmentTypesData);
     } catch (err: any) {
       console.error('Error loading products:', err);
       setError('Error al cargar productos');
@@ -244,8 +303,7 @@ export default function SaleModal({
       setItems([...items, newItem]);
     }
 
-    // Close modal
-    setProductSelectorOpen(false);
+    // NOTE: Modal stays open for multi-select. User clicks "Listo" to close.
   };
 
   const handleAddItem = () => {
@@ -358,6 +416,19 @@ export default function SaleModal({
       return;
     }
 
+    // Validate payments sum equals total
+    const total = calculateTotal();
+    if (totalPayments !== total) {
+      setError(`La suma de pagos ($${totalPayments.toLocaleString()}) no coincide con el total ($${total.toLocaleString()})`);
+      return;
+    }
+
+    // Validate at least one payment has amount > 0
+    if (payments.every(p => p.amount <= 0)) {
+      setError('Debes ingresar al menos un pago');
+      return;
+    }
+
     // Validate historical date fields
     if (formData.is_historical) {
       if (!formData.sale_day || !formData.sale_month || !formData.sale_year) {
@@ -389,10 +460,42 @@ export default function SaleModal({
         saleDateStr = `${year}-${month}-${day}T12:00:00`;
       }
 
+      // Build payments array (filter out zero amounts)
+      const paymentsData: SalePaymentCreate[] = payments
+        .filter(p => p.amount > 0)
+        .map(p => ({
+          amount: p.amount,
+          payment_method: p.payment_method,
+        }));
+
       // Multi-school: Create separate sales for each school
       const results: SaleResult[] = [];
 
       for (const [schoolId, schoolItems] of itemsBySchool.entries()) {
+        // Calculate school total for proportional payment split
+        const schoolTotal = schoolItems.reduce(
+          (sum, item) => sum + (item.quantity * item.unit_price),
+          0
+        );
+
+        // If multiple schools, proportionally split payments
+        let schoolPayments: SalePaymentCreate[];
+        if (itemsBySchool.size > 1) {
+          // Proportional split based on school total
+          const proportion = schoolTotal / total;
+          schoolPayments = paymentsData.map(p => ({
+            ...p,
+            amount: Math.round(p.amount * proportion)
+          }));
+          // Adjust rounding difference on first payment
+          const sumSchoolPayments = schoolPayments.reduce((s, p) => s + p.amount, 0);
+          if (sumSchoolPayments !== schoolTotal && schoolPayments.length > 0) {
+            schoolPayments[0].amount += (schoolTotal - sumSchoolPayments);
+          }
+        } else {
+          schoolPayments = paymentsData;
+        }
+
         // Build sale data for this school
         const saleData: SaleCreate = {
           school_id: schoolId,
@@ -403,7 +506,7 @@ export default function SaleModal({
             unit_price: item.unit_price,
             is_global: item.is_global,
           })),
-          payment_method: formData.payment_method,
+          payments: schoolPayments,
           notes: formData.notes || undefined,
           // Historical sale fields - must be explicit
           is_historical: formData.is_historical === true,
@@ -413,16 +516,11 @@ export default function SaleModal({
         console.log(`Creating sale for school ${schoolId}:`, {
           is_historical: saleData.is_historical,
           sale_date: saleData.sale_date,
-          items_count: saleData.items.length
+          items_count: saleData.items.length,
+          payments: saleData.payments
         });
 
         const response = await saleService.createSale(schoolId, saleData);
-
-        // Calculate school total
-        const schoolTotal = schoolItems.reduce(
-          (sum, item) => sum + (item.quantity * item.unit_price),
-          0
-        );
 
         results.push({
           schoolName: schoolItems[0].school_name,
@@ -542,24 +640,87 @@ export default function SaleModal({
                 )}
               </div>
 
-              {/* Payment Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Método de Pago *
+            </div>
+
+            {/* Multiple Payments Section */}
+            <div className="border border-gray-200 rounded-lg p-4 mb-6 bg-gray-50">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-semibold text-gray-800 flex items-center">
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Métodos de Pago
                 </label>
-                <select
-                  value={formData.payment_method}
-                  onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as any })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                <button
+                  type="button"
+                  onClick={addPaymentLine}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center"
                 >
-                  <option value="cash">Efectivo</option>
-                  <option value="nequi">Nequi</option>
-                  <option value="transfer">Transferencia</option>
-                  <option value="card">Tarjeta</option>
-                  <option value="credit">Crédito</option>
-                </select>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Agregar método
+                </button>
               </div>
+
+              <div className="space-y-3">
+                {payments.map((payment, index) => (
+                  <div key={payment.id} className="flex items-center gap-3">
+                    {/* Amount */}
+                    <div className="relative flex-1">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="number"
+                        value={payment.amount || ''}
+                        onChange={(e) => updatePaymentAmount(payment.id, Number(e.target.value) || 0)}
+                        placeholder="Monto"
+                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      />
+                    </div>
+
+                    {/* Payment Method */}
+                    <select
+                      value={payment.payment_method}
+                      onChange={(e) => updatePaymentMethod(payment.id, e.target.value as any)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    >
+                      <option value="cash">Efectivo</option>
+                      <option value="nequi">Nequi</option>
+                      <option value="transfer">Transferencia</option>
+                      <option value="card">Tarjeta</option>
+                      <option value="credit">Crédito</option>
+                    </select>
+
+                    {/* Remove button */}
+                    {payments.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removePaymentLine(payment.id)}
+                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Validation message */}
+              {items.length > 0 && totalPayments !== calculateTotal() && (
+                <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">
+                    La suma de pagos (${totalPayments.toLocaleString()}) no coincide con el total (${calculateTotal().toLocaleString()})
+                  </p>
+                </div>
+              )}
+
+              {/* Summary */}
+              {payments.length > 1 && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Suma de pagos:</span>
+                    <span className={`font-medium ${totalPayments === calculateTotal() ? 'text-green-600' : 'text-orange-600'}`}>
+                      ${totalPayments.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Historical Sale Section */}
@@ -976,6 +1137,7 @@ export default function SaleModal({
       )}
 
       {/* Product Group Selector - Grouped by garment type */}
+      {/* Excludes Yomber products - those require custom measurements via OrderModal */}
       <ProductGroupSelector
         isOpen={productSelectorOpen}
         onClose={() => setProductSelectorOpen(false)}
@@ -983,6 +1145,7 @@ export default function SaleModal({
         schoolId={selectedSchoolId}
         filterByStock={formData.is_historical ? 'all' : 'with_stock'}
         excludeProductIds={items.map(i => i.product_id)}
+        excludeGarmentTypeIds={yomberGarmentTypeIds}
         allowGlobalProducts={true}
         initialProductSource={productSource}
         title="Seleccionar Producto"

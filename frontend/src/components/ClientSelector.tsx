@@ -138,6 +138,8 @@ interface ClientSelectorProps {
   className?: string;
   disabled?: boolean;
   error?: string;
+  /** If true, email is required when creating a new client (for orders that need email verification) */
+  requireEmail?: boolean;
 }
 
 export default function ClientSelector({
@@ -149,6 +151,7 @@ export default function ClientSelector({
   className = '',
   disabled = false,
   error,
+  requireEmail = false,
 }: ClientSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -284,6 +287,20 @@ export default function ClientSelector({
     if (!quickClientData.name.trim()) {
       setQuickCreateError('El nombre es requerido');
       return;
+    }
+
+    if (requireEmail && !quickClientData.email.trim()) {
+      setQuickCreateError('El email es requerido para recibir notificaciones del encargo');
+      return;
+    }
+
+    // Validate email format if provided
+    if (quickClientData.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(quickClientData.email.trim())) {
+        setQuickCreateError('El formato del email no es válido');
+        return;
+      }
     }
 
     setQuickCreateLoading(true);
@@ -456,10 +473,17 @@ export default function ClientSelector({
                     type="email"
                     value={quickClientData.email}
                     onChange={(e) => setQuickClientData({...quickClientData, email: e.target.value})}
-                    placeholder="Email (opcional - para portal web)"
-                    className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder={requireEmail ? "Email del cliente *" : "Email (opcional - para portal web)"}
+                    className={`w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                      requireEmail ? 'border-blue-300 bg-blue-50' : ''
+                    }`}
                   />
                 </div>
+                {requireEmail && (
+                  <p className="text-xs text-blue-600 -mt-1 ml-1">
+                    El cliente recibirá notificaciones del encargo
+                  </p>
+                )}
 
                 <div className="relative">
                   <GraduationCap className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

@@ -1,5 +1,8 @@
 /**
- * Dashboard Page - Main overview with aggregated statistics from all schools
+ * Dashboard Page - Main overview with GLOBAL aggregated statistics
+ *
+ * This dashboard does NOT depend on the school selector.
+ * It shows aggregated stats from ALL schools the user has access to.
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -18,14 +21,15 @@ import {
   RefreshCw,
   DollarSign,
   MessageSquare,
-  Mail
+  Mail,
+  Clock
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { dashboardService } from '../services/dashboardService';
 import { saleService } from '../services/saleService';
 import { productService } from '../services/productService';
 import { contactService, type Contact } from '../services/contactService';
-import type { AggregatedDashboardStats, SchoolStats } from '../services/dashboardService';
+import type { GlobalDashboardStats, SchoolSummaryItem } from '../services/dashboardService';
 import type { SaleListItem, Product } from '../types/api';
 
 interface StatCard {
@@ -42,7 +46,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { availableSchools, loadSchools } = useSchoolStore();
-  const [stats, setStats] = useState<AggregatedDashboardStats | null>(null);
+  const [stats, setStats] = useState<GlobalDashboardStats | null>(null);
   const [recentSales, setRecentSales] = useState<SaleListItem[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
   const [recentContacts, setRecentContacts] = useState<Contact[]>([]);
@@ -57,31 +61,24 @@ export default function Dashboard() {
   }, [availableSchools.length, loadSchools]);
 
   useEffect(() => {
-    if (availableSchools.length > 0) {
-      loadDashboardData();
-    }
-  }, [availableSchools]);
+    // Load dashboard data immediately - doesn't depend on school selector
+    loadDashboardData();
+  }, []);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Load aggregated stats from all schools
-      const schoolsForStats = availableSchools.map(s => ({
-        id: s.id,
-        name: s.name,
-        code: s.code
-      }));
-
-      const [aggregatedStats, salesData, productsData, contactsData] = await Promise.all([
-        dashboardService.getAggregatedStats(schoolsForStats),
+      // Load GLOBAL stats - single API call, aggregates all schools
+      const [globalStats, salesData, productsData, contactsData] = await Promise.all([
+        dashboardService.getGlobalStats(),
         saleService.getAllSales({ limit: 5 }).catch(() => []),
         productService.getAllProducts({ with_stock: true, limit: 100 }).catch(() => []),
         contactService.getContacts({ page: 1, page_size: 5, unread_only: false }).catch(() => ({ items: [], total: 0, page: 1, page_size: 5, total_pages: 0 }))
       ]);
 
-      setStats(aggregatedStats);
+      setStats(globalStats);
       setRecentSales(salesData);
       setRecentContacts(contactsData.items);
 
@@ -105,42 +102,47 @@ export default function Dashboard() {
     }
   };
 
+  // Format currency without decimals
+  const formatCurrency = (amount: number) => {
+    return `$${amount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+  };
+
   const statCards: StatCard[] = [
     {
-      title: 'Total Productos',
-      value: stats ? stats.totals.total_products.toLocaleString() : '-',
-      subtitle: stats && stats.school_count > 1 ? `en ${stats.school_count} colegios` : undefined,
-      icon: Package,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
-      link: '/products',
+      title: 'Ventas Totales',
+      value: stats ? stats.totals.total_sales.toLocaleString() : '-',
+      subtitle: stats ? `${formatCurrency(stats.totals.sales_amount_month)} este mes` : undefined,
+      icon: ShoppingCart,
+      color: 'text-green-600',
+      bgColor: 'bg-green-100',
+      link: '/sales',
+    },
+    {
+      title: 'Encargos Pendientes',
+      value: stats ? stats.totals.pending_orders.toLocaleString() : '-',
+      subtitle: stats ? `${stats.totals.total_orders} encargos totales` : undefined,
+      icon: Clock,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-100',
+      link: '/orders',
     },
     {
       title: 'Clientes',
       value: stats ? stats.totals.total_clients.toLocaleString() : '-',
       subtitle: stats && stats.school_count > 1 ? `en ${stats.school_count} colegios` : undefined,
       icon: Users,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-100',
       link: '/clients',
     },
     {
-      title: 'Ventas Totales',
-      value: stats ? `$${stats.totals.total_sales.toLocaleString()}` : '-',
+      title: 'Productos',
+      value: stats ? stats.totals.total_products.toLocaleString() : '-',
       subtitle: stats && stats.school_count > 1 ? `en ${stats.school_count} colegios` : undefined,
-      icon: ShoppingCart,
+      icon: Package,
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
-      link: '/sales',
-    },
-    {
-      title: 'Encargos',
-      value: stats ? stats.totals.total_orders.toLocaleString() : '-',
-      subtitle: stats && stats.school_count > 1 ? `en ${stats.school_count} colegios` : undefined,
-      icon: FileText,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100',
-      link: '/orders',
+      link: '/products',
     },
   ];
 
@@ -167,9 +169,11 @@ export default function Dashboard() {
             ¡Bienvenido, {user?.full_name || user?.username}!
           </h1>
           <p className="text-slate-500 mt-1 md:mt-2 text-base md:text-lg">
-            {availableSchools.length === 1
-              ? `Resumen de ${availableSchools[0].name}`
-              : `Resumen de ${availableSchools.length} colegios`
+            {stats?.school_count === 1
+              ? `Resumen de ${stats.schools_summary[0]?.school_name || 'tu colegio'}`
+              : stats?.school_count
+                ? `Resumen global de ${stats.school_count} colegios`
+                : 'Cargando resumen...'
             }
           </p>
         </div>
@@ -254,37 +258,33 @@ export default function Dashboard() {
                     Colegio
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Productos
+                    Ventas (mes)
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Clientes
+                    Monto Ventas
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ventas
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Encargos
+                    Encargos Pend.
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {stats.by_school.map((school: SchoolStats) => (
+                {stats.schools_summary.map((school: SchoolSummaryItem) => (
                   <tr key={school.school_id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="font-medium text-gray-900">{school.school_name}</div>
                       <div className="text-xs text-gray-500">{school.school_code}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900">
-                      {school.total_products.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900">
-                      {school.total_clients.toLocaleString()}
+                      {school.sales_count.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium text-green-600">
-                      ${school.total_sales.toLocaleString()}
+                      {formatCurrency(school.sales_amount)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900">
-                      {school.total_orders.toLocaleString()}
+                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                      <span className={school.pending_orders > 0 ? 'text-orange-600 font-medium' : 'text-gray-900'}>
+                        {school.pending_orders}
+                      </span>
                     </td>
                   </tr>
                 ))}

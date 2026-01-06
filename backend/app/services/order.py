@@ -8,7 +8,7 @@ Contabilidad de Encargos:
 - Cuando se cancela totalmente: la cuenta por cobrar queda saldada
 """
 from uuid import UUID
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +17,12 @@ from sqlalchemy.orm import selectinload, joinedload
 from app.models.order import Order, OrderItem, OrderStatus, OrderItemStatus
 from app.models.product import GarmentType, Product
 from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
+from app.models.client import Client
 from app.schemas.order import OrderCreate, OrderUpdate, OrderPayment
 from app.schemas.accounting import AccountsReceivableCreate
 from app.services.base import SchoolIsolatedService
+from app.services.email import send_activation_email
+import secrets
 
 # Required measurements for yomber orders
 YOMBER_REQUIRED_MEASUREMENTS = ['delantero', 'trasero', 'cintura', 'largo']
@@ -235,6 +238,11 @@ class OrderService(SchoolIsolatedService[Order]):
             self.db.add(receivable)
 
         await self.db.flush()
+
+        # === ENVIAR EMAIL DE ACTIVACIÓN AL CLIENTE ===
+        # Si el cliente tiene email y no está verificado, enviar invitación
+        if order_data.client_id:
+            await self._send_activation_email_if_needed(order_data.client_id, order.code)
 
         return order
 
@@ -1165,3 +1173,70 @@ class OrderService(SchoolIsolatedService[Order]):
         # Reload and return
         await self.db.refresh(order)
         return order
+
+    async def _send_activation_email_if_needed(
+        self,
+        client_id: UUID,
+        order_code: str
+    ) -> bool:
+        """
+        Send activation email to client if they have email and are not verified.
+
+        This allows clients created from internal UI to activate their account
+        and see their order status in the web portal.
+
+        Args:
+            client_id: Client UUID
+            order_code: Order code for context in email
+
+        Returns:
+            True if email was sent, False otherwise
+        """
+        # Get client
+        result = await self.db.execute(
+            select(Client).where(Client.id == client_id)
+        )
+        client = result.scalar_one_or_none()
+
+        if not client:
+            return False
+
+        # Check if client has email and is not already verified
+        if not client.email:
+            print(f"[ORDER] Client {client.name} has no email, skipping activation")
+            return False
+
+        if client.is_verified:
+            print(f"[ORDER] Client {client.name} already verified, skipping activation")
+            return False
+
+        # Check if token already exists and is valid
+        if client.verification_token and client.verification_token_expires:
+            if client.verification_token_expires > datetime.utcnow():
+                print(f"[ORDER] Client {client.name} has valid token, skipping new email")
+                return False
+
+        # Generate new activation token (64 chars hex)
+        activation_token = secrets.token_hex(32)
+
+        # Set token expiration to 7 days
+        client.verification_token = activation_token
+        client.verification_token_expires = datetime.utcnow() + timedelta(days=7)
+
+        await self.db.flush()
+
+        # Send activation email
+        try:
+            sent = send_activation_email(
+                email=client.email,
+                token=activation_token,
+                name=client.name
+            )
+            if sent:
+                print(f"✅ [ORDER] Activation email sent to {client.email} for order {order_code}")
+            else:
+                print(f"⚠️ [ORDER] Failed to send activation email to {client.email}")
+            return sent
+        except Exception as e:
+            print(f"❌ [ORDER] Error sending activation email: {e}")
+            return False

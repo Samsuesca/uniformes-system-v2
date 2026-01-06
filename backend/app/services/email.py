@@ -49,7 +49,7 @@ def send_verification_email(email: str, code: str, name: str = "Usuario") -> boo
                 </div>
                 <div style="padding: 20px; text-align: center; background: #f3f4f6;">
                     <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                        © 2025 Uniformes. Todos los derechos reservados.
+                        © 2026 Uniformes. Todos los derechos reservados.
                     </p>
                 </div>
             </div>
@@ -99,7 +99,7 @@ def send_welcome_email(email: str, name: str) -> bool:
                 </div>
                 <div style="padding: 20px; text-align: center; background: #f3f4f6;">
                     <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                        © 2025 Uniformes. Todos los derechos reservados.
+                        © 2026 Uniformes. Todos los derechos reservados.
                     </p>
                 </div>
             </div>
@@ -150,7 +150,7 @@ def send_password_reset_email(email: str, code: str, name: str = "Usuario") -> b
                 </div>
                 <div style="padding: 20px; text-align: center; background: #f3f4f6;">
                     <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                        © 2025 Uniformes. Todos los derechos reservados.
+                        © 2026 Uniformes. Todos los derechos reservados.
                     </p>
                 </div>
             </div>
@@ -220,7 +220,7 @@ def send_activation_email(email: str, token: str, name: str) -> bool:
                         <!-- Footer -->
                         <div style="background-color: #1f2937; padding: 20px; text-align: center;">
                             <p style="color: #9ca3af; margin: 0; font-size: 12px;">
-                                © 2025 Uniformes Consuelo Rios. Todos los derechos reservados.
+                                © 2026 Uniformes Consuelo Rios. Todos los derechos reservados.
                             </p>
                         </div>
                     </div>

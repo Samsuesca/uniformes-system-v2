@@ -15,11 +15,22 @@ export interface SaleItemCreate {
   is_global?: boolean;  // True if product is from global inventory
 }
 
+export type PaymentMethod = 'cash' | 'nequi' | 'credit' | 'transfer' | 'card';
+
+export interface SalePaymentCreate {
+  amount: number;
+  payment_method: PaymentMethod;
+  notes?: string;
+}
+
 export interface SaleCreate {
   school_id: string;
   client_id?: string | null;
   items: SaleItemCreate[];
-  payment_method: 'cash' | 'nequi' | 'credit' | 'transfer' | 'card';
+  // Single payment method (deprecated, use payments instead)
+  payment_method?: PaymentMethod;
+  // Multiple payments support
+  payments?: SalePaymentCreate[];
   notes?: string;
   source?: 'desktop_app' | 'web_portal' | 'api';
   // Historical sales (migration) - don't affect inventory

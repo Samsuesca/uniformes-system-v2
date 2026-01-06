@@ -686,7 +686,7 @@ export default function PriceListModal({
               <p className="text-lg font-semibold uppercase print:text-base">
                 Confección y Venta de Uniformes
               </p>
-              <p className="text-xl font-bold mt-1 print:text-lg">2025</p>
+              <p className="text-xl font-bold mt-1 print:text-lg">{new Date().getFullYear()}</p>
               <p className="text-lg font-semibold uppercase mt-2 print:text-base print:mt-1">
                 {school.name}
               </p>

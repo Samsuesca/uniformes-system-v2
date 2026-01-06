@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Search, Loader2, Package, Filter, Building2, Globe } from 'lucide-react';
+import { X, Search, Loader2, Package, Filter, Building2, Globe, CheckCircle } from 'lucide-react';
 import { productService } from '../services/productService';
 import type { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../types/api';
 import { groupProductsByGarmentType, groupGlobalProductsByGarmentType, type ProductVariant, type ProductGroup } from '../utils/productGrouping';
@@ -24,6 +24,7 @@ interface ProductGroupSelectorProps {
   initialProductSource?: 'school' | 'global';
   excludeProductIds?: string[];
   excludeGarmentTypeIds?: string[];
+  includeGarmentTypeIds?: string[]; // Only show these garment types (for Yomber filtering)
 
   // UI customization
   title?: string;
@@ -40,6 +41,7 @@ export default function ProductGroupSelector({
   initialProductSource = 'school',
   excludeProductIds = [],
   excludeGarmentTypeIds = [],
+  includeGarmentTypeIds,
   title = 'Seleccionar Producto',
   emptyMessage = 'No se encontraron productos',
 }: ProductGroupSelectorProps) {
@@ -56,11 +58,15 @@ export default function ProductGroupSelector({
   const [categoryFilter, setCategoryFilter] = useState('');
   const [productSource, setProductSource] = useState<'school' | 'global'>(initialProductSource);
 
-  // Reset product source when initialProductSource changes (when modal opens)
+  // Multi-select tracking state
+  const [addedProducts, setAddedProducts] = useState<Map<string, number>>(new Map());
+
+  // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setProductSource(initialProductSource);
       setCategoryFilter(''); // Reset category when source changes
+      setAddedProducts(new Map()); // Reset added products counter
     }
   }, [isOpen, initialProductSource]);
 
@@ -107,34 +113,52 @@ export default function ProductGroupSelector({
 
   // Current garment types based on product source
   const currentGarmentTypes = useMemo(() => {
-    if (productSource === 'global') {
-      return globalGarmentTypes.filter(gt => !excludeGarmentTypeIds.includes(gt.id));
+    let types = productSource === 'global' ? globalGarmentTypes : garmentTypes;
+
+    // Apply include filter (if set, ONLY show these types)
+    if (includeGarmentTypeIds && includeGarmentTypeIds.length > 0) {
+      types = types.filter(gt => includeGarmentTypeIds.includes(gt.id));
     }
-    return garmentTypes.filter(gt => !excludeGarmentTypeIds.includes(gt.id));
-  }, [productSource, garmentTypes, globalGarmentTypes, excludeGarmentTypeIds]);
+
+    // Apply exclude filter
+    types = types.filter(gt => !excludeGarmentTypeIds.includes(gt.id));
+
+    return types;
+  }, [productSource, garmentTypes, globalGarmentTypes, excludeGarmentTypeIds, includeGarmentTypeIds]);
 
   // Group products by garment type
   const productGroups = useMemo(() => {
+    // Helper to check if garment type should be included
+    const shouldIncludeGarmentType = (garmentTypeId: string) => {
+      // If includeGarmentTypeIds is set, ONLY include those
+      if (includeGarmentTypeIds && includeGarmentTypeIds.length > 0) {
+        if (!includeGarmentTypeIds.includes(garmentTypeId)) return false;
+      }
+      // Apply exclude filter
+      if (excludeGarmentTypeIds.includes(garmentTypeId)) return false;
+      return true;
+    };
+
     if (productSource === 'global') {
       // Group global products
       const filteredGlobalProducts = globalProducts.filter(p =>
-        !excludeGarmentTypeIds.includes(p.garment_type_id)
+        shouldIncludeGarmentType(p.garment_type_id)
       );
       return groupGlobalProductsByGarmentType(filteredGlobalProducts, globalGarmentTypes);
     }
 
     // Group school products
     const filteredGarmentTypes = garmentTypes.filter(gt =>
-      !excludeGarmentTypeIds.includes(gt.id)
+      shouldIncludeGarmentType(gt.id)
     );
 
-    // Filter products by excluded garment types
+    // Filter products by garment type rules
     const filteredProducts = products.filter(p =>
-      !excludeGarmentTypeIds.includes(p.garment_type_id)
+      shouldIncludeGarmentType(p.garment_type_id)
     );
 
     return groupProductsByGarmentType(filteredProducts, filteredGarmentTypes);
-  }, [productSource, products, garmentTypes, globalProducts, globalGarmentTypes, excludeGarmentTypeIds]);
+  }, [productSource, products, garmentTypes, globalProducts, globalGarmentTypes, excludeGarmentTypeIds, includeGarmentTypeIds]);
 
   // Apply search and category filters
   const filteredGroups = useMemo(() => {
@@ -173,6 +197,14 @@ export default function ProductGroupSelector({
 
   // Handle variant selection
   const handleVariantSelect = (variant: ProductVariant, quantity: number) => {
+    // Update added products counter for visual feedback
+    setAddedProducts(prev => {
+      const newMap = new Map(prev);
+      const current = newMap.get(variant.productId) || 0;
+      newMap.set(variant.productId, current + quantity);
+      return newMap;
+    });
+
     if (productSource === 'global') {
       // Find the global product object
       const globalProduct = globalProducts.find(p => p.id === variant.productId);
@@ -186,6 +218,23 @@ export default function ProductGroupSelector({
         onSelect(product, quantity, false);
       }
     }
+  };
+
+  // Calculate total items added in this session
+  const totalAddedCount = useMemo(() => {
+    let total = 0;
+    addedProducts.forEach(qty => total += qty);
+    return total;
+  }, [addedProducts]);
+
+  // Get added quantity for a specific group (sum of all variants in that group)
+  const getGroupAddedQuantity = (group: ProductGroup): number => {
+    let total = 0;
+    group.variants.forEach(v => {
+      const qty = addedProducts.get(v.productId);
+      if (qty) total += qty;
+    });
+    return total;
   };
 
   const handleClose = () => {
@@ -333,16 +382,40 @@ export default function ProductGroupSelector({
                     onSelect={handleVariantSelect}
                     excludeProductIds={excludeProductIds}
                     filterByStock={filterByStock}
+                    addedQuantity={getGroupAddedQuantity(group)}
                   />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="p-3 border-t border-gray-200 bg-gray-50 text-center text-sm text-gray-500 flex-shrink-0">
-            {filteredGroups.length} tipo{filteredGroups.length !== 1 && 's'} de producto
-            {searchQuery || categoryFilter ? ' (filtrado)' : ''}
+          {/* Footer with counter and "Listo" button */}
+          <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                {totalAddedCount > 0 ? (
+                  <span className="text-green-600 font-medium flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4" />
+                    {totalAddedCount} producto{totalAddedCount !== 1 && 's'} agregado{totalAddedCount !== 1 && 's'}
+                  </span>
+                ) : (
+                  <span className="text-gray-500">
+                    {filteredGroups.length} tipo{filteredGroups.length !== 1 && 's'} de producto
+                    {searchQuery || categoryFilter ? ' (filtrado)' : ''}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleClose}
+                className={`px-5 py-2 rounded-lg font-medium transition-colors ${
+                  totalAddedCount > 0
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+              >
+                {totalAddedCount > 0 ? 'Listo' : 'Cerrar'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

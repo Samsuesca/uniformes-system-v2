@@ -23,6 +23,32 @@ export interface AggregatedDashboardStats {
   school_count: number;
 }
 
+// ============= New Global Dashboard Types =============
+
+export interface GlobalDashboardTotals {
+  total_sales: number;         // Count of sales (no $ sign)
+  sales_amount_month: number;  // Amount in currency
+  total_orders: number;        // Count of orders
+  pending_orders: number;      // Pending + in_production
+  total_clients: number;
+  total_products: number;
+}
+
+export interface SchoolSummaryItem {
+  school_id: string;
+  school_name: string;
+  school_code: string;
+  sales_count: number;
+  sales_amount: number;
+  pending_orders: number;
+}
+
+export interface GlobalDashboardStats {
+  totals: GlobalDashboardTotals;
+  schools_summary: SchoolSummaryItem[];
+  school_count: number;
+}
+
 export const dashboardService = {
   /**
    * Get school summary with stats
@@ -94,5 +120,14 @@ export const dashboardService = {
       by_school: schoolStats,
       school_count: schools.length,
     };
+  },
+
+  /**
+   * Get GLOBAL dashboard stats (aggregated across all user's schools)
+   * Does NOT depend on school selector - fetches everything in one call
+   */
+  async getGlobalStats(): Promise<GlobalDashboardStats> {
+    const response = await apiClient.get<GlobalDashboardStats>('/global/dashboard/stats');
+    return response.data;
   },
 };

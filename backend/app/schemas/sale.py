@@ -10,6 +10,29 @@ from app.models.sale import SaleStatus, PaymentMethod, ChangeStatus, ChangeType,
 
 
 # ============================================
+# SalePayment Schemas
+# ============================================
+
+class SalePaymentCreate(BaseSchema):
+    """Schema for creating a payment line"""
+    amount: Decimal = Field(..., gt=0)
+    payment_method: PaymentMethod
+    notes: str | None = None
+
+
+class SalePaymentResponse(BaseSchema):
+    """SalePayment for API responses"""
+    id: UUID
+    amount: Decimal
+    payment_method: PaymentMethod
+    notes: str | None = None
+    transaction_id: UUID | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================
 # SaleItem Schemas
 # ============================================
 
@@ -73,7 +96,16 @@ class SaleCreate(SaleBase, SchoolIsolatedSchema):
     # Historical sales (migration) - don't affect inventory
     is_historical: bool = False
     sale_date: datetime | None = None  # Optional: set custom date for historical sales
+    # Multiple payments support (replaces single payment_method)
+    payments: list[SalePaymentCreate] | None = None
     # code, status, totals will be auto-generated
+
+    @model_validator(mode='after')
+    def validate_payment_fields(self):
+        """Ensure either payment_method or payments is provided, not both"""
+        if self.payments and self.payment_method:
+            raise ValueError("Use either 'payment_method' (single) or 'payments' (multiple), not both")
+        return self
 
 
 class SaleUpdate(BaseSchema):
@@ -98,6 +130,7 @@ class SaleInDB(SaleBase, SchoolIsolatedSchema, IDModelSchema, TimestampSchema):
 class SaleResponse(SaleInDB):
     """Sale for API responses"""
     items: list[SaleItemResponse] = []
+    payments: list[SalePaymentResponse] = []
 
     model_config = {"from_attributes": True}
 
@@ -105,6 +138,7 @@ class SaleResponse(SaleInDB):
 class SaleWithItems(SaleResponse):
     """Sale with all items and product details"""
     items: list[SaleItemWithProduct]
+    payments: list[SalePaymentResponse] = []
     client_name: str | None = None
 
 

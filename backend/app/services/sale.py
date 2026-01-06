@@ -13,7 +13,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.sale import Sale, SaleItem, SaleStatus, SaleChange, ChangeStatus, ChangeType, PaymentMethod
+from app.models.sale import Sale, SaleItem, SalePayment, SaleStatus, SaleChange, ChangeStatus, ChangeType, PaymentMethod
 from app.models.product import Product, GlobalProduct
 from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
 from app.schemas.sale import SaleCreate, SaleUpdate, SaleChangeCreate, SaleChangeUpdate
@@ -206,6 +206,27 @@ class SaleService(SchoolIsolatedService[Sale]):
 
         await self.db.flush()
 
+        # === PAGOS MÚLTIPLES ===
+        # Si se proporcionan pagos múltiples, crearlos
+        if sale_data.payments:
+            # Validar que la suma de pagos iguale el total
+            total_payments = sum(p.amount for p in sale_data.payments)
+            if total_payments != total:
+                raise ValueError(
+                    f"La suma de pagos ({total_payments}) no coincide con el total ({total})"
+                )
+
+            for payment_data in sale_data.payments:
+                payment = SalePayment(
+                    sale_id=sale.id,
+                    amount=payment_data.amount,
+                    payment_method=payment_data.payment_method,
+                    notes=payment_data.notes
+                )
+                self.db.add(payment)
+
+            await self.db.flush()
+
         # === CONTABILIDAD ===
         # Solo para ventas no históricas
         if not is_historical and sale.total > Decimal("0"):
@@ -217,57 +238,83 @@ class SaleService(SchoolIsolatedService[Sale]):
                 PaymentMethod.CARD: AccPaymentMethod.CARD,
                 PaymentMethod.CREDIT: AccPaymentMethod.CREDIT,
             }
-            acc_payment_method = payment_method_map.get(
-                sale.payment_method or PaymentMethod.CASH,
-                AccPaymentMethod.CASH
-            )
 
-            # CREDIT no afecta cuentas de balance - solo genera cuenta por cobrar
-            if sale.payment_method == PaymentMethod.CREDIT:
-                # Crear cuenta por cobrar por el total
+            # Determinar pagos a procesar
+            # Si hay múltiples pagos, procesarlos individualmente
+            # Si hay un solo payment_method, usarlo para toda la venta
+            payments_to_process = []
+
+            if sale_data.payments:
+                # Múltiples pagos - procesar cada uno
+                for payment_data in sale_data.payments:
+                    payments_to_process.append({
+                        "amount": payment_data.amount,
+                        "method": payment_data.payment_method
+                    })
+            elif sale.payment_method:
+                # Pago único tradicional
+                payments_to_process.append({
+                    "amount": sale.total,
+                    "method": sale.payment_method
+                })
+
+            # Procesar cada pago
+            credit_total = Decimal("0")
+            for payment_info in payments_to_process:
+                acc_payment_method = payment_method_map.get(
+                    payment_info["method"],
+                    AccPaymentMethod.CASH
+                )
+
+                # CREDIT no afecta cuentas de balance - solo genera cuenta por cobrar
+                if payment_info["method"] == PaymentMethod.CREDIT:
+                    credit_total += payment_info["amount"]
+                else:
+                    # Ventas efectivas: crear transacción de ingreso
+                    transaction = Transaction(
+                        school_id=sale.school_id,
+                        type=TransactionType.INCOME,
+                        amount=payment_info["amount"],
+                        payment_method=acc_payment_method,
+                        description=f"Venta {sale.code}" + (f" ({payment_info['method'].value})" if len(payments_to_process) > 1 else ""),
+                        category="sales",
+                        reference_code=sale.code,
+                        transaction_date=sale.sale_date.date() if hasattr(sale.sale_date, 'date') else sale.sale_date,
+                        sale_id=sale.id,
+                        created_by=user_id
+                    )
+                    self.db.add(transaction)
+                    await self.db.flush()
+
+                    # Apply balance integration (agrega a Caja/Banco)
+                    # Wrapped in try-catch so sales don't fail if balance integration has issues
+                    try:
+                        from app.services.balance_integration import BalanceIntegrationService
+                        balance_service = BalanceIntegrationService(self.db)
+                        await balance_service.apply_transaction_to_balance(transaction, user_id)
+                    except Exception as e:
+                        # Log the error but don't fail the sale
+                        import logging
+                        logging.error(f"Balance integration failed for sale {sale.code}: {e}")
+
+            # Crear cuenta por cobrar si hay monto a crédito
+            if credit_total > Decimal("0"):
                 receivable = AccountsReceivable(
                     school_id=sale.school_id,
                     client_id=sale.client_id,
                     sale_id=sale.id,
-                    amount=sale.total,
+                    amount=credit_total,
                     description=f"Venta a crédito {sale.code}",
                     invoice_date=sale.sale_date.date() if hasattr(sale.sale_date, 'date') else sale.sale_date,
                     due_date=None,  # Sin fecha de vencimiento definida
                     created_by=user_id
                 )
                 self.db.add(receivable)
-            else:
-                # Ventas efectivas: crear transacción de ingreso
-                transaction = Transaction(
-                    school_id=sale.school_id,
-                    type=TransactionType.INCOME,
-                    amount=sale.total,
-                    payment_method=acc_payment_method,
-                    description=f"Venta {sale.code}",
-                    category="sales",
-                    reference_code=sale.code,
-                    transaction_date=sale.sale_date.date() if hasattr(sale.sale_date, 'date') else sale.sale_date,
-                    sale_id=sale.id,
-                    created_by=user_id
-                )
-                self.db.add(transaction)
-                await self.db.flush()
-
-                # Apply balance integration (agrega a Caja/Banco)
-                # Wrapped in try-catch so sales don't fail if balance integration has issues
-                try:
-                    from app.services.balance_integration import BalanceIntegrationService
-                    balance_service = BalanceIntegrationService(self.db)
-                    await balance_service.apply_transaction_to_balance(transaction, user_id)
-                except Exception as e:
-                    # Log the error but don't fail the sale
-                    import logging
-                    logging.error(f"Balance integration failed for sale {sale.code}: {e}")
 
         await self.db.flush()
 
-        # Refresh sale with items loaded
-        await self.db.refresh(sale, ["items"])
+        # Refresh sale with items and payments loaded
+        await self.db.refresh(sale, ["items", "payments"])
 
         return sale
 
@@ -277,14 +324,14 @@ class SaleService(SchoolIsolatedService[Sale]):
         school_id: UUID
     ) -> Sale | None:
         """
-        Get sale with items loaded (including product relationships)
+        Get sale with items and payments loaded (including product relationships)
 
         Args:
             sale_id: Sale UUID
             school_id: School UUID
 
         Returns:
-            Sale with items or None
+            Sale with items and payments or None
         """
         from app.models.sale import SaleItem
         from app.models.product import Product, GlobalProduct
@@ -293,7 +340,8 @@ class SaleService(SchoolIsolatedService[Sale]):
             select(Sale)
             .options(
                 selectinload(Sale.items).selectinload(SaleItem.product),
-                selectinload(Sale.items).selectinload(SaleItem.global_product)
+                selectinload(Sale.items).selectinload(SaleItem.global_product),
+                selectinload(Sale.payments)
             )
             .where(
                 Sale.id == sale_id,
