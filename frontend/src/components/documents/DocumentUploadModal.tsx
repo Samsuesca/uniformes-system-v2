@@ -2,7 +2,7 @@
  * DocumentUploadModal Component - Upload new document modal with drag & drop
  */
 import { useState, useRef, useCallback } from 'react';
-import { X, CloudUpload, FileText } from 'lucide-react';
+import { X, UploadCloud, FileText } from 'lucide-react';
 import { formatFileSize } from '../../types/document';
 
 interface DocumentUploadModalProps {
@@ -191,7 +191,7 @@ export default function DocumentUploadModal({
               </div>
             ) : (
               <div className="flex flex-col items-center">
-                <CloudUpload className="w-12 h-12 text-gray-400 mb-2" />
+                <UploadCloud className="w-12 h-12 text-gray-400 mb-2" />
                 <p className="font-medium text-gray-700">
                   Arrastra un archivo aqui o haz clic para seleccionar
                 </p>
