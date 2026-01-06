@@ -2,14 +2,14 @@
  * DocumentGrid Component - Displays documents in a grid layout
  */
 import {
-  DocumentTextIcon,
-  PhotoIcon,
-  TableCellsIcon,
-  ArrowDownTrayIcon,
-  PencilIcon,
-  TrashIcon,
-  EyeIcon,
-} from '@heroicons/react/24/outline';
+  FileText,
+  Image,
+  Table2,
+  Download,
+  Pencil,
+  Trash2,
+  Eye,
+} from 'lucide-react';
 import type { BusinessDocumentListItem } from '../../types/document';
 import { formatFileSize, isImageMimeType, isPdfMimeType, getFileTypeName } from '../../types/document';
 
@@ -24,15 +24,15 @@ interface DocumentGridProps {
 
 function getDocumentIcon(mimeType: string) {
   if (isPdfMimeType(mimeType)) {
-    return <DocumentTextIcon className="w-12 h-12 text-red-500" />;
+    return <FileText className="w-12 h-12 text-red-500" />;
   }
   if (isImageMimeType(mimeType)) {
-    return <PhotoIcon className="w-12 h-12 text-blue-500" />;
+    return <Image className="w-12 h-12 text-blue-500" />;
   }
   if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
-    return <TableCellsIcon className="w-12 h-12 text-green-500" />;
+    return <Table2 className="w-12 h-12 text-green-500" />;
   }
-  return <DocumentTextIcon className="w-12 h-12 text-gray-500" />;
+  return <FileText className="w-12 h-12 text-gray-500" />;
 }
 
 function DocumentCard({
@@ -80,7 +80,7 @@ function DocumentCard({
             onClick={onPreview}
             title="Vista previa"
           >
-            <EyeIcon className="w-4 h-4 text-gray-600" />
+            <Eye className="w-4 h-4 text-gray-600" />
           </button>
         )}
         <button
@@ -88,21 +88,21 @@ function DocumentCard({
           onClick={onDownload}
           title="Descargar"
         >
-          <ArrowDownTrayIcon className="w-4 h-4 text-blue-600" />
+          <Download className="w-4 h-4 text-blue-600" />
         </button>
         <button
           className="p-1.5 hover:bg-gray-100 rounded"
           onClick={onEdit}
           title="Editar"
         >
-          <PencilIcon className="w-4 h-4 text-gray-600" />
+          <Pencil className="w-4 h-4 text-gray-600" />
         </button>
         <button
           className="p-1.5 hover:bg-red-50 rounded"
           onClick={onDelete}
           title="Eliminar"
         >
-          <TrashIcon className="w-4 h-4 text-red-500" />
+          <Trash2 className="w-4 h-4 text-red-500" />
         </button>
       </div>
     </div>
@@ -130,7 +130,7 @@ export default function DocumentGrid({
   if (documents.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-gray-500">
-        <DocumentTextIcon className="w-16 h-16 mb-4 text-gray-300" />
+        <FileText className="w-16 h-16 mb-4 text-gray-300" />
         <p className="text-lg font-medium">No hay documentos</p>
         <p className="text-sm">Sube un archivo para comenzar</p>
       </div>

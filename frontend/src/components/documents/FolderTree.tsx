@@ -3,14 +3,14 @@
  */
 import { useState } from 'react';
 import {
-  FolderIcon,
-  FolderOpenIcon,
-  ChevronRightIcon,
-  ChevronDownIcon,
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline';
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import type { DocumentFolderTree } from '../../types/document';
 
 interface FolderTreeProps {
@@ -67,9 +67,9 @@ function FolderItem({
         >
           {hasChildren ? (
             isExpanded ? (
-              <ChevronDownIcon className="w-4 h-4 text-gray-500" />
+              <ChevronDown className="w-4 h-4 text-gray-500" />
             ) : (
-              <ChevronRightIcon className="w-4 h-4 text-gray-500" />
+              <ChevronRight className="w-4 h-4 text-gray-500" />
             )
           ) : (
             <span className="w-4 h-4" />
@@ -78,12 +78,12 @@ function FolderItem({
 
         {/* Folder icon */}
         {isExpanded ? (
-          <FolderOpenIcon
+          <FolderOpen
             className="w-5 h-5 flex-shrink-0"
             style={{ color: folder.color || '#6B7280' }}
           />
         ) : (
-          <FolderIcon
+          <Folder
             className="w-5 h-5 flex-shrink-0"
             style={{ color: folder.color || '#6B7280' }}
           />
@@ -109,7 +109,7 @@ function FolderItem({
             }}
             title="Editar carpeta"
           >
-            <PencilIcon className="w-3.5 h-3.5 text-gray-500" />
+            <Pencil className="w-3.5 h-3.5 text-gray-500" />
           </button>
           <button
             className="p-1 hover:bg-red-100 rounded"
@@ -119,7 +119,7 @@ function FolderItem({
             }}
             title="Eliminar carpeta"
           >
-            <TrashIcon className="w-3.5 h-3.5 text-red-500" />
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
           </button>
         </div>
       </div>
@@ -176,7 +176,7 @@ export default function FolderTree({
           onClick={() => onCreateFolder(null)}
           title="Nueva carpeta"
         >
-          <PlusIcon className="w-5 h-5 text-gray-600" />
+          <Plus className="w-5 h-5 text-gray-600" />
         </button>
       </div>
 
@@ -190,7 +190,7 @@ export default function FolderTree({
           `}
           onClick={() => onSelectFolder(null)}
         >
-          <FolderIcon className="w-5 h-5 text-gray-500" />
+          <Folder className="w-5 h-5 text-gray-500" />
           <span className="text-sm font-medium">Todos los documentos</span>
         </div>
 

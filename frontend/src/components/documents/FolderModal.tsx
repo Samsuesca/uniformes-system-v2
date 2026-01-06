@@ -2,7 +2,7 @@
  * FolderModal Component - Create/Edit folder modal
  */
 import { useState, useEffect } from 'react';
-import { XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
+import { X, Folder } from 'lucide-react';
 import type { DocumentFolder, DocumentFolderCreate, DocumentFolderUpdate } from '../../types/document';
 import { FOLDER_COLORS } from '../../types/document';
 
@@ -87,7 +87,7 @@ export default function FolderModal({
             className="p-1 hover:bg-gray-100 rounded"
             onClick={onClose}
           >
-            <XMarkIcon className="w-5 h-5 text-gray-500" />
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
@@ -149,7 +149,7 @@ export default function FolderModal({
                   onClick={() => setColor(c)}
                 >
                   {color === c && (
-                    <FolderIcon className="w-4 h-4 text-white" />
+                    <Folder className="w-4 h-4 text-white" />
                   )}
                 </button>
               ))}
@@ -158,7 +158,7 @@ export default function FolderModal({
 
           {/* Preview */}
           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-md">
-            <FolderIcon className="w-6 h-6" style={{ color }} />
+            <Folder className="w-6 h-6" style={{ color }} />
             <span className="text-sm font-medium text-gray-700">
               {name || 'Nueva carpeta'}
             </span>

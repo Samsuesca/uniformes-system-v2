@@ -2,7 +2,7 @@
  * DocumentUploadModal Component - Upload new document modal with drag & drop
  */
 import { useState, useRef, useCallback } from 'react';
-import { XMarkIcon, CloudArrowUpIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { X, CloudUpload, FileText } from 'lucide-react';
 import { formatFileSize } from '../../types/document';
 
 interface DocumentUploadModalProps {
@@ -140,7 +140,7 @@ export default function DocumentUploadModal({
             className="p-1 hover:bg-gray-100 rounded"
             onClick={handleClose}
           >
-            <XMarkIcon className="w-5 h-5 text-gray-500" />
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
@@ -175,7 +175,7 @@ export default function DocumentUploadModal({
 
             {file ? (
               <div className="flex flex-col items-center">
-                <DocumentTextIcon className="w-12 h-12 text-green-500 mb-2" />
+                <FileText className="w-12 h-12 text-green-500 mb-2" />
                 <p className="font-medium text-gray-900">{file.name}</p>
                 <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
                 <button
@@ -191,7 +191,7 @@ export default function DocumentUploadModal({
               </div>
             ) : (
               <div className="flex flex-col items-center">
-                <CloudArrowUpIcon className="w-12 h-12 text-gray-400 mb-2" />
+                <CloudUpload className="w-12 h-12 text-gray-400 mb-2" />
                 <p className="font-medium text-gray-700">
                   Arrastra un archivo aqui o haz clic para seleccionar
                 </p>
