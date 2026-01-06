@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Package, Eye } from 'lucide-react';
+import { Package, Eye, Clock } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import { type ProductGroup, compareSizes } from '@/lib/types';
 import ProductImageOptimized from './ProductImageOptimized';
@@ -147,11 +147,16 @@ export default function ProductGroupCard({
 
         {/* Info de stock cuando hay talla seleccionada */}
         {selectedVariant && !group.isYomber && (
-          <p className={`text-xs mb-2 ${selectedVariant.stock > 0 ? 'text-green-600' : 'text-orange-500'}`}>
-            {selectedVariant.stock > 0
-              ? `Disponible (${selectedVariant.stock} unid.)`
-              : 'Disponible por encargo'}
-          </p>
+          <div className={`text-xs mb-2 ${selectedVariant.stock > 0 ? 'text-green-600' : 'text-orange-600'}`}>
+            {selectedVariant.stock > 0 ? (
+              <span>Disponible ({selectedVariant.stock} unid.)</span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Sin stock - Se confecciona en 5-7 dias
+              </span>
+            )}
+          </div>
         )}
 
         {/* Mensaje Yomber */}

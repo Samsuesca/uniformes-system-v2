@@ -10,6 +10,8 @@ import { groupProductsByGarmentType, type ProductGroup } from '@/lib/types';
 import ProductGroupCard from '@/components/ProductGroupCard';
 import ProductDetailModal from '@/components/ProductDetailModal';
 import PriceListModal from '@/components/PriceListModal';
+import QuotationBanner from '@/components/QuotationBanner';
+import FloatingCartSummary from '@/components/FloatingCartSummary';
 
 export default function CatalogPage() {
     const params = useParams();
@@ -37,6 +39,12 @@ export default function CatalogPage() {
     const [searchHistory, setSearchHistory] = useState<string[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [priceStats, setPriceStats] = useState<{ min_price: number; max_price: number } | null>(null);
+    const [showSizeDropdown, setShowSizeDropdown] = useState(false);
+    const [searchFocused, setSearchFocused] = useState(false);
+
+    // Calculate if there are active filters
+    const hasActiveFilters = filter !== 'all' || sizeFilter !== 'all' || showInStock || globalSearch ||
+        (priceStats && (priceRange[0] !== priceStats.min_price || priceRange[1] !== priceStats.max_price));
 
     const { addItem, getTotalItems } = useCartStore();
 
@@ -373,7 +381,10 @@ export default function CatalogPage() {
 
 
     return (
-        <div className="min-h-screen bg-surface-50">
+        <div className="min-h-screen bg-surface-50 pb-20 lg:pb-0">
+            {/* Quotation Banner */}
+            <QuotationBanner />
+
             {/* Header */}
             <header className="bg-white border-b border-surface-200 sticky top-0 z-10">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -421,98 +432,174 @@ export default function CatalogPage() {
                 </div>
             </header>
 
-            {/* Search Bar Section */}
+            {/* Compact Search Bar Section */}
             <div className="bg-white border-b border-surface-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="mb-4 space-y-4">
-                        {/* Main Search Input */}
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                    <div className="flex gap-2">
+                        {/* Search Input - Compact */}
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Buscar productos por nombre, descripción..."
-                                className="w-full pl-12 pr-12 py-3 text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent shadow-sm"
+                                onFocus={() => setSearchFocused(true)}
+                                onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+                                placeholder="Buscar productos..."
+                                className="w-full pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                             />
                             {isSearching && (
-                                <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                    <div className="animate-spin w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full" />
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                    <div className="animate-spin w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full" />
                                 </div>
                             )}
                             {searchQuery && !isSearching && (
                                 <button
                                     onClick={() => setSearchQuery('')}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                 >
-                                    <X className="w-5 h-5" />
+                                    <X className="w-4 h-4" />
                                 </button>
                             )}
-                        </div>
 
-                        {/* Search Options Row */}
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <button
-                                onClick={() => setShowFilters(!showFilters)}
-                                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                <SlidersHorizontal className="w-4 h-4" />
-                                <span className="text-sm font-medium">Filtros Avanzados</span>
-                                {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </button>
-
-                            <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={globalSearch}
-                                    onChange={(e) => setGlobalSearch(e.target.checked)}
-                                    className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
-                                />
-                                <Globe className="w-4 h-4 text-gray-600" />
-                                <span className="text-sm font-medium">Buscar en todos los colegios</span>
-                            </label>
-
-                            {searchQuery && (
-                                <div className="text-sm text-gray-600">
-                                    {allProducts.length} resultado{allProducts.length !== 1 ? 's' : ''}
+                            {/* Search History Dropdown */}
+                            {searchFocused && !searchQuery && searchHistory.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border z-30">
+                                    <div className="px-3 py-2 text-xs text-gray-500 border-b">Búsquedas recientes</div>
+                                    {searchHistory.slice(0, 5).map((query, idx) => (
+                                        <button
+                                            key={idx}
+                                            onMouseDown={() => setSearchQuery(query)}
+                                            className="w-full px-3 py-2 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                                        >
+                                            <Clock className="w-3 h-3 text-gray-400" />
+                                            {query}
+                                        </button>
+                                    ))}
                                 </div>
                             )}
                         </div>
 
-                        {/* Search History */}
-                        {!searchQuery && searchHistory.length > 0 && (
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <Clock className="w-4 h-4 text-gray-400" />
-                                <span className="text-xs text-gray-500">Búsquedas recientes:</span>
-                                {searchHistory.slice(0, 5).map((query, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => setSearchQuery(query)}
-                                        className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-                                    >
-                                        {query}
-                                    </button>
-                                ))}
+                        {/* Filters Button */}
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors relative"
+                        >
+                            <SlidersHorizontal className="w-4 h-4 text-gray-600" />
+                            {hasActiveFilters && (
+                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-brand-600 rounded-full" />
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Search Results Count */}
+                    {searchQuery && (
+                        <div className="mt-2 text-xs text-gray-500">
+                            {filteredGroups.length} resultado{filteredGroups.length !== 1 ? 's' : ''}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Compact Category + Size Filters - Single Row */}
+            <div className="bg-white border-b border-surface-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                        {/* Category Chips */}
+                        {categories.map((category) => (
+                            <button
+                                key={category}
+                                onClick={() => setFilter(category)}
+                                className={`px-3 py-1 text-xs font-medium rounded-full whitespace-nowrap transition-all ${
+                                    filter === category
+                                        ? 'bg-brand-600 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                            >
+                                {category === 'all' ? 'Todos' : category}
+                            </button>
+                        ))}
+
+                        {/* Separator */}
+                        {sizes.length > 0 && (
+                            <div className="w-px h-5 bg-gray-300 flex-shrink-0 mx-1" />
+                        )}
+
+                        {/* Size Dropdown */}
+                        {sizes.length > 0 && (
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowSizeDropdown(!showSizeDropdown)}
+                                    className={`px-3 py-1 text-xs font-medium rounded-full whitespace-nowrap flex items-center gap-1 transition-all ${
+                                        sizeFilter !== 'all'
+                                            ? 'bg-brand-600 text-white'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {sizeFilter === 'all' ? 'Talla' : `T. ${sizeFilter}`}
+                                    <ChevronDown className="w-3 h-3" />
+                                </button>
+
+                                {showSizeDropdown && (
+                                    <div className="absolute top-full mt-1 left-0 bg-white rounded-lg shadow-lg border py-1 z-30 min-w-[120px] max-h-48 overflow-y-auto">
+                                        <button
+                                            onClick={() => { setSizeFilter('all'); setShowSizeDropdown(false); }}
+                                            className={`w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 ${
+                                                sizeFilter === 'all' ? 'bg-brand-50 text-brand-600' : ''
+                                            }`}
+                                        >
+                                            Todas las tallas
+                                        </button>
+                                        {sizes.map((size) => (
+                                            <button
+                                                key={size}
+                                                onClick={() => { setSizeFilter(size); setShowSizeDropdown(false); }}
+                                                className={`w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 ${
+                                                    sizeFilter === size ? 'bg-brand-50 text-brand-600' : ''
+                                                }`}
+                                            >
+                                                {/^\d+$/.test(size) ? `Talla ${size}` : size}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
+                </div>
+            </div>
 
-                    {/* Advanced Filters Panel */}
-                    {showFilters && priceStats && (
-                        <div className="mb-4 p-6 border border-gray-200 rounded-xl bg-gray-50 space-y-6">
-                            {/* Price Range Slider */}
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                                    Rango de Precio
-                                </label>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-                                        <span>${priceRange[0].toLocaleString()}</span>
-                                        <span>${priceRange[1].toLocaleString()}</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Advanced Filters - Mobile Drawer / Desktop Panel */}
+            {showFilters && (
+                <>
+                    {/* Mobile Overlay */}
+                    <div
+                        className="fixed inset-0 bg-black/40 z-40 md:hidden"
+                        onClick={() => setShowFilters(false)}
+                    />
+
+                    {/* Mobile Drawer */}
+                    <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl z-50 md:hidden">
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            {/* Drawer Handle */}
+                            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
+
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-semibold text-gray-900">Filtros</h3>
+                                <button onClick={() => setShowFilters(false)}>
+                                    <X className="w-5 h-5 text-gray-500" />
+                                </button>
+                            </div>
+
+                            {/* Price Range */}
+                            {priceStats && (
+                                <div className="mb-4">
+                                    <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                        Precio: ${priceRange[0].toLocaleString()} - ${priceRange[1].toLocaleString()}
+                                    </label>
+                                    <div className="space-y-3">
                                         <div>
-                                            <label className="block text-xs text-gray-600 mb-1">Precio Mínimo</label>
+                                            <span className="text-xs text-gray-500">Mínimo</span>
                                             <input
                                                 type="range"
                                                 min={priceStats.min_price}
@@ -523,7 +610,7 @@ export default function CatalogPage() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs text-gray-600 mb-1">Precio Máximo</label>
+                                            <span className="text-xs text-gray-500">Máximo</span>
                                             <input
                                                 type="range"
                                                 min={priceStats.min_price}
@@ -535,98 +622,134 @@ export default function CatalogPage() {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* Stock Filter */}
-                            <div>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={showInStock}
-                                        onChange={(e) => setShowInStock(e.target.checked)}
-                                        className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
-                                    />
-                                    <Package className="w-4 h-4 text-gray-600" />
-                                    <span className="text-sm font-medium text-gray-700">Solo productos en stock</span>
-                                </label>
-                            </div>
+                            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={showInStock}
+                                    onChange={(e) => setShowInStock(e.target.checked)}
+                                    className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
+                                />
+                                <Package className="w-4 h-4 text-gray-600" />
+                                <span className="text-sm">Solo productos en stock</span>
+                            </label>
 
-                            {/* Clear Filters Button */}
-                            <button
-                                onClick={() => {
-                                    if (priceStats) {
-                                        setPriceRange([priceStats.min_price, priceStats.max_price]);
-                                    }
-                                    setShowInStock(false);
-                                    setSearchQuery('');
-                                    setFilter('all');
-                                    setSizeFilter('all');
-                                    setGlobalSearch(false);
-                                }}
-                                className="w-full px-4 py-2 text-sm font-medium text-brand-600 border border-brand-600 rounded-lg hover:bg-brand-50 transition-colors"
-                            >
-                                Limpiar todos los filtros
-                            </button>
+                            {/* Global Search */}
+                            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={globalSearch}
+                                    onChange={(e) => setGlobalSearch(e.target.checked)}
+                                    className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
+                                />
+                                <Globe className="w-4 h-4 text-gray-600" />
+                                <span className="text-sm">Buscar en todos los colegios</span>
+                            </label>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2 pt-3 border-t">
+                                <button
+                                    onClick={() => {
+                                        if (priceStats) {
+                                            setPriceRange([priceStats.min_price, priceStats.max_price]);
+                                        }
+                                        setShowInStock(false);
+                                        setSearchQuery('');
+                                        setFilter('all');
+                                        setSizeFilter('all');
+                                        setGlobalSearch(false);
+                                    }}
+                                    className="flex-1 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                >
+                                    Limpiar
+                                </button>
+                                <button
+                                    onClick={() => setShowFilters(false)}
+                                    className="flex-1 py-2.5 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700"
+                                >
+                                    Aplicar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Desktop Panel */}
+                    {priceStats && (
+                        <div className="hidden md:block bg-white border-b border-surface-200">
+                            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                                <div className="flex items-center gap-6 flex-wrap">
+                                    {/* Price Range */}
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-medium text-gray-700">Precio:</span>
+                                        <span className="text-sm text-gray-600">
+                                            ${priceRange[0].toLocaleString()} - ${priceRange[1].toLocaleString()}
+                                        </span>
+                                        <input
+                                            type="range"
+                                            min={priceStats.min_price}
+                                            max={priceStats.max_price}
+                                            value={priceRange[0]}
+                                            onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
+                                            className="w-24"
+                                        />
+                                        <input
+                                            type="range"
+                                            min={priceStats.min_price}
+                                            max={priceStats.max_price}
+                                            value={priceRange[1]}
+                                            onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
+                                            className="w-24"
+                                        />
+                                    </div>
+
+                                    {/* Stock Filter */}
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={showInStock}
+                                            onChange={(e) => setShowInStock(e.target.checked)}
+                                            className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
+                                        />
+                                        <span className="text-sm text-gray-700">Solo en stock</span>
+                                    </label>
+
+                                    {/* Global Search */}
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={globalSearch}
+                                            onChange={(e) => setGlobalSearch(e.target.checked)}
+                                            className="w-4 h-4 text-brand-600 rounded focus:ring-brand-500"
+                                        />
+                                        <Globe className="w-4 h-4 text-gray-600" />
+                                        <span className="text-sm text-gray-700">Todos los colegios</span>
+                                    </label>
+
+                                    {/* Clear Button */}
+                                    {hasActiveFilters && (
+                                        <button
+                                            onClick={() => {
+                                                if (priceStats) {
+                                                    setPriceRange([priceStats.min_price, priceStats.max_price]);
+                                                }
+                                                setShowInStock(false);
+                                                setSearchQuery('');
+                                                setFilter('all');
+                                                setSizeFilter('all');
+                                                setGlobalSearch(false);
+                                            }}
+                                            className="text-sm text-brand-600 hover:text-brand-700 font-medium"
+                                        >
+                                            Limpiar filtros
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
-                </div>
-            </div>
-
-            {/* Category Filters */}
-            {categories.length > 1 && (
-                <div className="bg-white border-b border-surface-200">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                        <div className="flex items-center gap-4 overflow-x-auto pb-2">
-                            <Filter className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                            <span className="text-sm font-semibold text-slate-600 flex-shrink-0">Categoría:</span>
-                            {categories.map((category) => (
-                                <button
-                                    key={category}
-                                    onClick={() => setFilter(category)}
-                                    className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${filter === category
-                                            ? 'bg-brand-600 text-white shadow-lg'
-                                            : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
-                                        }`}
-                                >
-                                    {category === 'all' ? 'Todos' : category}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Size Filters */}
-            {sizes.length > 0 && (
-                <div className="bg-white border-b border-surface-200">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                        <div className="flex items-center gap-4 overflow-x-auto pb-2">
-                            <Filter className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                            <span className="text-sm font-semibold text-slate-600 flex-shrink-0">Talla:</span>
-                            <button
-                                onClick={() => setSizeFilter('all')}
-                                className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${sizeFilter === 'all'
-                                        ? 'bg-brand-600 text-white shadow-lg'
-                                        : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
-                                    }`}
-                            >
-                                Todas
-                            </button>
-                            {sizes.map((size) => (
-                                <button
-                                    key={size}
-                                    onClick={() => setSizeFilter(size)}
-                                    className={`px-4 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${sizeFilter === size
-                                            ? 'bg-brand-600 text-white shadow-lg'
-                                            : 'bg-surface-100 text-slate-600 hover:bg-surface-200'
-                                        }`}
-                                >
-                                    {/^\d+$/.test(size) ? `Talla ${size}` : size}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
+                </>
             )}
 
             {/* Products Grid */}
@@ -805,6 +928,9 @@ export default function CatalogPage() {
                     globalProducts={globalProducts}
                 />
             )}
+
+            {/* Floating Cart Summary (mobile only) */}
+            <FloatingCartSummary />
         </div>
     );
 }

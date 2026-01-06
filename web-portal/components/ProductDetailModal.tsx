@@ -13,7 +13,8 @@ import {
   Info,
   MessageCircle,
   Phone,
-  Check
+  Check,
+  Clock
 } from 'lucide-react';
 import { type GarmentTypeImage, API_BASE_URL, getProductImage } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
@@ -359,9 +360,14 @@ export default function ProductDetailModal({
                         <span className="font-medium">Disponible ({currentStock} unidades)</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 text-orange-500">
-                        <Package className="w-5 h-5" />
-                        <span className="font-medium">Disponible por encargo</span>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-orange-600">
+                          <Clock className="w-5 h-5" />
+                          <span className="font-medium">Sin stock - Se confecciona en 5-7 dias habiles</span>
+                        </div>
+                        <p className="text-xs text-gray-500 ml-7">
+                          Agregalo a tu cotizacion y lo fabricamos para ti
+                        </p>
                       </div>
                     )
                   ) : (
@@ -429,12 +435,12 @@ export default function ProductDetailModal({
                         {addedToCart ? (
                           <>
                             <Check className="w-5 h-5" />
-                            ¡Agregado como encargo!
+                            Agregado a tu cotizacion
                           </>
                         ) : (
                           <>
-                            <Package className="w-5 h-5" />
-                            Encargar producto
+                            <Clock className="w-5 h-5" />
+                            Agregar a cotizacion (5-7 dias)
                           </>
                         )}
                       </button>
