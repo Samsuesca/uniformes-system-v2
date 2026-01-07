@@ -125,11 +125,8 @@ export const documentService = {
       formData.append('folder_id', data.folder_id);
     }
 
-    const response = await apiClient.post<BusinessDocument>(BASE_URL, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    // Don't set Content-Type manually - let axios/browser set it with proper boundary
+    const response = await apiClient.post<BusinessDocument>(BASE_URL, formData);
     return response.data;
   },
 
@@ -160,14 +157,10 @@ export const documentService = {
       formData.append('file', newFile);
     }
 
+    // Don't set Content-Type manually - let axios/browser set it with proper boundary
     const response = await apiClient.put<BusinessDocument>(
       `${BASE_URL}/${documentId}`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
+      formData
     );
     return response.data;
   },
