@@ -63,12 +63,21 @@ export const apiClient = {
     }
 
     try {
-      const response = await tauriFetch(url, {
+      // Use native fetch for FormData (Tauri fetch doesn't handle multipart boundary correctly)
+      // Use Tauri fetch for JSON requests (handles CORS better)
+      const fetchFn = isFormData ? window.fetch : tauriFetch;
+      const fetchOptions: RequestInit = {
         method,
         headers,
         body: data ? (isFormData ? data : JSON.stringify(data)) : undefined,
-        connectTimeout: isFormData ? 60000 : 30000, // Longer timeout for file uploads
-      });
+      };
+
+      // Only add connectTimeout for Tauri fetch
+      if (!isFormData) {
+        (fetchOptions as any).connectTimeout = 30000;
+      }
+
+      const response = await fetchFn(url, fetchOptions);
 
       updateOnlineStatus(true);
 
@@ -142,11 +151,11 @@ export const apiClient = {
     }
 
     try {
-      const response = await tauriFetch(url, {
+      // Use native fetch for FormData (Tauri fetch doesn't handle multipart boundary correctly)
+      const response = await window.fetch(url, {
         method: 'POST',
         headers,
         body: formData,
-        connectTimeout: 60000,
       });
 
       updateOnlineStatus(true);
