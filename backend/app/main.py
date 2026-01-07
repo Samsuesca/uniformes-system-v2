@@ -40,6 +40,37 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": exc.errors()}
     )
 
+
+# Catch-all exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception on {request.method} {request.url}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+
+
+# Middleware to log requests for debugging
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Log document upload requests
+        if request.url.path == "/api/v1/documents" and request.method == "POST":
+            content_type = request.headers.get("content-type", "none")
+            logger.info(f"Document upload request: content-type={content_type}")
+
+        response = await call_next(request)
+
+        # Log failed document uploads
+        if request.url.path == "/api/v1/documents" and request.method == "POST" and response.status_code >= 400:
+            logger.error(f"Document upload failed: status={response.status_code}")
+
+        return response
+
+app.add_middleware(RequestLoggingMiddleware)
+
 # CORS - Allow specific origins
 app.add_middleware(
     CORSMiddleware,
