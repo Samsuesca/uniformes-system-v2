@@ -162,6 +162,41 @@ def send_password_reset_email(email: str, code: str, name: str = "Usuario") -> b
         return False
 
 
+def send_order_confirmation_email(
+    email: str,
+    name: str,
+    order_code: str,
+    html_content: str
+) -> bool:
+    """
+    Send order confirmation email with receipt details.
+
+    Args:
+        email: Client email address
+        name: Client name
+        order_code: Order code (e.g., ENC-2026-0001)
+        html_content: Pre-generated HTML content from ReceiptService
+    """
+    if not settings.RESEND_API_KEY:
+        print(f"[DEV] Order confirmation email for {email} - Order #{order_code}")
+        return True
+
+    resend.api_key = settings.RESEND_API_KEY
+
+    try:
+        resend.Emails.send({
+            "from": settings.EMAIL_FROM,
+            "to": [email],
+            "subject": f"Confirmacion de Encargo #{order_code} - Uniformes",
+            "html": html_content
+        })
+        print(f"Order confirmation email sent to {email} for order #{order_code}")
+        return True
+    except Exception as e:
+        print(f"Error sending order confirmation email: {e}")
+        return False
+
+
 def send_activation_email(email: str, token: str, name: str) -> bool:
     """
     Send account activation email to REGULAR client with token link.

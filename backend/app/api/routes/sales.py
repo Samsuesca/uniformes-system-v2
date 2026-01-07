@@ -22,6 +22,8 @@ from app.schemas.sale import (
 )
 from app.models.sale import PaymentMethod
 from app.services.sale import SaleService
+from app.services.receipt import ReceiptService
+from fastapi.responses import HTMLResponse
 
 
 # =============================================================================
@@ -369,6 +371,34 @@ async def get_sale_with_items(
         items=items_with_products,
         client_name=client_name
     )
+
+
+@school_router.get(
+    "/{sale_id}/receipt",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_school_access(UserRole.VIEWER))],
+    summary="Get sale receipt HTML for printing"
+)
+async def get_sale_receipt(
+    school_id: UUID,
+    sale_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get HTML receipt for a sale, optimized for thermal printer (80mm).
+
+    Opens in browser and triggers print dialog automatically.
+    """
+    receipt_service = ReceiptService(db)
+    html = await receipt_service.generate_sale_receipt_html(sale_id)
+
+    if not html:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venta no encontrada"
+        )
+
+    return HTMLResponse(content=html)
 
 
 # ============================================

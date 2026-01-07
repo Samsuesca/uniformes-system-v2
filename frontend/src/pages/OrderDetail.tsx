@@ -4,11 +4,12 @@
 import { useEffect, useState, Fragment } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp, Mail, Printer } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import type { OrderWithItems, OrderStatus, OrderItemStatus } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
+import ReceiptPrintButton from '../components/ReceiptPrintButton';
 
 // Item status configuration
 const ITEM_STATUS_CONFIG: Record<OrderItemStatus, { label: string; color: string; bgColor: string; icon: string }> = {
@@ -45,6 +46,10 @@ export default function OrderDetail() {
 
   // Item status update loading state (by item ID)
   const [updatingItemStatus, setUpdatingItemStatus] = useState<string | null>(null);
+
+  // Email sending state
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
 
   // Get school_id from URL query param, fallback to currentSchool
   const schoolId = searchParams.get('school_id') || currentSchool?.id || '';
@@ -234,6 +239,38 @@ export default function OrderDetail() {
     return !['delivered', 'cancelled'].includes(itemStatus);
   };
 
+  // Handle sending receipt email
+  const handleSendEmail = async () => {
+    if (!order) return;
+
+    try {
+      setSendingEmail(true);
+      setEmailSuccess(null);
+      setError(null);
+
+      const result = await orderService.sendReceiptEmail(schoolId, order.id);
+
+      if (result.success) {
+        setEmailSuccess(result.message || 'Correo enviado exitosamente');
+        // Clear success message after 5 seconds
+        setTimeout(() => setEmailSuccess(null), 5000);
+      } else {
+        setError(result.message || 'Error al enviar el correo');
+      }
+    } catch (err: any) {
+      console.error('Error sending email:', err);
+      setError(err.response?.data?.detail || 'Error al enviar el correo');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  // Get receipt URL for printing
+  const receiptUrl = order ? orderService.getReceiptUrl(schoolId, order.id) : '';
+
+  // Check if client has email
+  const clientHasEmail = order?.client?.email || false;
+
   if (loading) {
     return (
       <Layout>
@@ -289,6 +326,30 @@ export default function OrderDetail() {
             <p className="text-gray-600 mt-1">Creado el {formatDate(order.created_at)}</p>
           </div>
           <div className="flex gap-3">
+            {/* Print Receipt Button */}
+            <ReceiptPrintButton
+              receiptUrl={receiptUrl}
+              label="Imprimir Recibo"
+              variant="outline"
+            />
+
+            {/* Send Email Button - only show if client has email */}
+            {clientHasEmail && (
+              <button
+                onClick={handleSendEmail}
+                disabled={sendingEmail}
+                className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center transition disabled:opacity-50"
+                title={`Enviar a ${order.client?.email}`}
+              >
+                {sendingEmail ? (
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <Mail className="w-5 h-5 mr-2" />
+                )}
+                {sendingEmail ? 'Enviando...' : 'Enviar Email'}
+              </button>
+            )}
+
             {nextStatus && order.status !== 'cancelled' && (
               <button
                 onClick={() => handleUpdateStatus(nextStatus)}
@@ -321,6 +382,14 @@ export default function OrderDetail() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start">
           <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* Success Alert (for email sent) */}
+      {emailSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 flex items-start">
+          <CheckCircle className="w-5 h-5 text-green-600 mr-2 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-green-700">{emailSuccess}</p>
         </div>
       )}
 

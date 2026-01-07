@@ -186,6 +186,24 @@ export const orderService = {
     );
     return response.data;
   },
+
+  /**
+   * Get receipt URL for printing
+   */
+  getReceiptUrl(schoolId: string, orderId: string): string {
+    const apiUrl = localStorage.getItem('api_url') || 'http://localhost:8000';
+    return `${apiUrl}/api/v1/schools/${schoolId}/orders/${orderId}/receipt`;
+  },
+
+  /**
+   * Send receipt email to client
+   */
+  async sendReceiptEmail(schoolId: string, orderId: string): Promise<{ message: string; success: boolean }> {
+    const response = await apiClient.post<{ message: string; success: boolean }>(
+      `/schools/${schoolId}/orders/${orderId}/send-receipt`
+    );
+    return response.data;
+  },
 };
 
 // Types for stock verification
