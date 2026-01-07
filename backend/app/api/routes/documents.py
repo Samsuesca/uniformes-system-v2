@@ -3,10 +3,13 @@ Document API Routes - Enterprise document management
 
 All endpoints require superuser access.
 """
+import logging
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -223,6 +226,9 @@ async def upload_document(
     # Read file content
     content = await file.read()
 
+    # Log upload attempt for debugging
+    logger.info(f"Upload attempt: filename={file.filename}, content_type={file.content_type}, size={len(content)}")
+
     try:
         document = await doc_service.create_document(
             name=name,
@@ -234,11 +240,19 @@ async def upload_document(
             created_by_id=current_user.id
         )
         await db.commit()
+        logger.info(f"Document uploaded successfully: {document.id}")
         return BusinessDocumentResponse.model_validate(document)
     except ValueError as e:
+        logger.error(f"Document upload validation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during document upload: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno: {str(e)}"
         )
 
 
