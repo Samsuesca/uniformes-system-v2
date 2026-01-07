@@ -56,10 +56,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Log document upload requests
+        # Log document upload requests (using print to ensure it shows)
         if request.url.path == "/api/v1/documents" and request.method == "POST":
             content_type = request.headers.get("content-type", "none")
-            logger.info(f"Document upload request: content-type={content_type}")
+            print(f"📄 Document upload request: content-type={content_type}")
 
         response = await call_next(request)
 
