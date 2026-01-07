@@ -298,6 +298,69 @@ export default function ClientSelector({
     setSelectedClient(null);
     onChange('');
     setSearchQuery('');
+    setShowExpandedInfo(false);
+    setShowEditForm(false);
+  };
+
+  // Initialize edit form with selected client data
+  const handleStartEdit = () => {
+    if (selectedClient) {
+      setEditClientData({
+        name: selectedClient.name || '',
+        phone: selectedClient.phone || '',
+        email: selectedClient.email || '',
+        student_name: selectedClient.student_name || '',
+        student_grade: selectedClient.student_grade || '',
+        address: selectedClient.address || '',
+        notes: selectedClient.notes || '',
+      });
+      setShowEditForm(true);
+      setEditError(null);
+    }
+  };
+
+  // Save edited client
+  const handleSaveEdit = async () => {
+    if (!selectedClient || !editClientData.name.trim()) {
+      setEditError('El nombre es requerido');
+      return;
+    }
+
+    // Validate email format if provided
+    if (editClientData.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editClientData.email.trim())) {
+        setEditError('El formato del email no es válido');
+        return;
+      }
+    }
+
+    setEditLoading(true);
+    setEditError(null);
+
+    try {
+      const updatedClient = await clientService.updateClient(selectedClient.id, {
+        name: editClientData.name.trim(),
+        phone: editClientData.phone.trim() || null,
+        email: editClientData.email.trim() || null,
+        student_name: editClientData.student_name.trim() || null,
+        student_grade: editClientData.student_grade.trim() || null,
+        address: editClientData.address.trim() || null,
+        notes: editClientData.notes.trim() || null,
+      });
+
+      // Update local state
+      setSelectedClient(updatedClient);
+      setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
+      onChange(updatedClient.id, updatedClient);
+
+      setShowEditForm(false);
+    } catch (err: any) {
+      console.error('Error updating client:', err);
+      setEditError(err.response?.data?.detail || err.message || 'Error al actualizar cliente');
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const handleQuickCreate = async () => {
@@ -353,41 +416,259 @@ export default function ClientSelector({
       {/* Selected value display / Search input */}
       <div className="relative">
         {!isOpen && (value || selectedClient) ? (
-          // Show selected client
+          // Show selected client - expandable card
           <div
-            onClick={() => !disabled && setIsOpen(true)}
             className={`
-              w-full px-3 py-2 border rounded-lg flex items-center justify-between
-              ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer hover:border-blue-400'}
+              w-full border rounded-lg overflow-hidden
+              ${disabled ? 'bg-gray-100' : 'bg-white'}
               ${error ? 'border-red-300' : 'border-gray-300'}
             `}
           >
-            <div className="flex items-center gap-2 min-w-0">
-              {value === NO_CLIENT_ID ? (
-                <>
-                  <UserX className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="text-gray-500">Sin cliente</span>
-                </>
-              ) : selectedClient ? (
-                <>
-                  <User className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <span className="font-medium text-gray-900 truncate block">{selectedClient.name}</span>
-                    {selectedClient.phone && (
-                      <span className="text-xs text-gray-500 truncate block">{selectedClient.phone}</span>
-                    )}
-                  </div>
-                </>
-              ) : null}
+            {/* Main row - clickable to open search */}
+            <div
+              onClick={() => !disabled && !showEditForm && setIsOpen(true)}
+              className={`
+                px-3 py-2 flex items-center justify-between
+                ${disabled || showEditForm ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'}
+              `}
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {value === NO_CLIENT_ID ? (
+                  <>
+                    <UserX className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="text-gray-500">Sin cliente</span>
+                  </>
+                ) : selectedClient ? (
+                  <>
+                    <User className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 truncate">{selectedClient.name}</span>
+                        {selectedClient.code && (
+                          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                            #{selectedClient.code}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                        {selectedClient.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {selectedClient.phone}
+                          </span>
+                        )}
+                        {selectedClient.email && (
+                          <span className="flex items-center gap-1 truncate">
+                            <Mail className="w-3 h-3" />
+                            {selectedClient.email}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              {/* Action buttons */}
+              {!disabled && selectedClient && value !== NO_CLIENT_ID && (
+                <div className="flex items-center gap-1 ml-2">
+                  {/* Toggle expanded info */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowExpandedInfo(!showExpandedInfo); setShowEditForm(false); }}
+                    className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                    title={showExpandedInfo ? 'Ocultar detalles' : 'Ver detalles'}
+                  >
+                    {showExpandedInfo ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                  {/* Edit button */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleStartEdit(); setShowExpandedInfo(true); }}
+                    className="p-1.5 hover:bg-blue-50 rounded text-gray-400 hover:text-blue-600"
+                    title="Editar cliente"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  {/* Clear button */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleClear(); }}
+                    className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"
+                    title="Quitar cliente"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Clear for NO_CLIENT */}
+              {!disabled && value === NO_CLIENT_ID && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleClear(); }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
             </div>
-            {!disabled && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleClear(); }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
+
+            {/* Expanded info section */}
+            {showExpandedInfo && selectedClient && !showEditForm && (
+              <div className="px-3 py-2 bg-gray-50 border-t border-gray-200 text-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {selectedClient.student_name && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <GraduationCap className="w-4 h-4 text-gray-400" />
+                      <span>{selectedClient.student_name}</span>
+                      {selectedClient.student_grade && (
+                        <span className="text-gray-400">({selectedClient.student_grade})</span>
+                      )}
+                    </div>
+                  )}
+                  {selectedClient.address && (
+                    <div className="flex items-center gap-2 text-gray-600 col-span-2">
+                      <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate">{selectedClient.address}</span>
+                    </div>
+                  )}
+                  {selectedClient.notes && (
+                    <div className="col-span-2 text-gray-500 italic text-xs mt-1 border-t border-gray-200 pt-2">
+                      {selectedClient.notes}
+                    </div>
+                  )}
+                  {!selectedClient.student_name && !selectedClient.address && !selectedClient.notes && (
+                    <div className="col-span-2 text-gray-400 text-xs">
+                      No hay información adicional
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Edit form */}
+            {showEditForm && selectedClient && (
+              <div className="px-3 py-3 bg-blue-50 border-t border-blue-200">
+                <h4 className="font-medium text-sm text-blue-800 mb-3 flex items-center gap-2">
+                  <Pencil className="w-4 h-4" />
+                  Editar cliente
+                </h4>
+
+                {editError && (
+                  <div className="mb-3 p-2 bg-red-100 text-red-700 text-sm rounded">
+                    {editError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Name */}
+                  <div className="relative col-span-2">
+                    <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={editClientData.name}
+                      onChange={(e) => setEditClientData({...editClientData, name: e.target.value})}
+                      placeholder="Nombre *"
+                      className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Phone */}
+                  <div className="relative">
+                    <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={editClientData.phone}
+                      onChange={(e) => setEditClientData({...editClientData, phone: e.target.value})}
+                      placeholder="Teléfono"
+                      className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div className="relative">
+                    <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="email"
+                      value={editClientData.email}
+                      onChange={(e) => setEditClientData({...editClientData, email: e.target.value})}
+                      placeholder="Email"
+                      className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Student name */}
+                  <div className="relative">
+                    <GraduationCap className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={editClientData.student_name}
+                      onChange={(e) => setEditClientData({...editClientData, student_name: e.target.value})}
+                      placeholder="Nombre estudiante"
+                      className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Student grade */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={editClientData.student_grade}
+                      onChange={(e) => setEditClientData({...editClientData, student_grade: e.target.value})}
+                      placeholder="Grado (ej: 5A)"
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Address */}
+                  <div className="relative col-span-2">
+                    <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={editClientData.address}
+                      onChange={(e) => setEditClientData({...editClientData, address: e.target.value})}
+                      placeholder="Dirección"
+                      className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Notes */}
+                  <div className="col-span-2">
+                    <textarea
+                      value={editClientData.notes}
+                      onChange={(e) => setEditClientData({...editClientData, notes: e.target.value})}
+                      placeholder="Notas adicionales..."
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditForm(false)}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-white rounded-lg transition"
+                    disabled={editLoading}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    disabled={editLoading || !editClientData.name.trim()}
+                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    {editLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    Guardar
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         ) : (

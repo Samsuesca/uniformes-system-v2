@@ -405,11 +405,6 @@ export default function Accounting() {
 
   // Handle opening edit expense modal
   const handleOpenEditExpense = (expense: ExpenseListItem) => {
-    // Check if expense has partial payments
-    if (expense.amount_paid > 0) {
-      setModalError('No se puede editar un gasto con pagos parciales');
-      return;
-    }
     setEditingExpense(expense);
     setExpenseForm({
       category: expense.category,
@@ -426,6 +421,13 @@ export default function Accounting() {
   // Handle updating expense
   const handleUpdateExpense = async () => {
     if (!editingExpense || !expenseForm.description || !expenseForm.amount) return;
+
+    // Validate that amount is not less than already paid
+    if (editingExpense.amount_paid > 0 && expenseForm.amount < editingExpense.amount_paid) {
+      setModalError(`El monto no puede ser menor al ya pagado (${formatCurrency(editingExpense.amount_paid)})`);
+      return;
+    }
+
     try {
       setSubmitting(true);
       setModalError(null);
@@ -1118,16 +1120,14 @@ export default function Accounting() {
                     <div className="text-right">
                       <p className="text-sm font-semibold text-red-600">{formatCurrency(expense.balance)}</p>
                       <div className="flex items-center justify-end gap-2 mt-1">
-                        {expense.amount_paid === 0 && (
-                          <button
-                            onClick={() => handleOpenEditExpense(expense)}
-                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition"
-                            title="Editar gasto"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                            Editar
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleOpenEditExpense(expense)}
+                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition"
+                          title="Editar gasto"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Editar
+                        </button>
                         <button
                           onClick={() => {
                             setSelectedExpense(expense);
@@ -1918,15 +1918,33 @@ export default function Accounting() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
+              {/* Info banner for expenses with partial payments */}
+              {editingExpense.amount_paid > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <AlertCircle className="w-5 h-5 text-amber-600 mr-2 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-amber-700">
+                      <p className="font-medium">Este gasto tiene pagos parciales</p>
+                      <p>Pagado: {formatCurrency(editingExpense.amount_paid)} de {formatCurrency(editingExpense.amount)}</p>
+                      <p className="text-xs mt-1">El monto no puede ser menor a lo ya pagado.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
                   <CurrencyInput
                     value={expenseForm.amount || 0}
                     onChange={(value) => setExpenseForm({ ...expenseForm, amount: value })}
-                    min={0}
+                    min={editingExpense.amount_paid || 0}
                     placeholder="$0"
                   />
+                  {editingExpense.amount_paid > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Mínimo: {formatCurrency(editingExpense.amount_paid)}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
@@ -2077,8 +2095,8 @@ export default function Accounting() {
                               Pendiente: {formatCurrency(expense.balance)}
                             </p>
                           )}
-                          {/* Edit button for expenses without payments */}
-                          {expense.amount_paid === 0 && (
+                          {/* Edit button for pending expenses */}
+                          {!expense.is_paid && (
                             <button
                               onClick={() => {
                                 setShowExpenseHistoryModal(false);
