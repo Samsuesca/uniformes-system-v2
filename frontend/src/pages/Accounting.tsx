@@ -10,6 +10,7 @@ import {
   Settings, Trash2, Car, Package
 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
+import CurrencyInput from '../components/CurrencyInput';
 import {
   getExpenseCategoryLabel,
   getExpenseCategoryColor,
@@ -115,6 +116,11 @@ export default function Accounting() {
   const [showEditExpenseModal, setShowEditExpenseModal] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseListItem | null>(null);
 
+  // Expense History Modal states
+  const [showExpenseHistoryModal, setShowExpenseHistoryModal] = useState(false);
+  const [expenseHistoryFilter, setExpenseHistoryFilter] = useState<'all' | 'pending' | 'paid'>('all');
+  const [allExpenses, setAllExpenses] = useState<ExpenseListItem[]>([]);
+
   // Cash Fallback Modal states (when Caja Menor doesn't have enough funds)
   const [showCashFallbackModal, setShowCashFallbackModal] = useState(false);
   const [pendingPaymentData, setPendingPaymentData] = useState<{
@@ -212,9 +218,10 @@ export default function Accounting() {
         setPendingExpenses(pendingData);
 
         // Build dashboard summary from global data
-        const allExpenses = await globalAccountingService.getGlobalExpenses();
-        const totalExpenses = allExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-        const paidExpensesAmount = allExpenses
+        const expensesData = await globalAccountingService.getGlobalExpenses();
+        setAllExpenses(expensesData); // Store all expenses for history modal
+        const totalExpenses = expensesData.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const paidExpensesAmount = expensesData
           .filter(e => e.is_paid)
           .reduce((sum, e) => sum + Number(e.amount || 0), 0);
         const pendingExpensesAmount = pendingData.reduce(
@@ -226,7 +233,7 @@ export default function Accounting() {
           cash_balance: cashData.total_liquid,
           expenses_pending: pendingExpensesAmount,
           expenses_paid: paidExpensesAmount,
-          transaction_count: allExpenses.length
+          transaction_count: expensesData.length
         });
       } else if (activeTab === 'receivables' || activeTab === 'payables') {
         // Use global accounting services for CxC and CxP
@@ -268,6 +275,24 @@ export default function Accounting() {
       setError(getErrorMessage(err, 'Error al cargar datos de contabilidad'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Open expense history modal with filter
+  const openExpenseHistory = (filter: 'all' | 'pending' | 'paid') => {
+    setExpenseHistoryFilter(filter);
+    setShowExpenseHistoryModal(true);
+  };
+
+  // Get filtered expenses for history modal
+  const getFilteredExpenses = () => {
+    switch (expenseHistoryFilter) {
+      case 'pending':
+        return allExpenses.filter(e => !e.is_paid);
+      case 'paid':
+        return allExpenses.filter(e => e.is_paid);
+      default:
+        return allExpenses;
     }
   };
 
@@ -838,31 +863,37 @@ export default function Accounting() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <button
+            onClick={() => openExpenseHistory('all')}
+            className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-left hover:shadow-md hover:border-red-300 transition-all cursor-pointer"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Gastos Totales</p>
                 <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(dashboard.total_expenses)}</p>
-                <p className="text-xs text-gray-400">{dashboard.transaction_count} registro(s)</p>
+                <p className="text-xs text-gray-400">{dashboard.transaction_count} registro(s) - Click para ver</p>
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <TrendingDown className="w-6 h-6 text-red-600" />
               </div>
             </div>
-          </div>
+          </button>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <button
+            onClick={() => openExpenseHistory('pending')}
+            className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-left hover:shadow-md hover:border-orange-300 transition-all cursor-pointer"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Gastos Pendientes</p>
                 <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(dashboard.expenses_pending)}</p>
-                <p className="text-xs text-gray-400">Por pagar</p>
+                <p className="text-xs text-gray-400">Por pagar - Click para ver</p>
               </div>
               <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
                 <Receipt className="w-6 h-6 text-orange-600" />
               </div>
             </div>
-          </div>
+          </button>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between">
@@ -1086,14 +1117,15 @@ export default function Accounting() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-red-600">{formatCurrency(expense.balance)}</p>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 mt-1">
                         {expense.amount_paid === 0 && (
                           <button
                             onClick={() => handleOpenEditExpense(expense)}
-                            className="text-xs text-gray-500 hover:text-gray-700"
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition"
                             title="Editar gasto"
                           >
                             <Pencil className="w-3.5 h-3.5" />
+                            Editar
                           </button>
                         )}
                         <button
@@ -1102,8 +1134,9 @@ export default function Accounting() {
                             setPaymentAmount(expense.balance);
                             setShowPaymentModal(true);
                           }}
-                          className="text-xs text-blue-600 hover:text-blue-800"
+                          className="text-xs text-green-600 hover:text-green-800 flex items-center gap-1 px-2 py-1 rounded hover:bg-green-50 transition"
                         >
+                          <DollarSign className="w-3.5 h-3.5" />
                           Pagar
                         </button>
                       </div>
@@ -1724,12 +1757,11 @@ export default function Accounting() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
-                  <input
-                    type="number"
-                    value={expenseForm.amount || ''}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    min="0"
+                  <CurrencyInput
+                    value={expenseForm.amount || 0}
+                    onChange={(value) => setExpenseForm({ ...expenseForm, amount: value })}
+                    min={0}
+                    placeholder="$0"
                   />
                 </div>
                 <div>
@@ -1806,16 +1838,15 @@ export default function Accounting() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto a pagar</label>
-                <input
-                  type="number"
+                <CurrencyInput
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
-                  max={selectedExpense.balance}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onChange={setPaymentAmount}
+                  max={Number(selectedExpense.balance)}
+                  placeholder="$0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">M&eacute;todo de pago</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de pago</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as AccPaymentMethod)}
@@ -1890,12 +1921,11 @@ export default function Accounting() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
-                  <input
-                    type="number"
-                    value={expenseForm.amount || ''}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    min="0"
+                  <CurrencyInput
+                    value={expenseForm.amount || 0}
+                    onChange={(value) => setExpenseForm({ ...expenseForm, amount: value })}
+                    min={0}
+                    placeholder="$0"
                   />
                 </div>
                 <div>
@@ -1955,6 +1985,129 @@ export default function Accounting() {
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 Guardar Cambios
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expense History Modal */}
+      {showExpenseHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-blue-600" />
+                Historial de Gastos
+                <span className="text-sm font-normal text-gray-500">
+                  ({expenseHistoryFilter === 'all' ? 'Todos' : expenseHistoryFilter === 'pending' ? 'Pendientes' : 'Pagados'})
+                </span>
+              </h3>
+              <button onClick={() => setShowExpenseHistoryModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="px-6 py-3 border-b bg-gray-50 flex gap-2">
+              {(['all', 'pending', 'paid'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setExpenseHistoryFilter(filter)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                    expenseHistoryFilter === filter
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {filter === 'all' ? 'Todos' : filter === 'pending' ? 'Pendientes' : 'Pagados'}
+                </button>
+              ))}
+            </div>
+
+            {/* Expenses list */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {getFilteredExpenses().length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Receipt className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No hay gastos {expenseHistoryFilter === 'pending' ? 'pendientes' : expenseHistoryFilter === 'paid' ? 'pagados' : ''}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {getFilteredExpenses().map((expense) => (
+                    <div
+                      key={expense.id}
+                      className={`border rounded-lg p-4 ${
+                        expense.is_paid ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className={`px-2 py-0.5 text-xs font-medium rounded ${getExpenseCategoryColor(expense.category)}`}
+                            >
+                              {getExpenseCategoryLabel(expense.category)}
+                            </span>
+                            {expense.is_paid ? (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">
+                                Pagado
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-700">
+                                Pendiente
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-medium text-gray-900">{expense.description}</p>
+                          <p className="text-sm text-gray-500">
+                            {expense.vendor && `${expense.vendor} • `}
+                            {formatDateSpanish(expense.expense_date)}
+                            {expense.due_date && ` • Vence: ${formatDateSpanish(expense.due_date)}`}
+                          </p>
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className="text-lg font-bold text-gray-900">{formatCurrency(expense.amount)}</p>
+                          {!expense.is_paid && expense.amount_paid > 0 && (
+                            <p className="text-sm text-gray-500">
+                              Pagado: {formatCurrency(expense.amount_paid)}
+                            </p>
+                          )}
+                          {!expense.is_paid && (
+                            <p className="text-sm font-medium text-red-600">
+                              Pendiente: {formatCurrency(expense.balance)}
+                            </p>
+                          )}
+                          {/* Edit button for expenses without payments */}
+                          {expense.amount_paid === 0 && (
+                            <button
+                              onClick={() => {
+                                setShowExpenseHistoryModal(false);
+                                handleOpenEditExpense(expense);
+                              }}
+                              className="mt-2 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 ml-auto"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Editar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Summary footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">
+                  Total ({getFilteredExpenses().length} gastos):
+                </span>
+                <span className="text-xl font-bold text-gray-900">
+                  {formatCurrency(getFilteredExpenses().reduce((sum, e) => sum + Number(e.amount), 0))}
+                </span>
+              </div>
             </div>
           </div>
         </div>
