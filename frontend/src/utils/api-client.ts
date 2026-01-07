@@ -63,21 +63,50 @@ export const apiClient = {
     }
 
     try {
-      // Use native fetch for FormData (Tauri fetch doesn't handle multipart boundary correctly)
-      // Use Tauri fetch for JSON requests (handles CORS better)
-      const fetchFn = isFormData ? window.fetch : tauriFetch;
-      const fetchOptions: RequestInit = {
-        method,
-        headers,
-        body: data ? (isFormData ? data : JSON.stringify(data)) : undefined,
-      };
+      let response: Response;
 
-      // Only add connectTimeout for Tauri fetch
-      if (!isFormData) {
-        (fetchOptions as any).connectTimeout = 30000;
+      if (isFormData) {
+        // Use XMLHttpRequest for FormData - more reliable for multipart uploads
+        response = await new Promise<Response>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open(method, url);
+
+          // Set auth header (don't set Content-Type - let browser handle it)
+          Object.entries(headers).forEach(([key, value]) => {
+            if (key.toLowerCase() !== 'content-type') {
+              xhr.setRequestHeader(key, value);
+            }
+          });
+
+          xhr.onload = () => {
+            const responseHeaders = new Headers();
+            xhr.getAllResponseHeaders().split('\r\n').forEach(line => {
+              const [key, value] = line.split(': ');
+              if (key && value) responseHeaders.append(key, value);
+            });
+
+            resolve(new Response(xhr.response, {
+              status: xhr.status,
+              statusText: xhr.statusText,
+              headers: responseHeaders,
+            }));
+          };
+
+          xhr.onerror = () => reject(new TypeError('Network request failed'));
+          xhr.ontimeout = () => reject(new TypeError('Request timeout'));
+          xhr.timeout = 60000;
+
+          xhr.send(data as FormData);
+        });
+      } else {
+        // Use Tauri fetch for JSON requests (handles CORS better)
+        response = await tauriFetch(url, {
+          method,
+          headers,
+          body: data ? JSON.stringify(data) : undefined,
+          connectTimeout: 30000,
+        });
       }
-
-      const response = await fetchFn(url, fetchOptions);
 
       updateOnlineStatus(true);
 
@@ -151,11 +180,37 @@ export const apiClient = {
     }
 
     try {
-      // Use native fetch for FormData (Tauri fetch doesn't handle multipart boundary correctly)
-      const response = await window.fetch(url, {
-        method: 'POST',
-        headers,
-        body: formData,
+      // Use XMLHttpRequest for FormData - more reliable for multipart uploads
+      const response = await new Promise<Response>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+
+        // Set auth header (don't set Content-Type - let browser handle it)
+        Object.entries(headers).forEach(([key, value]) => {
+          if (key.toLowerCase() !== 'content-type') {
+            xhr.setRequestHeader(key, value);
+          }
+        });
+
+        xhr.onload = () => {
+          const responseHeaders = new Headers();
+          xhr.getAllResponseHeaders().split('\r\n').forEach(line => {
+            const [key, value] = line.split(': ');
+            if (key && value) responseHeaders.append(key, value);
+          });
+
+          resolve(new Response(xhr.response, {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            headers: responseHeaders,
+          }));
+        };
+
+        xhr.onerror = () => reject(new TypeError('Network request failed'));
+        xhr.ontimeout = () => reject(new TypeError('Request timeout'));
+        xhr.timeout = 60000;
+
+        xhr.send(formData);
       });
 
       updateOnlineStatus(true);
