@@ -1,10 +1,15 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts, delivery_zones, dashboard, documents
 
 
@@ -24,6 +29,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
+
+
+# Exception handler to log validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error on {request.method} {request.url}: {exc.errors()}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": exc.errors()}
+    )
 
 # CORS - Allow specific origins
 app.add_middleware(
