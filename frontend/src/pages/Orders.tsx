@@ -6,9 +6,10 @@
  * - Product demand statistics
  * - Yomber indicator
  * - Refresh button
+ * - Draft support for minimized orders
  */
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OrderModal from '../components/OrderModal';
 import PaymentVerificationModal from '../components/PaymentVerificationModal';
@@ -17,6 +18,12 @@ import { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { OrderListItem, OrderStatus, OrderItemStatus } from '../types/api';
+
+// Type for location state when navigating from DraftsBar
+interface LocationState {
+  draftId?: string;
+  draftType?: 'sale' | 'order';
+}
 
 // Product demand stats interface
 interface ProductDemand {
@@ -52,6 +59,8 @@ interface YomberItem {
 
 export default function Orders() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as LocationState | null;
   const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +69,7 @@ export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<OrderListItem | null>(null);
 
   // Stats
@@ -103,6 +113,16 @@ export default function Orders() {
 
   // For creating new orders, use current school or first available
   const schoolIdForCreate = currentSchool?.id || availableSchools[0]?.id || '';
+
+  // Handle draft from location state (coming from DraftsBar)
+  useEffect(() => {
+    if (locationState?.draftId && locationState?.draftType === 'order') {
+      setActiveDraftId(locationState.draftId);
+      setIsModalOpen(true);
+      // Clear the location state to prevent re-opening on navigation
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [locationState]);
 
   useEffect(() => {
     // Load schools if not already loaded
@@ -495,12 +515,17 @@ export default function Orders() {
         </div>
       </div>
 
-      {/* Order Modal - now supports multi-school selection internally */}
+      {/* Order Modal - now supports multi-school selection internally and drafts */}
       <OrderModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setActiveDraftId(null);
+        }}
         onSuccess={handleSuccess}
         initialSchoolId={schoolIdForCreate}
+        draftId={activeDraftId}
+        onMinimize={() => setActiveDraftId(null)}
       />
 
       {/* Stats - Clickable for filtering */}

@@ -7,6 +7,8 @@ import { useAuthStore } from '../stores/authStore';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole, getRoleDisplayName, getRoleBadgeColor } from '../hooks/useUserRole';
 import { DevelopmentBanner } from './EnvironmentIndicator';
+import { DraftsBar } from './DraftsBar';
+import { useDraftStore } from '../stores/draftStore';
 import {
   LayoutDashboard,
   Package,
@@ -79,6 +81,7 @@ export default function Layout({ children }: LayoutProps) {
   const { currentSchool, availableSchools, loadSchools, selectSchool } = useSchoolStore();
   const { isOnline } = useConfigStore();
   const { role, isSuperuser, canAccessAccounting } = useUserRole();
+  const { hasDrafts } = useDraftStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [schoolDropdownOpen, setSchoolDropdownOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -90,6 +93,20 @@ export default function Layout({ children }: LayoutProps) {
     }, 60000); // Update every minute
     return () => clearInterval(timer);
   }, []);
+
+  // Warn user before leaving if there are unsaved drafts
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasDrafts()) {
+        e.preventDefault();
+        e.returnValue = 'Tienes borradores sin guardar. ¿Estás seguro de salir?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasDrafts]);
 
   // Load schools on mount
   useEffect(() => {
@@ -288,6 +305,20 @@ export default function Layout({ children }: LayoutProps) {
       <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : ''}`}>
         {/* Development Banner */}
         <DevelopmentBanner />
+
+        {/* Drafts Bar - Shows minimized sales/orders in progress */}
+        {hasDrafts() && (
+          <DraftsBar
+            onOpenSale={(draftId) => {
+              // Navigate to sales page with draft ID in state
+              navigate('/sales', { state: { draftId, draftType: 'sale' } });
+            }}
+            onOpenOrder={(draftId) => {
+              // Navigate to orders page with draft ID in state
+              navigate('/orders', { state: { draftId, draftType: 'order' } });
+            }}
+          />
+        )}
 
         {/* Top Bar */}
         <div className="sticky top-0 z-40 h-16 bg-white/80 backdrop-blur-md border-b border-surface-200 flex items-center px-4 md:px-6 justify-between">

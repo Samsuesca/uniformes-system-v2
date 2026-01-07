@@ -122,6 +122,16 @@ class GlobalProductService:
         self.db.add(product)
         await self.db.flush()
         await self.db.refresh(product)
+
+        # Create inventory record with initial quantity of 0
+        inventory = GlobalInventory(
+            product_id=product.id,
+            quantity=0,
+            min_stock_alert=5
+        )
+        self.db.add(inventory)
+        await self.db.flush()
+
         return product
 
     async def get(self, product_id: UUID) -> GlobalProduct | None:
@@ -313,11 +323,19 @@ class GlobalInventoryService:
 
     async def adjust_quantity(
         self, product_id: UUID, data: GlobalInventoryAdjust
-    ) -> GlobalInventory | None:
+    ) -> GlobalInventory:
         """Adjust inventory quantity (add or subtract)"""
         inventory = await self.get_by_product(product_id)
+
+        # Si no existe inventario, crearlo con quantity=0
         if not inventory:
-            return None
+            inventory = GlobalInventory(
+                product_id=product_id,
+                quantity=0,
+                min_stock_alert=5
+            )
+            self.db.add(inventory)
+            await self.db.flush()
 
         new_quantity = inventory.quantity + data.adjustment
         if new_quantity < 0:

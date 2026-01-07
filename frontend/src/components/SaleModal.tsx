@@ -4,12 +4,13 @@
  * Creates separate sales (one per school) when items span multiple schools.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Package, CreditCard, DollarSign } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, ShoppingCart, Globe, Building, UserX, Calendar, History, Building2, CheckCircle, Package, CreditCard, DollarSign, Minimize2 } from 'lucide-react';
 import { saleService, type SaleCreate, type SaleItemCreate, type SalePaymentCreate } from '../services/saleService';
 import { productService } from '../services/productService';
 import ClientSelector, { NO_CLIENT_ID } from './ClientSelector';
 import ProductGroupSelector from './ProductGroupSelector';
 import { useSchoolStore } from '../stores/schoolStore';
+import { useDraftStore, type SaleDraft, type DraftItem, type DraftPayment } from '../stores/draftStore';
 import type { Product, GlobalProduct, GarmentType } from '../types/api';
 
 // Payment line for multiple payments
@@ -26,6 +27,8 @@ interface SaleModalProps {
   initialSchoolId?: string;  // Optional - modal can manage school selection internally
   initialProduct?: Product;  // Pre-load product (for "Start Sale" from Products page)
   initialQuantity?: number;  // Initial quantity for pre-loaded product
+  draftId?: string | null;   // Optional - restore from draft
+  onMinimize?: () => void;   // Callback when minimizing (to close modal without resetting)
 }
 
 // Extended type for sale items with global flag AND school info for multi-school support
@@ -52,6 +55,8 @@ export default function SaleModal({
   initialSchoolId,
   initialProduct,
   initialQuantity = 1,
+  draftId,
+  onMinimize,
 }: SaleModalProps) {
   // Multi-school support
   const { availableSchools, currentSchool } = useSchoolStore();
@@ -59,6 +64,9 @@ export default function SaleModal({
     initialSchoolId || currentSchool?.id || availableSchools[0]?.id || ''
   );
   const showSchoolSelector = availableSchools.length > 1;
+
+  // Draft store for minimize/restore functionality
+  const { addDraft, updateDraft, getDraft, removeDraft, setActiveDraft, canAddDraft } = useDraftStore();
 
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -107,12 +115,52 @@ export default function SaleModal({
 
   useEffect(() => {
     if (isOpen) {
-      // Reset school selection when opening
+      // Check if we're restoring from a draft
+      if (draftId) {
+        const draft = getDraft(draftId);
+        if (draft && draft.type === 'sale') {
+          // Restore state from draft
+          const saleDraft = draft as SaleDraft;
+          setSelectedSchoolId(saleDraft.schoolId);
+          loadProducts(saleDraft.schoolId);
+          setFormData({
+            client_id: saleDraft.clientId,
+            notes: saleDraft.notes,
+            is_historical: saleDraft.isHistorical,
+            sale_date: saleDraft.historicalDate || '',
+            sale_day: saleDraft.historicalDate ? saleDraft.historicalDate.split('-')[2]?.split('T')[0] || '' : '',
+            sale_month: saleDraft.historicalDate ? saleDraft.historicalDate.split('-')[1] || '' : '',
+            sale_year: saleDraft.historicalDate ? saleDraft.historicalDate.split('-')[0] || '' : '',
+          });
+          // Convert draft items to SaleItemCreateExtended
+          const restoredItems: SaleItemCreateExtended[] = saleDraft.items.map(item => ({
+            product_id: item.productId || '',
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            is_global: item.isGlobal || false,
+            display_name: item.productName,
+            size: item.size,
+            school_id: item.schoolId || saleDraft.schoolId,
+            school_name: item.schoolName || '',
+          }));
+          setItems(restoredItems);
+          // Convert draft payments to PaymentLine
+          const restoredPayments: PaymentLine[] = saleDraft.payments.map(p => ({
+            id: p.id,
+            amount: p.amount,
+            payment_method: p.paymentMethod as PaymentLine['payment_method'],
+          }));
+          setPayments(restoredPayments.length > 0 ? restoredPayments : [{ id: '1', amount: 0, payment_method: 'cash' }]);
+          setActiveDraft(draftId);
+          return;
+        }
+      }
+      // Normal opening - reset form
       setSelectedSchoolId(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
       loadProducts(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
       resetForm();
     }
-  }, [isOpen]);
+  }, [isOpen, draftId]);
 
   // Pre-load product if initialProduct is provided (for "Start Sale" from Products page)
   useEffect(() => {
@@ -544,9 +592,82 @@ export default function SaleModal({
 
   // Handle closing success modal
   const handleCloseSuccessModal = () => {
+    // If this was a draft, remove it since sale completed successfully
+    if (draftId) {
+      removeDraft(draftId);
+    }
+    setActiveDraft(null);
     setShowSuccessModal(false);
     setSaleResults([]);
     onSuccess();
+    onClose();
+  };
+
+  // Handle minimizing the modal to save as draft
+  const handleMinimize = () => {
+    // Only save draft if there are items or meaningful data
+    if (items.length === 0 && !formData.client_id) {
+      onClose();
+      return;
+    }
+
+    // Check if we can add a new draft (max 5)
+    if (!draftId && !canAddDraft()) {
+      alert('Has alcanzado el máximo de 5 borradores. Elimina uno para continuar.');
+      return;
+    }
+
+    // Calculate total
+    const total = calculateTotal();
+
+    // Build historical date string if applicable
+    let historicalDate: string | undefined;
+    if (formData.is_historical && formData.sale_day && formData.sale_month && formData.sale_year) {
+      historicalDate = `${formData.sale_year}-${formData.sale_month}-${formData.sale_day.padStart(2, '0')}`;
+    }
+
+    // Convert items to DraftItem format
+    const draftItems: DraftItem[] = items.map(item => ({
+      tempId: `${item.product_id}-${Date.now()}`,
+      productId: item.product_id,
+      productName: item.display_name || '',
+      size: item.size || '',
+      quantity: item.quantity,
+      unitPrice: item.unit_price,
+      isGlobal: item.is_global,
+      schoolId: item.school_id,
+      schoolName: item.school_name,
+    }));
+
+    // Convert payments to DraftPayment format
+    const draftPayments: DraftPayment[] = payments.map(p => ({
+      id: p.id,
+      amount: p.amount,
+      paymentMethod: p.payment_method,
+    }));
+
+    const draftData = {
+      type: 'sale' as const,
+      schoolId: selectedSchoolId,
+      clientId: formData.client_id,
+      notes: formData.notes,
+      isHistorical: formData.is_historical,
+      historicalDate,
+      items: draftItems,
+      payments: draftPayments,
+      total,
+    };
+
+    if (draftId) {
+      // Update existing draft
+      updateDraft(draftId, draftData);
+    } else {
+      // Create new draft
+      addDraft(draftData);
+    }
+
+    setActiveDraft(null);
+    onMinimize?.();
     onClose();
   };
 
@@ -576,14 +697,32 @@ export default function SaleModal({
           <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
             <h2 className="text-xl font-semibold text-gray-800 flex items-center">
               <ShoppingCart className="w-6 h-6 mr-2" />
-              Nueva Venta
+              {draftId ? 'Continuar Venta' : 'Nueva Venta'}
+              {draftId && (
+                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                  Borrador
+                </span>
+              )}
             </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Minimize button - only show if there's something to save */}
+              {(items.length > 0 || formData.client_id) && (
+                <button
+                  type="button"
+                  onClick={handleMinimize}
+                  className="p-2 hover:bg-blue-100 rounded-lg text-blue-600 transition"
+                  title="Minimizar y guardar como borrador"
+                >
+                  <Minimize2 className="w-5 h-5" />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 transition p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
           </div>
 
           {/* Form */}

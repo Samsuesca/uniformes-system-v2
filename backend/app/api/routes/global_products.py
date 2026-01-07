@@ -620,11 +620,6 @@ async def adjust_global_inventory(
 
     try:
         inventory = await service.adjust_quantity(product_id, data)
-        if not inventory:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Inventory not found for this product"
-            )
         await db.commit()
         return GlobalInventoryResponse.model_validate(inventory)
     except ValueError as e:

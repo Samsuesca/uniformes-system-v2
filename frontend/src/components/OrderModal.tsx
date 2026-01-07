@@ -7,13 +7,14 @@
  * Creates separate orders (one per school) when items span multiple schools.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2, CheckCircle } from 'lucide-react';
+import { X, Loader2, Plus, Trash2, Package, AlertCircle, Calendar, ShoppingBag, Ruler, Settings, Building2, CheckCircle, Minimize2 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ClientSelector from './ClientSelector';
 import ProductGroupSelector from './ProductGroupSelector';
 import { orderService } from '../services/orderService';
 import { productService } from '../services/productService';
 import { useSchoolStore } from '../stores/schoolStore';
+import { useDraftStore, type OrderDraft, type DraftItem } from '../stores/draftStore';
 import YomberMeasurementsForm, { validateYomberMeasurements } from './YomberMeasurementsForm';
 import type { GarmentType, OrderItemCreate, Product, GlobalProduct, OrderType, YomberMeasurements } from '../types/api';
 
@@ -23,6 +24,8 @@ interface OrderModalProps {
   onSuccess: () => void;
   initialSchoolId?: string;  // Optional - modal can manage school selection internally
   initialProduct?: Product;  // Optional - pre-load a product (catalog tab)
+  draftId?: string | null;   // Optional - restore from draft
+  onMinimize?: () => void;   // Callback when minimizing (to close modal without resetting)
 }
 
 // Extended item form with school info for multi-school support
@@ -49,7 +52,9 @@ export default function OrderModal({
   onClose,
   onSuccess,
   initialSchoolId,
-  initialProduct
+  initialProduct,
+  draftId,
+  onMinimize,
 }: OrderModalProps) {
   // Multi-school support
   const { availableSchools, currentSchool } = useSchoolStore();
@@ -57,6 +62,9 @@ export default function OrderModal({
     initialSchoolId || currentSchool?.id || availableSchools[0]?.id || ''
   );
   const showSchoolSelector = availableSchools.length > 1;
+
+  // Draft store for minimize/restore functionality
+  const { addDraft, updateDraft, getDraft, removeDraft, setActiveDraft, canAddDraft } = useDraftStore();
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -144,12 +152,51 @@ export default function OrderModal({
 
   useEffect(() => {
     if (isOpen) {
-      // Reset school selection when opening
+      // Check if we're restoring from a draft
+      if (draftId) {
+        const draft = getDraft(draftId);
+        if (draft && draft.type === 'order') {
+          // Restore state from draft
+          const orderDraft = draft as OrderDraft;
+          setSelectedSchoolId(orderDraft.schoolId);
+          loadData(orderDraft.schoolId);
+          setClientId(orderDraft.clientId);
+          setSelectedClientEmail(orderDraft.clientEmail || null);
+          setDeliveryDate(orderDraft.deliveryDate);
+          setNotes(orderDraft.notes);
+          setAdvancePayment(orderDraft.advancePayment);
+          setAdvancePaymentMethod(orderDraft.advancePaymentMethod as any);
+          setActiveTab(orderDraft.activeTab);
+          // Convert draft items to OrderItemForm
+          const restoredItems: OrderItemForm[] = orderDraft.items.map(item => ({
+            tempId: item.tempId,
+            order_type: item.orderType as OrderType,
+            garment_type_id: item.garmentTypeId || '',
+            product_id: item.productId,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            size: item.size,
+            color: item.color,
+            custom_measurements: item.measurements as YomberMeasurements,
+            embroidery_text: item.embroideryText,
+            additional_price: item.additionalPrice,
+            notes: item.notes,
+            displayName: item.productName,
+            unitPrice: item.unitPrice,
+            school_id: item.schoolId || orderDraft.schoolId,
+            school_name: item.schoolName || '',
+          }));
+          setItems(restoredItems);
+          setActiveDraft(draftId);
+          return;
+        }
+      }
+      // Normal opening - reset form
       setSelectedSchoolId(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
       loadData(initialSchoolId || currentSchool?.id || availableSchools[0]?.id || '');
       resetForm();
     }
-  }, [isOpen]);
+  }, [isOpen, draftId]);
 
   // Pre-load product when initialProduct is provided
   useEffect(() => {
@@ -498,9 +545,79 @@ export default function OrderModal({
 
   // Handle closing success modal
   const handleCloseSuccessModal = () => {
+    // If this was a draft, remove it since order completed successfully
+    if (draftId) {
+      removeDraft(draftId);
+    }
+    setActiveDraft(null);
     setShowSuccessModal(false);
     setOrderResults([]);
     onSuccess();
+    onClose();
+  };
+
+  // Handle minimizing the modal to save as draft
+  const handleMinimize = () => {
+    // Only save draft if there are items or meaningful data
+    if (items.length === 0 && !clientId) {
+      onClose();
+      return;
+    }
+
+    // Check if we can add a new draft (max 5)
+    if (!draftId && !canAddDraft()) {
+      alert('Has alcanzado el máximo de 5 borradores. Elimina uno para continuar.');
+      return;
+    }
+
+    // Calculate total
+    const total = calculateTotal();
+
+    // Convert items to DraftItem format
+    const draftItems: DraftItem[] = items.map(item => ({
+      tempId: item.tempId,
+      productId: item.product_id,
+      productName: item.displayName || '',
+      size: item.size || '',
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      isGlobal: false,
+      schoolId: item.school_id,
+      schoolName: item.school_name,
+      orderType: item.order_type,
+      garmentTypeId: item.garment_type_id,
+      garmentTypeName: garmentTypes.find(gt => gt.id === item.garment_type_id)?.name,
+      measurements: item.custom_measurements as Record<string, number>,
+      embroideryText: item.embroidery_text,
+      color: item.color,
+      notes: item.notes,
+      additionalPrice: item.additional_price,
+    }));
+
+    const draftData = {
+      type: 'order' as const,
+      schoolId: selectedSchoolId,
+      clientId: clientId,
+      clientEmail: selectedClientEmail || undefined,
+      deliveryDate: deliveryDate,
+      notes: notes,
+      advancePayment: advancePayment,
+      advancePaymentMethod: advancePaymentMethod,
+      activeTab: activeTab,
+      items: draftItems,
+      total,
+    };
+
+    if (draftId) {
+      // Update existing draft
+      updateDraft(draftId, draftData);
+    } else {
+      // Create new draft
+      addDraft(draftData);
+    }
+
+    setActiveDraft(null);
+    onMinimize?.();
     onClose();
   };
 
@@ -537,14 +654,32 @@ export default function OrderModal({
           <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
             <h2 className="text-xl font-semibold text-gray-800 flex items-center">
               <Package className="w-6 h-6 mr-2 text-blue-600" />
-              Nuevo Encargo
+              {draftId ? 'Continuar Encargo' : 'Nuevo Encargo'}
+              {draftId && (
+                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                  Borrador
+                </span>
+              )}
             </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Minimize button - only show if there's something to save */}
+              {(items.length > 0 || clientId) && (
+                <button
+                  type="button"
+                  onClick={handleMinimize}
+                  className="p-2 hover:bg-purple-100 rounded-lg text-purple-600 transition"
+                  title="Minimizar y guardar como borrador"
+                >
+                  <Minimize2 className="w-5 h-5" />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 transition p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
           </div>
 
           {/* Loading Data */}

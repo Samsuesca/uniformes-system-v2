@@ -2,7 +2,7 @@
  * Sales Page - List and manage sales (Multi-school view)
  */
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleModal from '../components/SaleModal';
 import { ShoppingCart, Plus, Search, AlertCircle, Loader2, Eye, Calendar, User, DollarSign, Building2, History } from 'lucide-react';
@@ -11,8 +11,16 @@ import { saleService } from '../services/saleService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { SaleListItem } from '../types/api';
 
+// Type for location state when navigating from DraftsBar
+interface LocationState {
+  draftId?: string;
+  draftType?: 'sale' | 'order';
+}
+
 export default function Sales() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as LocationState | null;
   const { currentSchool, availableSchools, loadSchools } = useSchoolStore();
   const [sales, setSales] = useState<SaleListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,12 +29,24 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState('');
   const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
 
   // For creating new sales, use current school or first available
   const schoolIdForCreate = currentSchool?.id || availableSchools[0]?.id || '';
 
+  // Handle draft from location state (coming from DraftsBar)
+  useEffect(() => {
+    if (locationState?.draftId && locationState?.draftType === 'sale') {
+      setActiveDraftId(locationState.draftId);
+      setIsModalOpen(true);
+      // Clear the location state to prevent re-opening on navigation
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [locationState]);
+
   const handleCloseModal = () => {
     setIsModalOpen(false);
+    setActiveDraftId(null);
   };
 
   const handleSuccess = () => {
@@ -352,12 +372,14 @@ export default function Sales() {
         </div>
       )}
 
-      {/* Sale Modal - now supports multi-school selection internally */}
+      {/* Sale Modal - now supports multi-school selection internally and drafts */}
       <SaleModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSuccess={handleSuccess}
         initialSchoolId={schoolIdForCreate}
+        draftId={activeDraftId}
+        onMinimize={() => setActiveDraftId(null)}
       />
     </Layout>
   );

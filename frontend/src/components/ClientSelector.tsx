@@ -9,7 +9,7 @@
  * - Shows client info (name, phone, student)
  */
 import { useState, useEffect, useRef } from 'react';
-import { Search, UserPlus, UserX, X, Loader2, User, Phone, Mail, GraduationCap, Check } from 'lucide-react';
+import { Search, UserPlus, UserX, X, Loader2, User, Phone, Mail, GraduationCap, Check, Pencil, MapPin, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import { clientService } from '../services/clientService';
 import type { Client } from '../types/api';
 
@@ -170,6 +170,23 @@ export default function ClientSelector({
     email: '',
     student_name: '',
   });
+
+  // Edit client state
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editClientData, setEditClientData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    student_name: '',
+    student_grade: '',
+    address: '',
+    notes: '',
+  });
+
+  // Expanded info view
+  const [showExpandedInfo, setShowExpandedInfo] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
