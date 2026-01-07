@@ -50,9 +50,11 @@ export const apiClient = {
     }
 
     const token = localStorage.getItem('access_token');
+    const isFormData = data instanceof FormData;
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      // Don't set Content-Type for FormData - let the browser set it with proper boundary
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...options?.headers,
     };
 
@@ -64,8 +66,8 @@ export const apiClient = {
       const response = await tauriFetch(url, {
         method,
         headers,
-        body: data ? JSON.stringify(data) : undefined,
-        connectTimeout: 30000,
+        body: data ? (isFormData ? data : JSON.stringify(data)) : undefined,
+        connectTimeout: isFormData ? 60000 : 30000, // Longer timeout for file uploads
       });
 
       updateOnlineStatus(true);
