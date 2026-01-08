@@ -65,6 +65,7 @@ async def list_all_sales(
         select(Sale)
         .options(
             selectinload(Sale.items),
+            selectinload(Sale.payments),  # Include payments for fallback payment_method
             joinedload(Sale.client),
             joinedload(Sale.user),
             joinedload(Sale.school)
@@ -103,13 +104,22 @@ async def list_all_sales(
     result = await db.execute(query)
     sales = result.unique().scalars().all()
 
+    # Helper to get payment method (from sale or first payment)
+    def get_payment_method(sale: Sale) -> PaymentMethod | None:
+        if sale.payment_method:
+            return sale.payment_method
+        # Fallback: get from first payment if available
+        if sale.payments and len(sale.payments) > 0:
+            return sale.payments[0].payment_method
+        return None
+
     return [
         SaleListResponse(
             id=sale.id,
             code=sale.code,
             status=sale.status,
             source=sale.source,
-            payment_method=sale.payment_method,
+            payment_method=get_payment_method(sale),
             total=sale.total,
             paid_amount=sale.paid_amount,
             client_id=sale.client_id,

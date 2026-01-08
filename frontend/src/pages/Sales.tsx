@@ -151,6 +151,24 @@ export default function Sales() {
     }
   };
 
+  const getPaymentMethodText = (method: string | null | undefined) => {
+    if (!method) return 'Sin registrar';
+    switch (method) {
+      case 'cash':
+        return 'Efectivo';
+      case 'nequi':
+        return 'Nequi';
+      case 'transfer':
+        return 'Transferencia';
+      case 'card':
+        return 'Tarjeta';
+      case 'credit':
+        return 'Crédito';
+      default:
+        return method;
+    }
+  };
+
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return 'Fecha no disponible';
     const formatted = formatDateTimeSpanish(dateString);
@@ -330,7 +348,7 @@ export default function Sales() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {sale.payment_method || 'N/A'}
+                    {getPaymentMethodText(sale.payment_method)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(sale.status)}`}>
