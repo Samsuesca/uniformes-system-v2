@@ -202,6 +202,54 @@ export const getGlobalBalanceEntries = async (
   return response.data;
 };
 
+// Unified Balance Entries (all global accounts)
+export interface UnifiedBalanceEntry {
+  id: string;
+  entry_date: string;
+  created_at: string;
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  reference: string | null;
+}
+
+export interface UnifiedBalanceEntriesResponse {
+  items: UnifiedBalanceEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface UnifiedBalanceEntriesParams {
+  startDate?: string;
+  endDate?: string;
+  accountId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const getUnifiedBalanceEntries = async (
+  params: UnifiedBalanceEntriesParams = {}
+): Promise<UnifiedBalanceEntriesResponse> => {
+  const { startDate, endDate, accountId, limit = 50, offset = 0 } = params;
+  const response = await apiClient.get<UnifiedBalanceEntriesResponse>(
+    `${BASE_URL}/balance-entries`,
+    {
+      params: {
+        start_date: startDate,
+        end_date: endDate,
+        account_id: accountId,
+        limit,
+        offset
+      }
+    }
+  );
+  return response.data;
+};
+
 export interface GlobalBalanceAccountCreate {
   account_type: AccountType;
   name: string;
@@ -753,7 +801,9 @@ export const globalAccountingService = {
   // Transactions & Reports
   getGlobalTransactions,
   getExpensesSummaryByCategory,
-  getCashFlowReport
+  getCashFlowReport,
+  // Unified Balance Entries (Log)
+  getUnifiedBalanceEntries
 };
 
 export default globalAccountingService;

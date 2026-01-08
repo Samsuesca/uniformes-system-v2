@@ -469,6 +469,90 @@ async def list_global_balance_entries(
 
 
 # ============================================
+# Unified Balance Entries (All Global Accounts)
+# ============================================
+
+@router.get(
+    "/balance-entries",
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def list_all_global_balance_entries(
+    db: DatabaseSession,
+    start_date: date | None = Query(None, description="Filter entries from this date"),
+    end_date: date | None = Query(None, description="Filter entries until this date"),
+    account_id: UUID | None = Query(None, description="Filter by specific account"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """
+    List all balance entries from global accounts (unified log)
+
+    Returns entries with account info for audit/log purposes.
+    Ordered by created_at descending (most recent first).
+    """
+    # Build base query with join to get account info
+    query = (
+        select(
+            BalanceEntry,
+            BalanceAccount.code.label('account_code'),
+            BalanceAccount.name.label('account_name')
+        )
+        .join(BalanceAccount, BalanceEntry.account_id == BalanceAccount.id)
+        .where(BalanceAccount.school_id.is_(None))  # Only global accounts
+    )
+
+    # Apply filters
+    if start_date:
+        query = query.where(BalanceEntry.entry_date >= start_date)
+    if end_date:
+        query = query.where(BalanceEntry.entry_date <= end_date)
+    if account_id:
+        query = query.where(BalanceEntry.account_id == account_id)
+
+    # Get total count for pagination
+    count_query = (
+        select(func.count(BalanceEntry.id))
+        .join(BalanceAccount, BalanceEntry.account_id == BalanceAccount.id)
+        .where(BalanceAccount.school_id.is_(None))
+    )
+    if start_date:
+        count_query = count_query.where(BalanceEntry.entry_date >= start_date)
+    if end_date:
+        count_query = count_query.where(BalanceEntry.entry_date <= end_date)
+    if account_id:
+        count_query = count_query.where(BalanceEntry.account_id == account_id)
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Get paginated entries
+    query = query.order_by(BalanceEntry.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(query)
+    rows = result.all()
+
+    return {
+        "items": [
+            {
+                "id": str(row.BalanceEntry.id),
+                "entry_date": row.BalanceEntry.entry_date.isoformat(),
+                "created_at": row.BalanceEntry.created_at.isoformat(),
+                "account_id": str(row.BalanceEntry.account_id),
+                "account_code": row.account_code,
+                "account_name": row.account_name,
+                "amount": float(row.BalanceEntry.amount),
+                "balance_after": float(row.BalanceEntry.balance_after),
+                "description": row.BalanceEntry.description,
+                "reference": row.BalanceEntry.reference
+            }
+            for row in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+# ============================================
 # Global Balance General Summary
 # ============================================
 
