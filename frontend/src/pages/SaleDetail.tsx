@@ -600,7 +600,19 @@ export default function SaleDetail() {
               <CreditCard className="w-4 h-4 mr-2" />
               Método de Pago
             </div>
-            <p className="font-medium text-gray-900">{getPaymentMethodText(sale.payment_method)}</p>
+            {sale.payment_method ? (
+              <p className="font-medium text-gray-900">{getPaymentMethodText(sale.payment_method)}</p>
+            ) : sale.payments && sale.payments.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {[...new Set(sale.payments.map(p => p.payment_method))].map(method => (
+                  <span key={method} className="px-2 py-0.5 text-sm bg-blue-100 text-blue-800 rounded">
+                    {getPaymentMethodText(method)}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="font-medium text-amber-600">Sin registrar</p>
+            )}
           </div>
 
           {/* Status */}
