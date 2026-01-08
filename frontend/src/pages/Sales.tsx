@@ -153,7 +153,9 @@ export default function Sales() {
 
   const getPaymentMethodText = (method: string | null | undefined) => {
     if (!method) return 'Sin registrar';
-    switch (method) {
+    // Normalize to lowercase to handle any case variations
+    const normalizedMethod = method.toLowerCase();
+    switch (normalizedMethod) {
       case 'cash':
         return 'Efectivo';
       case 'nequi':

@@ -175,11 +175,15 @@ export default function SaleDetail() {
     }
   };
 
-  const getPaymentMethodText = (method: string | null) => {
+  const getPaymentMethodText = (method: string | null | undefined) => {
     if (!method) return 'No especificado';
-    switch (method) {
+    // Normalize to lowercase to handle any case variations
+    const normalizedMethod = method.toLowerCase();
+    switch (normalizedMethod) {
       case 'cash':
         return 'Efectivo';
+      case 'nequi':
+        return 'Nequi';
       case 'card':
         return 'Tarjeta';
       case 'transfer':
@@ -416,7 +420,11 @@ export default function SaleDetail() {
       </div>
       <div class="info-item">
         <div class="info-label">Método de Pago</div>
-        <div class="info-value">${getPaymentMethodText(sale.payment_method)}</div>
+        <div class="info-value">${sale.payment_method
+          ? getPaymentMethodText(sale.payment_method)
+          : sale.payments && sale.payments.length > 0
+            ? [...new Set(sale.payments.map(p => p.payment_method))].map(m => getPaymentMethodText(m)).join(', ')
+            : 'Sin registrar'}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Estado</div>
