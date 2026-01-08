@@ -120,7 +120,7 @@ export const useDraftStore = create<DraftStore>((set, get) => ({
     set(state => ({
       drafts: state.drafts.map(d =>
         d.id === id
-          ? { ...d, ...updates, updatedAt: new Date().toISOString() }
+          ? { ...d, ...updates, updatedAt: new Date().toISOString() } as Draft
           : d
       )
     }));

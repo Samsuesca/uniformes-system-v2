@@ -5,6 +5,7 @@
  * Endpoints: /api/v1/documents
  */
 import apiClient from '../utils/api-client';
+import { useConfigStore } from '../stores/configStore';
 import type {
   DocumentFolder,
   DocumentFolderCreate,
@@ -177,27 +178,40 @@ export const documentService = {
    * Get document download URL
    */
   getDownloadUrl(documentId: string): string {
-    const baseUrl = apiClient.defaults.baseURL || '';
-    return `${baseUrl}${BASE_URL}/${documentId}/download`;
+    const apiUrl = useConfigStore.getState().apiUrl;
+    return `${apiUrl}/api/v1${BASE_URL}/${documentId}/download`;
   },
 
   /**
    * Download document file
+   * Note: Uses fetch directly since apiClient doesn't support blob responses
    */
   async downloadDocument(documentId: string, filename: string): Promise<void> {
-    const response = await apiClient.get(`${BASE_URL}/${documentId}/download`, {
-      responseType: 'blob',
+    const url = this.getDownloadUrl(documentId);
+    const token = localStorage.getItem('access_token');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
     });
 
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+
     // Create blob link and trigger download
-    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href = downloadUrl;
     link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     link.remove();
-    window.URL.revokeObjectURL(url);
+    window.URL.revokeObjectURL(downloadUrl);
   },
 
   // ======================

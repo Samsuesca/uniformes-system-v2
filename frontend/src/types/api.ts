@@ -220,6 +220,7 @@ export interface Sale {
   code: string;
   client_id: string | null;
   user_id: string;
+  user_name?: string | null;  // Seller name
   status: 'pending' | 'completed' | 'cancelled';
   is_historical: boolean;  // Historical sale (migration data)
   payment_method: 'cash' | 'nequi' | 'credit' | 'transfer' | 'card' | null;
@@ -259,9 +260,23 @@ export interface SaleItemWithProduct extends SaleItem {
   global_product_id?: string | null;
 }
 
+export interface SalePayment {
+  id: string;
+  sale_id: string;
+  amount: number;
+  payment_method: PaymentMethod;
+  notes: string | null;
+  transaction_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SaleWithItems extends Sale {
   items: SaleItemWithProduct[];
   client_name: string | null;
+  payments?: SalePayment[];
+  // Calculated fields
+  balance?: number;  // Saldo pendiente (total - paid_amount)
 }
 
 export interface SaleListItem {
@@ -426,6 +441,7 @@ export interface OrderWithItems extends Order {
   items: OrderItem[];
   client_name: string;
   client_phone: string | null;
+  client_email: string | null;
   student_name: string | null;
   // Delivery info
   delivery_type?: DeliveryType;
@@ -942,6 +958,8 @@ export interface GlobalProduct {
   // Inventory fields
   inventory_quantity?: number;
   inventory_min_stock?: number;
+  stock?: number; // Alias for inventory_quantity (for consistency with Product)
+  min_stock?: number; // Minimum stock alert level
 }
 
 export interface GlobalProductWithInventory extends GlobalProduct {

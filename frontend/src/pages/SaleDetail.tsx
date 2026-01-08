@@ -5,13 +5,14 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleChangeModal from '../components/SaleChangeModal';
-import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock, History } from 'lucide-react';
+import AddPaymentModal from '../components/AddPaymentModal';
+import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock, History, DollarSign, Banknote } from 'lucide-react';
 import { formatDateTimeSpanish } from '../components/DatePicker';
 import { saleService } from '../services/saleService';
 import { saleChangeService } from '../services/saleChangeService';
 import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
-import type { Sale, SaleItemWithProduct, Client, Product, SaleChangeListItem } from '../types/api';
+import type { SaleItemWithProduct, Client, Product, SaleChangeListItem, SaleWithItems } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -64,7 +65,7 @@ export default function SaleDetail() {
   const { saleId } = useParams<{ saleId: string }>();
   const navigate = useNavigate();
   const { currentSchool } = useSchoolStore();
-  const [sale, setSale] = useState<Sale | null>(null);
+  const [sale, setSale] = useState<SaleWithItems | null>(null);
   const [items, setItems] = useState<SaleItemWithProduct[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [products, setProducts] = useState<Map<string, Product>>(new Map());
@@ -72,6 +73,18 @@ export default function SaleDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // Calculate pending balance
+  const pendingBalance = sale ? Number(sale.total) - Number(sale.paid_amount || 0) : 0;
+
+  // Show add payment button if:
+  // 1. There's pending balance (partial payments)
+  // 2. OR no payment method is set AND no payments recorded (sale created without payment)
+  const showAddPaymentButton = sale && (
+    pendingBalance > 0 ||
+    (!sale.payment_method && (!sale.payments || sale.payments.length === 0))
+  );
 
   const schoolId = currentSchool?.id || '';
 
@@ -508,6 +521,16 @@ export default function SaleDetail() {
             <p className="text-gray-600 mt-1">{sale.code}</p>
           </div>
           <div className="flex gap-3">
+            {/* Add Payment button - show when there's pending balance or no payment recorded */}
+            {showAddPaymentButton && (
+              <button
+                onClick={() => setIsPaymentModalOpen(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition"
+              >
+                <DollarSign className="w-5 h-5 mr-2" />
+                Agregar Pago
+              </button>
+            )}
             <button
               onClick={() => setIsChangeModalOpen(true)}
               className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center transition"
@@ -541,7 +564,7 @@ export default function SaleDetail() {
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Información de la Venta</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {/* Date */}
           <div>
             <div className="flex items-center text-sm text-gray-500 mb-1">
@@ -563,6 +586,12 @@ export default function SaleDetail() {
             {client?.student_name && (
               <p className="text-sm text-gray-600">Estudiante: {client.student_name}</p>
             )}
+          </div>
+
+          {/* Seller */}
+          <div>
+            <div className="text-sm text-gray-500 mb-1">Vendedor</div>
+            <p className="font-medium text-gray-900">{sale.user_name || '-'}</p>
           </div>
 
           {/* Payment Method */}
@@ -674,17 +703,78 @@ export default function SaleDetail() {
 
         {/* Totals */}
         <div className="bg-gray-50 px-6 py-4">
-          <div className="max-w-xs ml-auto">
-            <div className="flex justify-between text-xl font-bold pt-2">
+          <div className="max-w-xs ml-auto space-y-2">
+            <div className="flex justify-between text-xl font-bold">
               <span className="text-gray-900">Total:</span>
               <span className="text-blue-600">${Number(sale.total).toLocaleString()}</span>
             </div>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Pagado:</span>
+              <span className="text-green-600">${Number(sale.paid_amount || 0).toLocaleString()}</span>
+            </div>
+            {pendingBalance > 0 && (
+              <div className="flex justify-between text-sm font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded">
+                <span>Saldo pendiente:</span>
+                <span>${pendingBalance.toLocaleString()}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       </div> {/* End printable-section */}
       </div> {/* End printable-wrapper */}
+
+      {/* Payments History */}
+      {sale.payments && sale.payments.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden mt-6 print-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+              <Banknote className="w-5 h-5 mr-2" />
+              Historial de Pagos
+            </h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Método
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Monto
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Notas
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {sale.payments.map((payment) => (
+                  <tr key={payment.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatDate(payment.created_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {getPaymentMethodText(payment.payment_method)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 text-right">
+                      ${Number(payment.amount).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {payment.notes || '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Sale Changes History */}
       {changes.length > 0 && (
@@ -768,6 +858,17 @@ export default function SaleDetail() {
         schoolId={schoolId}
         saleId={saleId!}
         saleItems={items}
+      />
+
+      {/* Add Payment Modal */}
+      <AddPaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onSuccess={loadSaleDetail}
+        saleId={saleId!}
+        schoolId={schoolId}
+        saleCode={sale?.code || ''}
+        pendingAmount={pendingBalance > 0 ? pendingBalance : Number(sale?.total || 0)}
       />
     </Layout>
   );

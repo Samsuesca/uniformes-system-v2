@@ -5,7 +5,7 @@
  * and approve or reject payments for orders.
  */
 import { useState } from 'react';
-import { X, Check, XCircle, Image as ImageIcon, FileText, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, XCircle, Image as ImageIcon, FileText, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface PaymentVerificationModalProps {
   isOpen: boolean;

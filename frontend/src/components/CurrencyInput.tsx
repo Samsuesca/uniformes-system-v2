@@ -36,13 +36,6 @@ export default function CurrencyInput({
     return num.toLocaleString('es-CO');
   };
 
-  // Parsear string a número (eliminar separadores de miles)
-  const parseToNumber = (str: string): number => {
-    // Eliminar todo excepto dígitos
-    const cleanStr = str.replace(/[^\d]/g, '');
-    return parseInt(cleanStr, 10) || 0;
-  };
-
   // Actualizar display cuando cambia el valor externo
   useEffect(() => {
     if (!isFocused) {

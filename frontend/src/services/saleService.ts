@@ -6,7 +6,7 @@
  * - School-specific: /schools/{school_id}/sales - Original endpoints
  */
 import apiClient from '../utils/api-client';
-import type { Sale, SaleWithItems, SaleListItem } from '../types/api';
+import type { Sale, SaleWithItems, SaleListItem, SalePayment } from '../types/api';
 
 export interface SaleItemCreate {
   product_id: string;
@@ -106,6 +106,28 @@ export const saleService = {
    */
   async createSale(schoolId: string, data: SaleCreate): Promise<Sale> {
     const response = await apiClient.post<Sale>(`/schools/${schoolId}/sales`, data);
+    return response.data;
+  },
+
+  /**
+   * Add payment to existing sale (admin only)
+   * Used to add payments to sales that were created without payment info
+   * or to add additional partial payments
+   */
+  async addPaymentToSale(
+    schoolId: string,
+    saleId: string,
+    paymentData: {
+      amount: number;
+      payment_method: PaymentMethod;
+      notes?: string;
+      apply_accounting?: boolean;
+    }
+  ): Promise<SalePayment> {
+    const response = await apiClient.post<SalePayment>(
+      `/schools/${schoolId}/sales/${saleId}/payments`,
+      paymentData
+    );
     return response.data;
   },
 };

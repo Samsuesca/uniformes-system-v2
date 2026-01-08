@@ -272,6 +272,9 @@ export default function Sales() {
                   Cliente
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Vendedor
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Total
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -316,6 +319,9 @@ export default function Sales() {
                       <User className="w-4 h-4 mr-2 text-gray-400" />
                       {sale.client_name || 'Venta directa'}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    {sale.user_name || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                     <div className="flex items-center">

@@ -4,7 +4,7 @@
  * Mini file manager for superusers to manage business documents.
  * Features: folder hierarchy, file upload/download, search, storage indicator
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import {
   FolderTree,
@@ -189,7 +189,7 @@ export default function Documents() {
     window.open(url, '_blank');
   };
 
-  const handleEditDocument = (doc: BusinessDocumentListItem) => {
+  const handleEditDocument = (_doc: BusinessDocumentListItem) => {
     // For now, just show an alert - could implement a full edit modal later
     alert('Funcion de edicion en desarrollo');
   };

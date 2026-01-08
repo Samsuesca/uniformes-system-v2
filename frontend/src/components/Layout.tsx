@@ -5,7 +5,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSchoolStore } from '../stores/schoolStore';
-import { useUserRole, getRoleDisplayName, getRoleBadgeColor } from '../hooks/useUserRole';
+import { useUserRole, getRoleDisplayName } from '../hooks/useUserRole';
 import { DevelopmentBanner } from './EnvironmentIndicator';
 import { DraftsBar } from './DraftsBar';
 import { useDraftStore } from '../stores/draftStore';

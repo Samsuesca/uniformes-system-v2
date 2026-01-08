@@ -4,7 +4,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp, Mail, Printer } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp, Mail } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import type { OrderWithItems, OrderStatus, OrderItemStatus } from '../types/api';
@@ -269,7 +269,7 @@ export default function OrderDetail() {
   const receiptUrl = order ? orderService.getReceiptUrl(schoolId, order.id) : '';
 
   // Check if client has email
-  const clientHasEmail = order?.client?.email || false;
+  const clientHasEmail = order?.client_email || false;
 
   if (loading) {
     return (
@@ -339,7 +339,7 @@ export default function OrderDetail() {
                 onClick={handleSendEmail}
                 disabled={sendingEmail}
                 className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center transition disabled:opacity-50"
-                title={`Enviar a ${order.client?.email}`}
+                title={`Enviar a ${order.client_email}`}
               >
                 {sendingEmail ? (
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />

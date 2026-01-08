@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OrderModal from '../components/OrderModal';
-import PaymentVerificationModal from '../components/PaymentVerificationModal';
+import _PaymentVerificationModal from '../components/PaymentVerificationModal';
 import { FileText, Plus, Search, AlertCircle, Loader2, Calendar, Package, Clock, CheckCircle, XCircle, Truck, Eye, Building2, RefreshCw, Ruler, BarChart3, TrendingUp, X, Wrench, Receipt } from 'lucide-react';
 import { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
@@ -70,7 +70,8 @@ export default function Orders() {
   const [schoolFilter, setSchoolFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<OrderListItem | null>(null);
+  // Payment verification state (PaymentVerificationModal is commented out, only setter used)
+  const [, setSelectedOrderForPayment] = useState<OrderListItem | null>(null);
 
   // Stats
   const [stats, setStats] = useState({
@@ -431,29 +432,8 @@ export default function Orders() {
     navigate(`/orders/${orderId}?school_id=${schoolId}`);
   };
 
-  const handleApprovePayment = async (orderId: string) => {
-    if (!selectedOrderForPayment) return;
-    try {
-      await orderService.approvePayment(selectedOrderForPayment.school_id || '', orderId);
-      setSelectedOrderForPayment(null);
-      loadOrders();
-    } catch (err: any) {
-      console.error('Error approving payment:', err);
-      alert(err.response?.data?.detail || 'Error al aprobar pago');
-    }
-  };
-
-  const handleRejectPayment = async (orderId: string, rejectionNotes: string) => {
-    if (!selectedOrderForPayment) return;
-    try {
-      await orderService.rejectPayment(selectedOrderForPayment.school_id || '', orderId, rejectionNotes);
-      setSelectedOrderForPayment(null);
-      loadOrders();
-    } catch (err: any) {
-      console.error('Error rejecting payment:', err);
-      alert(err.response?.data?.detail || 'Error al rechazar pago');
-    }
-  };
+  // NOTE: Payment approval handlers were removed as unused (PaymentVerificationModal is commented out).
+  // They can be re-added when implementing the payment verification feature.
 
   return (
     <Layout>

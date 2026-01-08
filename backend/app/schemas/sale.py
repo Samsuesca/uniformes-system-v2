@@ -20,6 +20,17 @@ class SalePaymentCreate(BaseSchema):
     notes: str | None = None
 
 
+class AddPaymentToSale(BaseSchema):
+    """Schema for adding a payment to an existing sale"""
+    amount: Decimal = Field(..., gt=0)
+    payment_method: PaymentMethod
+    notes: str | None = None
+    apply_accounting: bool = Field(
+        default=True,
+        description="Si True, crea transaccion contable y actualiza balances"
+    )
+
+
 class SalePaymentResponse(BaseSchema):
     """SalePayment for API responses"""
     id: UUID
@@ -102,9 +113,12 @@ class SaleCreate(SaleBase, SchoolIsolatedSchema):
 
     @model_validator(mode='after')
     def validate_payment_fields(self):
-        """Ensure either payment_method or payments is provided, not both"""
+        """Ensure payment method is provided for non-historical sales"""
         if self.payments and self.payment_method:
             raise ValueError("Use either 'payment_method' (single) or 'payments' (multiple), not both")
+        # Require payment method for non-historical sales
+        if not self.is_historical and not self.payments and not self.payment_method:
+            raise ValueError("Se requiere 'payment_method' o 'payments' para ventas no historicas")
         return self
 
 
@@ -140,6 +154,7 @@ class SaleWithItems(SaleResponse):
     items: list[SaleItemWithProduct]
     payments: list[SalePaymentResponse] = []
     client_name: str | None = None
+    user_name: str | None = None
 
 
 class SaleListResponse(BaseSchema):

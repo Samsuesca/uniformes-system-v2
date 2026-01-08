@@ -212,6 +212,7 @@ class OrderWithItems(OrderResponse):
     items: list[OrderItemWithGarment]
     client_name: str
     client_phone: str | None
+    client_email: str | None
     student_name: str | None
 
 

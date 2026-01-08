@@ -5,7 +5,6 @@
  * Handles contact messages from web portal and admin responses.
  */
 import apiClient from '../utils/api-client';
-import type { AxiosResponse } from 'axios';
 
 export interface Contact {
   id: string;
@@ -56,7 +55,7 @@ class ContactService {
    * Requiere autenticación (admin/superuser)
    */
   async getContacts(params: ContactListParams = {}): Promise<ContactListResponse> {
-    const response: AxiosResponse<ContactListResponse> = await apiClient.get('/contacts', { params });
+    const response = await apiClient.get<ContactListResponse>('/contacts', { params: params as Record<string, unknown> });
     return response.data;
   }
 
@@ -66,7 +65,7 @@ class ContactService {
    * Requiere autenticación (admin/superuser)
    */
   async getContact(contactId: string): Promise<Contact> {
-    const response: AxiosResponse<Contact> = await apiClient.get(`/contacts/${contactId}`);
+    const response = await apiClient.get<Contact>(`/contacts/${contactId}`);
     return response.data;
   }
 
@@ -82,7 +81,7 @@ class ContactService {
       is_read?: boolean;
     }
   ): Promise<Contact> {
-    const response: AxiosResponse<Contact> = await apiClient.put(`/contacts/${contactId}`, data);
+    const response = await apiClient.put<Contact>(`/contacts/${contactId}`, data);
     return response.data;
   }
 
@@ -91,7 +90,7 @@ class ContactService {
    * Requiere autenticación (admin/superuser)
    */
   async getStats(): Promise<ContactStats> {
-    const response: AxiosResponse<ContactStats> = await apiClient.get('/contacts/stats/summary');
+    const response = await apiClient.get<ContactStats>('/contacts/stats/summary');
     return response.data;
   }
 }

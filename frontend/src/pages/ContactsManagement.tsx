@@ -7,8 +7,8 @@ import { useEffect, useState, useCallback } from 'react';
 import Layout from '../components/Layout';
 import ContactDetailModal from '../components/ContactDetailModal';
 import {
-  MessageSquare, Search, Filter, Mail, MailOpen, Clock,
-  CheckCircle, XCircle, AlertCircle, Loader2, Building2
+  MessageSquare, Search, Mail, MailOpen, Clock,
+  AlertCircle, Loader2, Building2
 } from 'lucide-react';
 import { formatDateTimeSpanish } from '../components/DatePicker';
 import { contactService } from '../services/contactService';

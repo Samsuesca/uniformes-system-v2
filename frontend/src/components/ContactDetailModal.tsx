@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import {
   X, Mail, Phone, Calendar, MessageSquare, User, Building2,
-  Send, CheckCircle, AlertCircle, Loader2, MailOpen, Clock
+  Send, CheckCircle, AlertCircle, Loader2, MailOpen
 } from 'lucide-react';
 import { contactService, type Contact } from '../services/contactService';
 import { formatDateTimeSpanish } from './DatePicker';

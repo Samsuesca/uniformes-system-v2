@@ -6,7 +6,7 @@
  * - School-specific: /schools/{school_id}/products - Original endpoints
  */
 import apiClient from '../utils/api-client';
-import type { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../types/api';
+import type { Product, GarmentType, GlobalProduct, GlobalGarmentType, GarmentTypeImage } from '../types/api';
 
 export interface ProductFilters {
   school_id?: string;
@@ -188,7 +188,7 @@ export const productService = {
    * Create global product (superuser only)
    */
   async createGlobalProduct(data: Partial<GlobalProduct>): Promise<GlobalProduct> {
-    const response = await apiClient.post('/global/products', data);
+    const response = await apiClient.post<GlobalProduct>('/global/products', data);
     return response.data;
   },
 
@@ -196,7 +196,7 @@ export const productService = {
    * Update global product (superuser only)
    */
   async updateGlobalProduct(productId: string, data: Partial<GlobalProduct>): Promise<GlobalProduct> {
-    const response = await apiClient.put(`/global/products/${productId}`, data);
+    const response = await apiClient.put<GlobalProduct>(`/global/products/${productId}`, data);
     return response.data;
   },
 
@@ -208,7 +208,7 @@ export const productService = {
    * Create global garment type (superuser only)
    */
   async createGlobalGarmentType(data: Partial<GlobalGarmentType>): Promise<GlobalGarmentType> {
-    const response = await apiClient.post('/global/garment-types', data);
+    const response = await apiClient.post<GlobalGarmentType>('/global/garment-types', data);
     return response.data;
   },
 
@@ -216,7 +216,7 @@ export const productService = {
    * Update global garment type (superuser only)
    */
   async updateGlobalGarmentType(typeId: string, data: Partial<GlobalGarmentType>): Promise<GlobalGarmentType> {
-    const response = await apiClient.put(`/global/garment-types/${typeId}`, data);
+    const response = await apiClient.put<GlobalGarmentType>(`/global/garment-types/${typeId}`, data);
     return response.data;
   },
 
@@ -228,7 +228,7 @@ export const productService = {
    * Update garment type for school (admin only)
    */
   async updateGarmentType(schoolId: string, typeId: string, data: Partial<GarmentType>): Promise<GarmentType> {
-    const response = await apiClient.put(`/schools/${schoolId}/garment-types/${typeId}`, data);
+    const response = await apiClient.put<GarmentType>(`/schools/${schoolId}/garment-types/${typeId}`, data);
     return response.data;
   },
 
@@ -239,16 +239,16 @@ export const productService = {
   /**
    * Get images for a garment type
    */
-  async getGarmentTypeImages(schoolId: string, garmentTypeId: string): Promise<unknown[]> {
-    const response = await apiClient.get(`/schools/${schoolId}/garment-types/${garmentTypeId}/images`);
+  async getGarmentTypeImages(schoolId: string, garmentTypeId: string): Promise<GarmentTypeImage[]> {
+    const response = await apiClient.get<GarmentTypeImage[]>(`/schools/${schoolId}/garment-types/${garmentTypeId}/images`);
     return response.data;
   },
 
   /**
    * Upload an image for a garment type
    */
-  async uploadGarmentTypeImage(schoolId: string, garmentTypeId: string, file: File): Promise<unknown> {
-    const response = await apiClient.uploadFile(
+  async uploadGarmentTypeImage(schoolId: string, garmentTypeId: string, file: File): Promise<GarmentTypeImage> {
+    const response = await apiClient.uploadFile<GarmentTypeImage>(
       `/schools/${schoolId}/garment-types/${garmentTypeId}/images`,
       file,
       'file'
@@ -276,8 +276,8 @@ export const productService = {
   /**
    * Reorder images for a garment type
    */
-  async reorderGarmentTypeImages(schoolId: string, garmentTypeId: string, imageIds: string[]): Promise<unknown> {
-    const response = await apiClient.put(
+  async reorderGarmentTypeImages(schoolId: string, garmentTypeId: string, imageIds: string[]): Promise<GarmentTypeImage[]> {
+    const response = await apiClient.put<GarmentTypeImage[]>(
       `/schools/${schoolId}/garment-types/${garmentTypeId}/images/reorder`,
       { image_ids: imageIds }
     );
@@ -291,16 +291,16 @@ export const productService = {
   /**
    * Get images for a global garment type
    */
-  async getGlobalGarmentTypeImages(garmentTypeId: string): Promise<unknown[]> {
-    const response = await apiClient.get(`/global/garment-types/${garmentTypeId}/images`);
+  async getGlobalGarmentTypeImages(garmentTypeId: string): Promise<GarmentTypeImage[]> {
+    const response = await apiClient.get<GarmentTypeImage[]>(`/global/garment-types/${garmentTypeId}/images`);
     return response.data;
   },
 
   /**
    * Upload an image for a global garment type (superuser only)
    */
-  async uploadGlobalGarmentTypeImage(garmentTypeId: string, file: File): Promise<unknown> {
-    const response = await apiClient.uploadFile(
+  async uploadGlobalGarmentTypeImage(garmentTypeId: string, file: File): Promise<GarmentTypeImage> {
+    const response = await apiClient.uploadFile<GarmentTypeImage>(
       `/global/garment-types/${garmentTypeId}/images`,
       file,
       'file'

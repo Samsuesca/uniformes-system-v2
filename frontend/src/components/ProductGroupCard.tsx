@@ -6,9 +6,9 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Package, Check, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Plus, Package, Check, CheckCircle } from 'lucide-react';
 import type { ProductGroup, ProductVariant } from '../utils/productGrouping';
-import { getEmojiForCategory, getVariantsForSize, getColorsForSize } from '../utils/productGrouping';
+import { getEmojiForCategory, getColorsForSize } from '../utils/productGrouping';
 
 interface ProductGroupCardProps {
   group: ProductGroup;

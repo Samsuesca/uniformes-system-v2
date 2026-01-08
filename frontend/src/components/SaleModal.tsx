@@ -267,10 +267,18 @@ export default function SaleModal({
   };
 
   // Auto-fill first payment with total when items change
+  // Only auto-fill if:
+  // - There's exactly one payment line
+  // - The user hasn't manually added more payment lines
+  // - The current amount is 0 (initial state) OR doesn't match total (items changed)
   useEffect(() => {
     const total = calculateTotal();
-    if (payments.length === 1 && payments[0].amount === 0 && total > 0) {
-      setPayments([{ ...payments[0], amount: total }]);
+    if (payments.length === 1 && total > 0) {
+      const currentPayment = payments[0];
+      // Auto-fill if amount is 0 or if user hasn't manually split payments
+      if (currentPayment.amount === 0 || currentPayment.amount !== total) {
+        setPayments([{ ...currentPayment, amount: total }]);
+      }
     }
   }, [items]);
 
@@ -293,29 +301,7 @@ export default function SaleModal({
     }
   };
 
-  const handleProductSelect = (productId: string) => {
-    if (productSource === 'global') {
-      const product = globalProducts.find(p => p.id === productId);
-      if (product) {
-        setCurrentItem({
-          product_id: productId,
-          quantity: 1,
-          unit_price: Number(product.price),
-          is_global: true,
-        });
-      }
-    } else {
-      const product = products.find(p => p.id === productId);
-      if (product) {
-        setCurrentItem({
-          product_id: productId,
-          quantity: 1,
-          unit_price: Number(product.price),
-          is_global: false,
-        });
-      }
-    }
-  };
+  // NOTE: _handleProductSelect was removed as unused (replaced by handleProductSelectorSelect)
 
   // Handler for ProductSelectorModal selection
   const handleProductSelectorSelect = (product: Product | GlobalProduct, quantity?: number, isGlobalParam?: boolean) => {
@@ -515,6 +501,13 @@ export default function SaleModal({
           amount: p.amount,
           payment_method: p.payment_method,
         }));
+
+      // Double-check we have valid payments after filtering
+      if (paymentsData.length === 0) {
+        setError('Debes agregar al menos un pago con monto mayor a 0');
+        setLoading(false);
+        return;
+      }
 
       // Multi-school: Create separate sales for each school
       const results: SaleResult[] = [];
@@ -799,7 +792,7 @@ export default function SaleModal({
               </div>
 
               <div className="space-y-3">
-                {payments.map((payment, index) => (
+                {payments.map((payment, _index) => (
                   <div key={payment.id} className="flex items-center gap-3">
                     {/* Amount */}
                     <div className="relative flex-1">

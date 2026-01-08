@@ -638,8 +638,8 @@ export default function Products() {
               {globalProducts.length}
             </span>
           </button>
-          {/* Tipos de Prenda - Solo visible para superusuarios */}
-          {isSuperuser && (
+          {/* Tipos de Prenda - Visible para superusuarios y administradores */}
+          {(isSuperuser || isAdmin) && (
             <button
               onClick={() => { setActiveTab('garment-types'); setSizeFilter(''); setStockFilter('all'); }}
               className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition ${
@@ -1136,8 +1136,8 @@ export default function Products() {
         </div>
       )}
 
-      {/* Garment Types Table - Solo visible para superusuarios */}
-      {activeTab === 'garment-types' && isSuperuser && !isLoading && !error && (
+      {/* Garment Types Table - Visible para superusuarios y administradores */}
+      {activeTab === 'garment-types' && (isSuperuser || isAdmin) && !isLoading && !error && (
         <div className="bg-white rounded-lg shadow-sm mb-6">
           {/* Toggle between School and Global Types */}
           <div className="flex border-b border-gray-200">

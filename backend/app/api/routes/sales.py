@@ -18,7 +18,7 @@ from app.models.school import School
 from app.schemas.sale import (
     SaleCreate, SaleResponse, SaleWithItems, SaleListResponse,
     SaleChangeCreate, SaleChangeResponse, SaleChangeUpdate, SaleChangeListResponse,
-    SaleChangeApprove
+    SaleChangeApprove, AddPaymentToSale, SalePaymentResponse
 )
 from app.models.sale import PaymentMethod
 from app.services.sale import SaleService
@@ -352,6 +352,31 @@ async def get_sale_with_items(
         client = result.scalar_one_or_none()
         client_name = client.name if client else None
 
+    # Get user name (seller)
+    user_name = None
+    if sale.user_id:
+        result = await db.execute(
+            select(User).where(User.id == sale.user_id)
+        )
+        user = result.scalar_one_or_none()
+        user_name = user.username if user else None
+
+    # Build payments list
+    from app.schemas.sale import SalePaymentResponse
+    payments_list = [
+        SalePaymentResponse(
+            id=p.id,
+            sale_id=p.sale_id,
+            amount=p.amount,
+            payment_method=p.payment_method,
+            notes=p.notes,
+            transaction_id=p.transaction_id,
+            created_at=p.created_at,
+            updated_at=p.updated_at
+        )
+        for p in (sale.payments or [])
+    ]
+
     return SaleWithItems(
         id=sale.id,
         school_id=sale.school_id,
@@ -369,7 +394,9 @@ async def get_sale_with_items(
         created_at=sale.created_at,
         updated_at=sale.updated_at,
         items=items_with_products,
-        client_name=client_name
+        payments=payments_list,
+        client_name=client_name,
+        user_name=user_name
     )
 
 
@@ -399,6 +426,62 @@ async def get_sale_receipt(
         )
 
     return HTMLResponse(content=html)
+
+
+# ============================================
+# Sale Payments Endpoints
+# ============================================
+
+@school_router.post(
+    "/{sale_id}/payments",
+    response_model=SalePaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_school_access(UserRole.ADMIN))],
+    summary="Add payment to existing sale"
+)
+async def add_payment_to_sale(
+    school_id: UUID,
+    sale_id: UUID,
+    payment_data: AddPaymentToSale,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Add a payment to an existing sale (requires ADMIN role).
+
+    Use this endpoint to:
+    - Fix sales that were created without payment method
+    - Add partial payments to a sale
+    - Record additional payments with proper accounting
+
+    The payment will:
+    - Create a SalePayment record
+    - If apply_accounting=True and method is not CREDIT:
+      - Create a Transaction (INCOME)
+      - Update the corresponding BalanceAccount (Caja/Banco)
+    - If method is CREDIT:
+      - Create an AccountsReceivable record
+
+    Validates that the payment amount doesn't exceed the remaining balance.
+    """
+    sale_service = SaleService(db)
+
+    try:
+        payment = await sale_service.add_payment_to_sale(
+            sale_id=sale_id,
+            school_id=school_id,
+            payment_data=payment_data,
+            user_id=current_user.id
+        )
+        await db.commit()
+        return SalePaymentResponse.model_validate(payment)
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 # ============================================

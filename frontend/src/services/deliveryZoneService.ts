@@ -35,7 +35,7 @@ export const deliveryZoneService = {
    * List all delivery zones (admin)
    */
   getZones: async (includeInactive: boolean = true): Promise<DeliveryZone[]> => {
-    const response = await apiClient.get('/delivery-zones', {
+    const response = await apiClient.get<DeliveryZone[]>('/delivery-zones', {
       params: { include_inactive: includeInactive }
     });
     return response.data;
@@ -45,7 +45,7 @@ export const deliveryZoneService = {
    * Get a specific delivery zone
    */
   getZone: async (zoneId: string): Promise<DeliveryZone> => {
-    const response = await apiClient.get(`/delivery-zones/${zoneId}`);
+    const response = await apiClient.get<DeliveryZone>(`/delivery-zones/${zoneId}`);
     return response.data;
   },
 
@@ -53,7 +53,7 @@ export const deliveryZoneService = {
    * Create a new delivery zone
    */
   createZone: async (data: DeliveryZoneCreate): Promise<DeliveryZone> => {
-    const response = await apiClient.post('/delivery-zones', data);
+    const response = await apiClient.post<DeliveryZone>('/delivery-zones', data);
     return response.data;
   },
 
@@ -61,7 +61,7 @@ export const deliveryZoneService = {
    * Update a delivery zone
    */
   updateZone: async (zoneId: string, data: DeliveryZoneUpdate): Promise<DeliveryZone> => {
-    const response = await apiClient.patch(`/delivery-zones/${zoneId}`, data);
+    const response = await apiClient.patch<DeliveryZone>(`/delivery-zones/${zoneId}`, data);
     return response.data;
   },
 

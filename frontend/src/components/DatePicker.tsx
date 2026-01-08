@@ -331,11 +331,12 @@ export function formatDateSpanish(isoDate: string | null | undefined): string {
 
 /**
  * Función utilitaria para formatear fecha y hora ISO a español
+ * Acepta tanto strings ISO como objetos Date
  */
-export function formatDateTimeSpanish(isoDate: string | null | undefined): string {
+export function formatDateTimeSpanish(isoDate: string | Date | null | undefined): string {
   if (!isoDate) return '-';
   try {
-    const date = new Date(isoDate);
+    const date = isoDate instanceof Date ? isoDate : new Date(isoDate);
     if (isNaN(date.getTime())) return '-';
 
     const day = String(date.getDate()).padStart(2, '0');

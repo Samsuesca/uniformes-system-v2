@@ -5,7 +5,6 @@
  * Admin configures these in desktop app, displayed to customers in web portal.
  */
 import apiClient from '../utils/api-client';
-import type { AxiosResponse } from 'axios';
 
 export interface PaymentAccount {
   id: string;
@@ -54,7 +53,7 @@ class PaymentAccountService {
    * List all payment accounts (admin - includes inactive)
    */
   async getAll(): Promise<PaymentAccount[]> {
-    const response: AxiosResponse<PaymentAccount[]> = await apiClient.get('/payment-accounts');
+    const response = await apiClient.get<PaymentAccount[]>('/payment-accounts');
     return response.data;
   }
 
@@ -62,7 +61,7 @@ class PaymentAccountService {
    * Get public payment accounts (active only - for web portal)
    */
   async getPublic(): Promise<PaymentAccount[]> {
-    const response: AxiosResponse<PaymentAccount[]> = await apiClient.get('/payment-accounts/public');
+    const response = await apiClient.get<PaymentAccount[]>('/payment-accounts/public');
     return response.data;
   }
 
@@ -70,7 +69,7 @@ class PaymentAccountService {
    * Get payment account by ID
    */
   async getById(id: string): Promise<PaymentAccount> {
-    const response: AxiosResponse<PaymentAccount> = await apiClient.get(`/payment-accounts/${id}`);
+    const response = await apiClient.get<PaymentAccount>(`/payment-accounts/${id}`);
     return response.data;
   }
 
@@ -78,7 +77,7 @@ class PaymentAccountService {
    * Create new payment account
    */
   async create(data: PaymentAccountCreate): Promise<PaymentAccount> {
-    const response: AxiosResponse<PaymentAccount> = await apiClient.post('/payment-accounts', data);
+    const response = await apiClient.post<PaymentAccount>('/payment-accounts', data);
     return response.data;
   }
 
@@ -86,7 +85,7 @@ class PaymentAccountService {
    * Update payment account
    */
   async update(id: string, data: PaymentAccountUpdate): Promise<PaymentAccount> {
-    const response: AxiosResponse<PaymentAccount> = await apiClient.put(`/payment-accounts/${id}`, data);
+    const response = await apiClient.put<PaymentAccount>(`/payment-accounts/${id}`, data);
     return response.data;
   }
 

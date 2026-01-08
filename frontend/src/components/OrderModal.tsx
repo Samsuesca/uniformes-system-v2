@@ -92,10 +92,10 @@ export default function OrderModal({
   const [catalogProductSelectorOpen, setCatalogProductSelectorOpen] = useState(false);
   const [yomberProductSelectorOpen, setYomberProductSelectorOpen] = useState(false);
 
-  // Catalog tab state
-  const [catalogProductId, setCatalogProductId] = useState('');
-  const [catalogQuantity, setCatalogQuantity] = useState(1);
-  const [catalogGarmentFilter, setCatalogGarmentFilter] = useState('');
+  // Catalog tab state (setters used for initial product and resetCatalogForm)
+  const [, setCatalogProductId] = useState('');
+  const [, setCatalogQuantity] = useState(1);
+  const [, setCatalogGarmentFilter] = useState('');
 
   // Yomber tab state - simplified: just select a yomber product directly
   const [yomberProductId, setYomberProductId] = useState('');
@@ -125,30 +125,8 @@ export default function OrderModal({
     return products.filter(p => yomberGarmentTypeIds.includes(p.garment_type_id));
   }, [products, yomberGarmentTypeIds]);
 
-  // Non-yomber garment types for catalog filter (exclude yomber types)
-  const catalogGarmentTypes = useMemo(() => {
-    return garmentTypes.filter(gt => !gt.has_custom_measurements);
-  }, [garmentTypes]);
-
-  // Filter catalog products:
-  // 1. Exclude yomber products (they have their own tab)
-  // 2. Only show products with stock = 0 (orders are for out-of-stock items)
-  // 3. Apply garment type filter if selected
-  const filteredCatalogProducts = useMemo(() => {
-    return products.filter(p => {
-      // Exclude yomber products
-      if (yomberGarmentTypeIds.includes(p.garment_type_id)) return false;
-
-      // Only show products without stock (orders are for out-of-stock items)
-      const stock = p.stock ?? p.inventory_quantity ?? 0;
-      if (stock > 0) return false;
-
-      // Apply garment type filter
-      if (catalogGarmentFilter && p.garment_type_id !== catalogGarmentFilter) return false;
-
-      return true;
-    });
-  }, [products, yomberGarmentTypeIds, catalogGarmentFilter]);
+  // NOTE: catalogGarmentTypes and filteredCatalogProducts were removed as unused.
+  // They can be re-added if the catalog tab functionality is implemented.
 
   useEffect(() => {
     if (isOpen) {
@@ -177,7 +155,7 @@ export default function OrderModal({
             unit_price: item.unitPrice,
             size: item.size,
             color: item.color,
-            custom_measurements: item.measurements as YomberMeasurements,
+            custom_measurements: item.measurements as unknown as YomberMeasurements,
             embroidery_text: item.embroideryText,
             additional_price: item.additionalPrice,
             notes: item.notes,
@@ -328,35 +306,8 @@ export default function OrderModal({
     setError(null);
   };
 
-  const handleAddCatalogItem = () => {
-    if (!catalogProductId) {
-      setError('Selecciona un producto');
-      return;
-    }
-
-    const product = products.find(p => p.id === catalogProductId);
-    if (!product) return;
-
-    const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
-
-    const item: OrderItemForm = {
-      tempId: Date.now().toString(),
-      order_type: 'catalog',
-      garment_type_id: product.garment_type_id,
-      product_id: product.id,
-      quantity: catalogQuantity,
-      size: product.size,
-      color: product.color || undefined,
-      displayName: `${garmentType?.name || 'Producto'} - ${product.size}${product.color ? ` (${product.color})` : ''}`,
-      unitPrice: Number(product.price),
-      school_id: selectedSchoolId,
-      school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
-    };
-
-    setItems([...items, item]);
-    resetCatalogForm();
-    setError(null);
-  };
+  // NOTE: _handleAddCatalogItem was removed as unused.
+  // It can be re-added if the catalog tab functionality is implemented.
 
   const handleYomberProductSelect = (product: Product | GlobalProduct, quantity?: number) => {
     // Set the selected yomber product - measurements will be filled afterwards

@@ -2,9 +2,10 @@
  * Product Modal - Create/Edit Product Form
  */
 import { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Plus } from 'lucide-react';
 import { productService } from '../services/productService';
 import { extractErrorMessage } from '../utils/api-client';
+import QuickGarmentTypeModal from './QuickGarmentTypeModal';
 import type { Product, GarmentType } from '../types/api';
 
 interface ProductModalProps {
@@ -19,6 +20,7 @@ export default function ProductModal({ isOpen, onClose, onSuccess, schoolId, pro
   const [loading, setLoading] = useState(false);
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showQuickTypeModal, setShowQuickTypeModal] = useState(false);
 
   const [formData, setFormData] = useState({
     garment_type_id: '',
@@ -170,20 +172,35 @@ export default function ProductModal({ isOpen, onClose, onSuccess, schoolId, pro
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Tipo de Prenda *
               </label>
-              <select
-                name="garment_type_id"
-                value={formData.garment_type_id}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              >
-                <option value="">Selecciona un tipo</option>
-                {garmentTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  name="garment_type_id"
+                  value={formData.garment_type_id}
+                  onChange={handleChange}
+                  required
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                >
+                  <option value="">Selecciona un tipo</option>
+                  {garmentTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickTypeModal(true)}
+                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg transition flex items-center justify-center"
+                  title="Crear nuevo tipo de prenda"
+                >
+                  <Plus className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+              {garmentTypes.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  No hay tipos de prenda. Crea uno con el boton +
+                </p>
+              )}
             </div>
 
             {/* Name */}
@@ -327,6 +344,18 @@ export default function ProductModal({ isOpen, onClose, onSuccess, schoolId, pro
           </form>
         </div>
       </div>
+
+      {/* Quick Garment Type Modal */}
+      <QuickGarmentTypeModal
+        isOpen={showQuickTypeModal}
+        onClose={() => setShowQuickTypeModal(false)}
+        onSuccess={(newType) => {
+          // Add the new type to the list and select it
+          setGarmentTypes(prev => [...prev, newType]);
+          setFormData(prev => ({ ...prev, garment_type_id: newType.id }));
+        }}
+        schoolId={schoolId}
+      />
     </div>
   );
 }

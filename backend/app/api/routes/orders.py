@@ -355,6 +355,7 @@ async def get_order_for_school(
         items=items_response,
         client_name=order.client.name if order.client else "Unknown",
         client_phone=order.client.phone if order.client else None,
+        client_email=order.client.email if order.client else None,
         student_name=order.client.student_name if order.client else None,
         # Delivery fields
         delivery_type=order.delivery_type,

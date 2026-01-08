@@ -12,7 +12,6 @@ import {
   ChevronDown,
   Check,
   AlertTriangle,
-  ShoppingCart,
   Plus,
   Loader2,
 } from 'lucide-react';
@@ -484,7 +483,7 @@ function ProductCardGrid({
   quantity,
   onSetQuantity,
   onSelect,
-  isGlobal,
+  isGlobal: _isGlobal,
 }: ProductCardProps) {
   const stock = product.stock ?? product.inventory_quantity ?? 0;
   const minStock = (product as any).min_stock ?? (product as any).inventory_min_stock ?? 5;
@@ -584,7 +583,7 @@ function ProductCardList({
   quantity,
   onSetQuantity,
   onSelect,
-  isGlobal,
+  isGlobal: _isGlobal,
 }: ProductCardProps) {
   const stock = product.stock ?? product.inventory_quantity ?? 0;
   const minStock = (product as any).min_stock ?? (product as any).inventory_min_stock ?? 5;

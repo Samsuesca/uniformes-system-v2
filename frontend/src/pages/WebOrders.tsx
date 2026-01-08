@@ -29,7 +29,6 @@ import {
   Image as ImageIcon,
   FileText,
   Home,
-  Store,
   Truck
 } from 'lucide-react';
 import Layout from '../components/Layout';
