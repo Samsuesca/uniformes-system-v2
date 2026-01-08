@@ -381,8 +381,7 @@ async def get_sale_with_items(
             payment_method=p.payment_method,
             notes=p.notes,
             transaction_id=p.transaction_id,
-            created_at=p.created_at,
-            updated_at=p.updated_at
+            created_at=p.created_at
         )
         for p in (sale.payments or [])
     ]

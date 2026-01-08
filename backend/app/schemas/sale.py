@@ -34,6 +34,7 @@ class AddPaymentToSale(BaseSchema):
 class SalePaymentResponse(BaseSchema):
     """SalePayment for API responses"""
     id: UUID
+    sale_id: UUID
     amount: Decimal
     payment_method: PaymentMethod
     notes: str | None = None
