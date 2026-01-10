@@ -7,9 +7,22 @@ Clients are GLOBAL - not tied to a single school.
 """
 from datetime import datetime
 from uuid import UUID
-from pydantic import Field, EmailStr
+from pydantic import Field, EmailStr, field_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema
 from app.models.client import ClientType
+
+
+def format_name(name: str | None) -> str | None:
+    """
+    Format a name to Title Case.
+    Handles multiple spaces and preserves None values.
+    Example: "JUAN GARCIA" -> "Juan Garcia"
+             "maria del carmen" -> "Maria Del Carmen"
+    """
+    if not name or not isinstance(name, str):
+        return name
+    # Strip, normalize spaces, and apply title case
+    return ' '.join(name.split()).title()
 
 
 # =============================================================================
@@ -22,6 +35,11 @@ class ClientStudentBase(BaseSchema):
     student_grade: str | None = Field(None, max_length=50)
     student_section: str | None = Field(None, max_length=50)
     notes: str | None = None
+
+    @field_validator('student_name', mode='before')
+    @classmethod
+    def format_student_name(cls, v: str | None) -> str | None:
+        return format_name(v)
 
 
 class ClientStudentCreate(ClientStudentBase):
@@ -36,6 +54,11 @@ class ClientStudentUpdate(BaseSchema):
     student_section: str | None = Field(None, max_length=50)
     notes: str | None = None
     is_active: bool | None = None
+
+    @field_validator('student_name', mode='before')
+    @classmethod
+    def format_student_name(cls, v: str | None) -> str | None:
+        return format_name(v)
 
 
 class ClientStudentResponse(ClientStudentBase, IDModelSchema, TimestampSchema):
@@ -64,6 +87,11 @@ class ClientBase(BaseSchema):
     student_name: str | None = Field(None, max_length=255)
     student_grade: str | None = Field(None, max_length=50)
 
+    @field_validator('name', 'student_name', mode='before')
+    @classmethod
+    def format_names(cls, v: str | None) -> str | None:
+        return format_name(v)
+
 
 class ClientCreate(ClientBase):
     """Schema for creating a regular client (by staff)"""
@@ -84,6 +112,11 @@ class ClientWebRegister(BaseSchema):
 
     # At least one student is required for web registration
     students: list[ClientStudentCreate] = Field(..., min_length=1)
+
+    @field_validator('name', mode='before')
+    @classmethod
+    def format_client_name(cls, v: str | None) -> str | None:
+        return format_name(v)
 
 
 class ClientWebLogin(BaseSchema):
@@ -109,6 +142,11 @@ class ClientUpdate(BaseSchema):
     student_name: str | None = Field(None, max_length=255)
     student_grade: str | None = Field(None, max_length=50)
     is_active: bool | None = None
+
+    @field_validator('name', 'student_name', mode='before')
+    @classmethod
+    def format_names(cls, v: str | None) -> str | None:
+        return format_name(v)
 
 
 class ClientInDB(ClientBase, IDModelSchema, TimestampSchema):
