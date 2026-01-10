@@ -41,16 +41,12 @@ export const useAdminAuth = create<AdminAuthState>()(
 
         try {
           // Login to get token
-          const formData = new URLSearchParams();
-          formData.append('username', username);
-          formData.append('password', password);
-
           const loginResponse = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Type': 'application/json',
             },
-            body: formData,
+            body: JSON.stringify({ username, password }),
           });
 
           if (!loginResponse.ok) {
@@ -59,20 +55,8 @@ export const useAdminAuth = create<AdminAuthState>()(
           }
 
           const loginData = await loginResponse.json();
-          const token = loginData.access_token;
-
-          // Get user info
-          const meResponse = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-
-          if (!meResponse.ok) {
-            throw new Error('Error al obtener información del usuario');
-          }
-
-          const user = await meResponse.json();
+          const token = loginData.token;
+          const user = loginData.user;
 
           // Check if user is superuser
           if (!user.is_superuser) {
