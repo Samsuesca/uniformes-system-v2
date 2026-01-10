@@ -204,6 +204,29 @@ export const orderService = {
     );
     return response.data;
   },
+
+  /**
+   * Cancel an order and release any reserved stock ("pisar" functionality)
+   *
+   * This endpoint:
+   * 1. Validates the order can be cancelled (not delivered/already cancelled)
+   * 2. Releases any stock that was reserved for this order
+   * 3. Marks all items and the order as CANCELLED
+   *
+   * @param schoolId - School ID
+   * @param orderId - Order ID to cancel
+   * @param reason - Optional cancellation reason (added to order notes)
+   * @returns Updated order with CANCELLED status
+   */
+  async cancelOrder(schoolId: string, orderId: string, reason?: string): Promise<Order> {
+    const params = reason ? { reason } : {};
+    const response = await apiClient.post<Order>(
+      `/schools/${schoolId}/orders/${orderId}/cancel`,
+      null,
+      { params }
+    );
+    return response.data;
+  },
 };
 
 // Types for stock verification

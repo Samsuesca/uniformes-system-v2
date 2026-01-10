@@ -75,6 +75,9 @@ class OrderItemCreate(BaseSchema):
     # Flag for items that need quotation (web custom orders)
     needs_quotation: bool = Field(default=False)
 
+    # Stock reservation - "pisar" functionality (reserve from inventory if available)
+    reserve_stock: bool = Field(default=True, description="Reserve from stock if available for catalog orders")
+
     # Common fields
     size: str | None = Field(None, max_length=10)
     color: str | None = Field(None, max_length=50)
@@ -114,6 +117,9 @@ class OrderItemInDB(OrderItemBase, SchoolIsolatedSchema, IDModelSchema):
     order_id: UUID
     item_status: OrderItemStatus = OrderItemStatus.PENDING
     status_updated_at: datetime | None = None
+    # Stock reservation tracking
+    reserved_from_stock: bool = False
+    quantity_reserved: int = 0
 
 
 class OrderItemResponse(OrderItemInDB):

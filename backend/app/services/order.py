@@ -77,6 +77,10 @@ class OrderService(SchoolIsolatedService[Order]):
             item_size = item_data.size
             item_color = item_data.color
 
+            # Stock reservation tracking for this item
+            reserved_from_stock = False
+            quantity_reserved = 0
+
             if order_type == "catalog":
                 # CATALOG: Price from selected product
                 if not item_data.product_id:
@@ -99,6 +103,29 @@ class OrderService(SchoolIsolatedService[Order]):
                 # Use product's size/color if not specified
                 item_size = item_data.size or product.size
                 item_color = item_data.color or product.color
+
+                # === STOCK RESERVATION ("PISAR") ===
+                # Reserve stock if available and reserve_stock flag is True
+                should_reserve = getattr(item_data, 'reserve_stock', True)
+                if should_reserve:
+                    from app.services.inventory import InventoryService
+                    inventory_service = InventoryService(self.db)
+
+                    # Check available stock
+                    inventory = await inventory_service.get_by_product(product_id, order_data.school_id)
+
+                    if inventory and inventory.quantity > 0:
+                        # Reserve up to available stock (partial reservation if not enough)
+                        quantity_to_reserve = min(item_data.quantity, inventory.quantity)
+
+                        if quantity_to_reserve > 0:
+                            await inventory_service.reserve_stock(
+                                product_id=product_id,
+                                school_id=order_data.school_id,
+                                quantity=quantity_to_reserve
+                            )
+                            reserved_from_stock = True
+                            quantity_reserved = quantity_to_reserve
 
             elif order_type == "yomber":
                 # YOMBER: Validate measurements + get base price
@@ -151,7 +178,10 @@ class OrderService(SchoolIsolatedService[Order]):
                 "gender": item_data.gender,
                 "custom_measurements": item_data.custom_measurements,
                 "embroidery_text": item_data.embroidery_text,
-                "notes": item_data.notes
+                "notes": item_data.notes,
+                # Stock reservation tracking
+                "reserved_from_stock": reserved_from_stock,
+                "quantity_reserved": quantity_reserved
             })
 
             subtotal += item_subtotal
@@ -1240,3 +1270,75 @@ class OrderService(SchoolIsolatedService[Order]):
         except Exception as e:
             print(f"❌ [ORDER] Error sending activation email: {e}")
             return False
+
+    async def cancel_order(
+        self,
+        order_id: UUID,
+        school_id: UUID,
+        user_id: UUID | None = None,
+        reason: str | None = None
+    ) -> Order:
+        """
+        Cancel an order and release any reserved stock.
+
+        This method:
+        1. Validates the order can be cancelled (not delivered/already cancelled)
+        2. Releases any stock that was reserved for this order
+        3. Marks all items and the order as CANCELLED
+
+        Args:
+            order_id: Order UUID
+            school_id: School UUID
+            user_id: User cancelling the order
+            reason: Optional cancellation reason
+
+        Returns:
+            Updated order with CANCELLED status
+
+        Raises:
+            ValueError: If order cannot be cancelled
+        """
+        order = await self.get_order_with_items(order_id, school_id)
+        if not order:
+            raise ValueError("Orden no encontrada")
+
+        if order.status == OrderStatus.CANCELLED:
+            raise ValueError("La orden ya está cancelada")
+
+        if order.status == OrderStatus.DELIVERED:
+            raise ValueError("No se puede cancelar una orden entregada")
+
+        # Release reserved stock for each item
+        from app.services.inventory import InventoryService
+        inventory_service = InventoryService(self.db)
+
+        for item in order.items:
+            # Only release stock if it was reserved and item is not already delivered/cancelled
+            if item.reserved_from_stock and item.quantity_reserved > 0:
+                if item.item_status not in [OrderItemStatus.DELIVERED, OrderItemStatus.CANCELLED]:
+                    try:
+                        await inventory_service.release_stock(
+                            product_id=item.product_id,
+                            school_id=school_id,
+                            quantity=item.quantity_reserved
+                        )
+                        # Update item to reflect stock was released
+                        item.quantity_reserved = 0
+                    except Exception as e:
+                        # Log but continue - stock may have been manually adjusted
+                        print(f"Warning: Could not release stock for item {item.id}: {e}")
+
+            # Mark item as cancelled
+            item.item_status = OrderItemStatus.CANCELLED
+            item.status_updated_at = datetime.utcnow()
+
+        # Update order status
+        order.status = OrderStatus.CANCELLED
+        if reason:
+            existing_notes = order.notes or ""
+            order.notes = f"{existing_notes}\n[Cancelado: {reason}]".strip()
+
+        await self.db.flush()
+        await self.db.refresh(order)
+
+        return order

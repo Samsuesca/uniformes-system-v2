@@ -397,6 +397,9 @@ export interface OrderItem {
   // Item-level status for individual tracking
   item_status: OrderItemStatus;
   status_updated_at: string | null;
+  // Stock reservation tracking ("pisar" functionality)
+  reserved_from_stock?: boolean;
+  quantity_reserved?: number;
 }
 
 export interface OrderItemCreate {
@@ -410,6 +413,8 @@ export interface OrderItemCreate {
   unit_price?: number;
   // Additional services price
   additional_price?: number;
+  // Stock reservation - "pisar" functionality (reserve from inventory if available)
+  reserve_stock?: boolean;
   // Common fields
   size?: string;
   color?: string;

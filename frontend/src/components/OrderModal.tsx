@@ -35,6 +35,8 @@ interface OrderItemForm extends OrderItemCreate {
   unitPrice: number;
   school_id: string;      // School this item belongs to
   school_name: string;    // For display in UI
+  // Stock reservation info for "pisar" functionality
+  stock_available?: number;  // How many units are in stock (for display)
 }
 
 // Result of creating an order (for multi-school success modal)
@@ -286,6 +288,8 @@ export default function OrderModal({
 
   const handleCatalogProductSelect = (product: Product | GlobalProduct, quantity?: number) => {
     const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
+    // Get stock available for "pisar" (reserve) functionality
+    const stockAvailable = (product as Product).inventory?.quantity || 0;
 
     const item: OrderItemForm = {
       tempId: Date.now().toString(),
@@ -299,6 +303,9 @@ export default function OrderModal({
       unitPrice: Number(product.price),
       school_id: selectedSchoolId,
       school_name: selectedSchool?.name || getSchoolName(selectedSchoolId),
+      // Stock reservation - always reserve if stock available
+      reserve_stock: stockAvailable > 0,
+      stock_available: stockAvailable,
     };
 
     setItems([...items, item]);
@@ -1096,6 +1103,18 @@ export default function OrderModal({
                                         {item.custom_measurements && (
                                           <p className="text-xs text-purple-600">Con medidas personalizadas</p>
                                         )}
+                                        {/* Stock reservation indicator for "pisar" functionality */}
+                                        {item.order_type === 'catalog' && item.stock_available !== undefined && item.stock_available > 0 && (
+                                          <p className="text-xs text-green-600">
+                                            {item.quantity <= item.stock_available
+                                              ? `Se reserva del inventario (${item.stock_available} disponibles)`
+                                              : `${item.stock_available} del inventario + ${item.quantity - item.stock_available} por encargo`
+                                            }
+                                          </p>
+                                        )}
+                                        {item.order_type === 'catalog' && (item.stock_available === undefined || item.stock_available === 0) && (
+                                          <p className="text-xs text-orange-600">Por encargo (sin stock)</p>
+                                        )}
                                       </div>
                                     </td>
                                     <td className="py-2 text-center">
@@ -1259,16 +1278,17 @@ export default function OrderModal({
       </div>
 
       {/* Product Group Selector for Catalog Tab - Grouped by garment type */}
+      {/* Shows ALL products (with and without stock) for "pisar" (reserve) functionality */}
       <ProductGroupSelector
         isOpen={catalogProductSelectorOpen}
         onClose={() => setCatalogProductSelectorOpen(false)}
         onSelect={handleCatalogProductSelect}
         schoolId={selectedSchoolId}
-        filterByStock="without_stock"
+        filterByStock="all"
         excludeProductIds={items.map(i => i.product_id || '')}
         excludeGarmentTypeIds={yomberGarmentTypeIds}
         title="Seleccionar Producto del Catálogo"
-        emptyMessage="No hay productos sin stock disponibles"
+        emptyMessage="No hay productos disponibles para encargar"
       />
 
       {/* Product Group Selector for Yomber Tab - Shows only Yomber garment types grouped */}

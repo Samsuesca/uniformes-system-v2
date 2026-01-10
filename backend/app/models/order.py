@@ -2,7 +2,7 @@
 Custom Orders Models (Encargos)
 """
 from datetime import datetime
-from sqlalchemy import String, DateTime, Numeric, Integer, Text, ForeignKey, UniqueConstraint, CheckConstraint, Enum as SQLEnum, Computed
+from sqlalchemy import String, DateTime, Numeric, Integer, Text, ForeignKey, UniqueConstraint, CheckConstraint, Enum as SQLEnum, Computed, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
@@ -219,6 +219,10 @@ class OrderItem(Base):
         index=True
     )
     status_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Stock reservation tracking - for "pisar" (reserve) functionality
+    reserved_from_stock: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    quantity_reserved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
     order: Mapped["Order"] = relationship(back_populates="items")

@@ -713,6 +713,65 @@ async def approve_order_with_stock(
         )
 
 
+@school_router.post(
+    "/{order_id}/cancel",
+    response_model=OrderResponse,
+    dependencies=[Depends(require_school_access(UserRole.SELLER))]
+)
+async def cancel_order(
+    school_id: UUID,
+    order_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    reason: str | None = Query(None, description="Cancellation reason")
+):
+    """
+    Cancel an order and release any reserved stock.
+
+    This endpoint:
+    1. Validates the order can be cancelled (not delivered/already cancelled)
+    2. Releases any stock that was reserved for this order ("pisar" functionality)
+    3. Marks all items and the order as CANCELLED
+
+    Reserved stock is returned to inventory when the order is cancelled.
+
+    Requires SELLER role.
+
+    Args:
+        school_id: School ID
+        order_id: Order ID
+        reason: Optional cancellation reason (added to order notes)
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        OrderResponse: Updated order with CANCELLED status
+
+    Raises:
+        HTTPException: 404 if order not found
+        HTTPException: 400 if order cannot be cancelled
+    """
+    order_service = OrderService(db)
+
+    try:
+        order = await order_service.cancel_order(
+            order_id=order_id,
+            school_id=school_id,
+            user_id=current_user.id,
+            reason=reason
+        )
+
+        await db.commit()
+        return OrderResponse.model_validate(order)
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 # =============================================================================
 # Web Portal Order Endpoints (Public - for web clients)
 # =============================================================================
