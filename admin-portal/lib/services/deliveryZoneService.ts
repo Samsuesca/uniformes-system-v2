@@ -3,7 +3,7 @@ import apiClient, { DeliveryZone } from '../api';
 export interface CreateDeliveryZoneData {
   name: string;
   description?: string;
-  fee: number;
+  delivery_fee: number;
   estimated_days: number;
   is_active?: boolean;
 }
@@ -11,7 +11,7 @@ export interface CreateDeliveryZoneData {
 export interface UpdateDeliveryZoneData {
   name?: string;
   description?: string;
-  fee?: number;
+  delivery_fee?: number;
   estimated_days?: number;
   is_active?: boolean;
 }
@@ -19,7 +19,9 @@ export interface UpdateDeliveryZoneData {
 const deliveryZoneService = {
   // List all delivery zones
   list: async () => {
-    const response = await apiClient.get<DeliveryZone[]>('/delivery-zones');
+    const response = await apiClient.get<DeliveryZone[]>('/delivery-zones', {
+      params: { include_inactive: true }
+    });
     return response.data;
   },
 
@@ -35,9 +37,9 @@ const deliveryZoneService = {
     return response.data;
   },
 
-  // Update delivery zone
+  // Update delivery zone (backend uses PATCH)
   update: async (id: string, data: UpdateDeliveryZoneData) => {
-    const response = await apiClient.put<DeliveryZone>(`/delivery-zones/${id}`, data);
+    const response = await apiClient.patch<DeliveryZone>(`/delivery-zones/${id}`, data);
     return response.data;
   },
 

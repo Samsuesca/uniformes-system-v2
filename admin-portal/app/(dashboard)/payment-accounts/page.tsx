@@ -45,10 +45,10 @@ export default function PaymentAccountsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<PaymentAccount | null>(null);
   const [formData, setFormData] = useState({
-    method: 'nequi',
+    method_type: 'nequi',
     account_name: '',
     account_number: '',
-    holder_name: '',
+    account_holder: '',
     bank_name: '',
     account_type: 'ahorros',
     qr_code_url: '',
@@ -78,10 +78,10 @@ export default function PaymentAccountsPage() {
   const openCreateModal = () => {
     setEditingAccount(null);
     setFormData({
-      method: 'nequi',
+      method_type: 'nequi',
       account_name: '',
       account_number: '',
-      holder_name: '',
+      account_holder: '',
       bank_name: '',
       account_type: 'ahorros',
       qr_code_url: '',
@@ -95,10 +95,10 @@ export default function PaymentAccountsPage() {
   const openEditModal = (account: PaymentAccount) => {
     setEditingAccount(account);
     setFormData({
-      method: account.method,
+      method_type: account.method_type,
       account_name: account.account_name,
       account_number: account.account_number,
-      holder_name: account.holder_name || '',
+      account_holder: account.account_holder || '',
       bank_name: account.bank_name || '',
       account_type: account.account_type || 'ahorros',
       qr_code_url: account.qr_code_url || '',
@@ -226,7 +226,7 @@ export default function PaymentAccountsPage() {
                     {account.account_name}
                   </h3>
                   <p className="text-sm text-slate-500">
-                    {getMethodLabel(account.method)}
+                    {getMethodLabel(account.method_type)}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -266,10 +266,10 @@ export default function PaymentAccountsPage() {
                     {account.account_number}
                   </span>
                 </div>
-                {account.holder_name && (
+                {account.account_holder && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Titular:</span>
-                    <span className="font-medium">{account.holder_name}</span>
+                    <span className="font-medium">{account.account_holder}</span>
                   </div>
                 )}
                 {account.bank_name && (
@@ -304,9 +304,9 @@ export default function PaymentAccountsPage() {
                 <div>
                   <label className="admin-label">Método *</label>
                   <select
-                    value={formData.method}
+                    value={formData.method_type}
                     onChange={(e) =>
-                      setFormData({ ...formData, method: e.target.value })
+                      setFormData({ ...formData, method_type: e.target.value })
                     }
                     className="admin-input"
                     required
@@ -362,14 +362,15 @@ export default function PaymentAccountsPage() {
               </div>
 
               <div>
-                <label className="admin-label">Titular</label>
+                <label className="admin-label">Titular *</label>
                 <input
                   type="text"
-                  value={formData.holder_name}
+                  value={formData.account_holder}
                   onChange={(e) =>
-                    setFormData({ ...formData, holder_name: e.target.value })
+                    setFormData({ ...formData, account_holder: e.target.value })
                   }
                   className="admin-input"
+                  required
                   placeholder="Nombre del titular"
                 />
               </div>

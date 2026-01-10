@@ -86,10 +86,10 @@ export interface UserSchoolRole {
 
 export interface PaymentAccount {
   id: string;
-  method: string;
+  method_type: string;
   account_name: string;
   account_number: string;
-  holder_name?: string;
+  account_holder: string;
   bank_name?: string;
   account_type?: string;
   qr_code_url?: string;
@@ -102,7 +102,7 @@ export interface DeliveryZone {
   id: string;
   name: string;
   description?: string;
-  fee: number;
+  delivery_fee: number;
   estimated_days: number;
   is_active: boolean;
 }

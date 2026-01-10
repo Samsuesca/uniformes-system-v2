@@ -24,7 +24,7 @@ export default function DeliveryZonesPage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    fee: 0,
+    delivery_fee: 0,
     estimated_days: 1,
     is_active: true,
   });
@@ -53,7 +53,7 @@ export default function DeliveryZonesPage() {
     setFormData({
       name: '',
       description: '',
-      fee: 0,
+      delivery_fee: 0,
       estimated_days: 1,
       is_active: true,
     });
@@ -66,7 +66,7 @@ export default function DeliveryZonesPage() {
     setFormData({
       name: zone.name,
       description: zone.description || '',
-      fee: zone.fee,
+      delivery_fee: zone.delivery_fee || 0,
       estimated_days: zone.estimated_days,
       is_active: zone.is_active,
     });
@@ -230,7 +230,7 @@ export default function DeliveryZonesPage() {
                 <div>
                   <p className="text-xs text-slate-500 mb-1">Tarifa</p>
                   <p className="text-lg font-bold text-green-600">
-                    {formatCurrency(zone.fee)}
+                    {formatCurrency(zone.delivery_fee || 0)}
                   </p>
                 </div>
                 <div>
@@ -287,11 +287,11 @@ export default function DeliveryZonesPage() {
                   <label className="admin-label">Tarifa (COP) *</label>
                   <input
                     type="number"
-                    value={formData.fee}
+                    value={formData.delivery_fee}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        fee: parseFloat(e.target.value) || 0,
+                        delivery_fee: parseFloat(e.target.value) || 0,
                       })
                     }
                     className="admin-input"

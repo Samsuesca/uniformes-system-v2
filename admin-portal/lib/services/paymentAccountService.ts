@@ -1,10 +1,10 @@
 import apiClient, { PaymentAccount } from '../api';
 
 export interface CreatePaymentAccountData {
-  method: string;
+  method_type: string;
   account_name: string;
   account_number: string;
-  holder_name?: string;
+  account_holder: string;
   bank_name?: string;
   account_type?: string;
   qr_code_url?: string;
@@ -14,10 +14,10 @@ export interface CreatePaymentAccountData {
 }
 
 export interface UpdatePaymentAccountData {
-  method?: string;
+  method_type?: string;
   account_name?: string;
   account_number?: string;
-  holder_name?: string;
+  account_holder?: string;
   bank_name?: string;
   account_type?: string;
   qr_code_url?: string;
