@@ -289,7 +289,7 @@ export default function OrderModal({
   const handleCatalogProductSelect = (product: Product | GlobalProduct, quantity?: number) => {
     const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
     // Get stock available for "pisar" (reserve) functionality
-    const stockAvailable = (product as Product).inventory?.quantity || 0;
+    const stockAvailable = (product as Product).inventory_quantity || 0;
 
     const item: OrderItemForm = {
       tempId: Date.now().toString(),
@@ -1285,6 +1285,7 @@ export default function OrderModal({
         onSelect={handleCatalogProductSelect}
         schoolId={selectedSchoolId}
         filterByStock="all"
+        allowGlobalProducts={true}
         excludeProductIds={items.map(i => i.product_id || '')}
         excludeGarmentTypeIds={yomberGarmentTypeIds}
         title="Seleccionar Producto del Catálogo"
@@ -1298,7 +1299,7 @@ export default function OrderModal({
         onSelect={handleYomberProductSelect}
         schoolId={selectedSchoolId}
         filterByStock="all"
-        allowGlobalProducts={false}
+        allowGlobalProducts={true}
         includeGarmentTypeIds={yomberGarmentTypeIds}
         excludeProductIds={yomberProductId ? [yomberProductId] : []}
         title="Seleccionar Producto Yomber"

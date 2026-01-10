@@ -9,6 +9,7 @@ import {
   CreditCard,
   Truck,
   Package,
+  Receipt,
   LogOut,
   Menu,
   X,
@@ -24,6 +25,7 @@ const menuItems = [
   { href: '/payment-accounts', label: 'Cuentas de Pago', icon: CreditCard },
   { href: '/delivery-zones', label: 'Zonas de Entrega', icon: Truck },
   { href: '/products', label: 'Productos', icon: Package },
+  { href: '/accounting', label: 'Contabilidad', icon: Receipt },
 ];
 
 export default function Sidebar() {
