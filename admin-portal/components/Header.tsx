@@ -6,12 +6,15 @@ import Link from 'next/link';
 
 const pathNames: Record<string, string> = {
   '/': 'Dashboard',
+  '/sales': 'Ventas',
+  '/orders': 'Encargos',
   '/schools': 'Colegios',
   '/users': 'Usuarios',
   '/payment-accounts': 'Cuentas de Pago',
   '/delivery-zones': 'Zonas de Entrega',
   '/products': 'Productos',
   '/products/global': 'Productos Globales',
+  '/accounting': 'Contabilidad',
 };
 
 export default function Header() {

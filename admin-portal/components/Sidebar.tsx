@@ -14,12 +14,16 @@ import {
   Menu,
   X,
   Shield,
+  ShoppingCart,
+  ClipboardList,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAdminAuth } from '@/lib/adminAuth';
 
 const menuItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/sales', label: 'Ventas', icon: ShoppingCart },
+  { href: '/orders', label: 'Encargos', icon: ClipboardList },
   { href: '/schools', label: 'Colegios', icon: School },
   { href: '/users', label: 'Usuarios', icon: Users },
   { href: '/payment-accounts', label: 'Cuentas de Pago', icon: CreditCard },

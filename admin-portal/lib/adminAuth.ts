@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export interface UserSchoolRole {
+  school_id: string;
+  school_name: string;
+  role: 'owner' | 'admin' | 'seller' | 'viewer';
+}
+
 export interface User {
   id: string;
   username: string;
@@ -9,6 +15,7 @@ export interface User {
   is_active: boolean;
   is_superuser: boolean;
   last_login?: string;
+  school_roles?: UserSchoolRole[];
 }
 
 interface AdminAuthState {
@@ -58,9 +65,10 @@ export const useAdminAuth = create<AdminAuthState>()(
           const token = loginData.token.access_token;
           const user = loginData.user;
 
-          // Check if user is superuser
-          if (!user.is_superuser) {
-            throw new Error('Acceso denegado. Solo superusuarios pueden acceder al panel de administración.');
+          // Check if user has access: superuser OR has at least one school role
+          const hasSchoolRoles = user.school_roles && user.school_roles.length > 0;
+          if (!user.is_superuser && !hasSchoolRoles) {
+            throw new Error('Acceso denegado. Necesitas ser superusuario o tener un rol asignado en algún colegio.');
           }
 
           set({
@@ -114,8 +122,10 @@ export const useAdminAuth = create<AdminAuthState>()(
 
           const user = await response.json();
 
-          if (!user.is_superuser) {
-            throw new Error('No es superusuario');
+          // Check if user has access: superuser OR has at least one school role
+          const hasSchoolRoles = user.school_roles && user.school_roles.length > 0;
+          if (!user.is_superuser && !hasSchoolRoles) {
+            throw new Error('Sin acceso al panel');
           }
 
           set({ user, isAuthenticated: true });
