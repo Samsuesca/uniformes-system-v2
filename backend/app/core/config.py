@@ -38,6 +38,7 @@ class Settings(BaseSettings):
         "https://uniformesconsuelorios.com",  # Production web portal
         "https://www.uniformesconsuelorios.com",  # Production web portal (www)
         "https://api.uniformesconsuelorios.com",  # Production API
+        "https://admin.uniformesconsuelorios.com",  # Admin portal
         # For LAN testing (will be overridden in .env for specific IPs)
     ]
 
