@@ -21,6 +21,7 @@ eggs/
 .eggs/
 lib/
 !web-portal/lib/
+!admin-portal/lib/
 lib64/
 parts/
 sdist/
