@@ -55,7 +55,7 @@ export const useAdminAuth = create<AdminAuthState>()(
           }
 
           const loginData = await loginResponse.json();
-          const token = loginData.token;
+          const token = loginData.token.access_token;
           const user = loginData.user;
 
           // Check if user is superuser
