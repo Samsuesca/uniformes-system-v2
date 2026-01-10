@@ -177,10 +177,10 @@ export default function AccountingPage() {
     });
   };
 
-  // Calculate totals
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const totalPaid = expenses.reduce((sum, e) => sum + e.amount_paid, 0);
-  const totalPending = expenses.reduce((sum, e) => sum + e.balance, 0);
+  // Calculate totals (handle undefined/null values)
+  const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalPaid = expenses.reduce((sum, e) => sum + (e.amount_paid || 0), 0);
+  const totalPending = expenses.reduce((sum, e) => sum + (e.balance || 0), 0);
 
   return (
     <div className="space-y-6">

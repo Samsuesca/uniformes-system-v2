@@ -22,6 +22,20 @@ const PAYMENT_METHODS = [
   { value: 'other', label: 'Otro' },
 ];
 
+// Helper to extract error message from API response
+const getErrorMessage = (err: any, fallback: string): string => {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    // FastAPI validation error format
+    return detail.map((d: any) => d.msg || d.message || JSON.stringify(d)).join(', ');
+  }
+  if (typeof detail === 'object' && detail !== null) {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return fallback;
+};
+
 export default function PaymentAccountsPage() {
   const [accounts, setAccounts] = useState<PaymentAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +65,7 @@ export default function PaymentAccountsPage() {
       const data = await paymentAccountService.list();
       setAccounts(data.sort((a, b) => a.display_order - b.display_order));
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al cargar cuentas');
+      setError(getErrorMessage(err, 'Error al cargar cuentas'));
     } finally {
       setLoading(false);
     }
@@ -109,7 +123,7 @@ export default function PaymentAccountsPage() {
       setShowModal(false);
       loadAccounts();
     } catch (err: any) {
-      setFormError(err.response?.data?.detail || 'Error al guardar');
+      setFormError(getErrorMessage(err, 'Error al guardar'));
     } finally {
       setSaving(false);
     }
@@ -122,7 +136,7 @@ export default function PaymentAccountsPage() {
       });
       loadAccounts();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al cambiar estado');
+      setError(getErrorMessage(err, 'Error al cambiar estado'));
     }
   };
 
@@ -134,7 +148,7 @@ export default function PaymentAccountsPage() {
       await paymentAccountService.delete(account.id);
       loadAccounts();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al eliminar');
+      setError(getErrorMessage(err, 'Error al eliminar'));
     }
   };
 
