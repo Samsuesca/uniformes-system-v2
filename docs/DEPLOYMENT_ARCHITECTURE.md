@@ -1,271 +1,617 @@
-# 🏗️ Arquitectura de Despliegue - Uniformes System v2.0
+# Arquitectura de Despliegue - Uniformes System v2.0
 
-## 📊 Visión General
+## Vision General
 
-Este documento describe la arquitectura de despliegue para convertir el sistema de local a distribuido multi-usuario.
+Sistema de gestion de uniformes profesional con arquitectura multi-tenant desplegado en produccion.
 
-### Arquitectura Objetivo
+### Arquitectura Actual (EN PRODUCCION)
 
 ```
-                    ☁️ CLOUD SERVER
-                 (DigitalOcean/AWS/Railway)
-                   PostgreSQL + FastAPI
-                   (Centro de Datos único)
-                          ↓
-        ┌─────────────────┼─────────────────┐
-        ↓                 ↓                 ↓
-   [Desktop App]     [Desktop App]    [Web Portal]
-   Tauri - POS       Tauri - Admin    React - Clientes
-   (Windows/Mac)     (Windows/Mac)    (Navegador web)
+                         SERVIDOR VPS (Vultr)
+                         104.156.247.226
+                    ┌─────────────────────────┐
+                    │      Ubuntu 22.04       │
+                    │                         │
+                    │  ┌─────────────────┐    │
+                    │  │     Nginx       │    │
+                    │  │  (Reverse Proxy)│    │
+                    │  └────────┬────────┘    │
+                    │           │             │
+                    │     ┌─────┴─────┐       │
+                    │     │           │       │
+                    │  ┌──▼──┐    ┌──▼──┐    │
+                    │  │:8000│    │:3000│    │
+                    │  │ API │    │:3001│    │
+                    │  └─────┘    │Webs │    │
+                    │             └─────┘    │
+                    │                         │
+                    │  ┌─────────────────┐    │
+                    │  │   PostgreSQL    │    │
+                    │  │     (Docker)    │    │
+                    │  └─────────────────┘    │
+                    └─────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│  Desktop App  │   │  Web Portal   │   │ Admin Portal  │
+│    (Tauri)    │   │   (Next.js)   │   │   (Next.js)   │
+│  Windows/Mac  │   │  Puerto 3000  │   │  Puerto 3001  │
+└───────────────┘   └───────────────┘   └───────────────┘
 ```
 
-### Interfaces del Sistema
+### Dominios y URLs
 
-1. **Desktop App (Tauri)**
-   - Usuarios: Vendedores, Administradores, Desarrolladores
-   - Plataformas: Windows, macOS, Linux
-   - Features: POS completo, gestión de inventario, reportes, impresión local
-
-2. **Web Portal (React)**
-   - Usuarios: Clientes externos (padres, estudiantes)
-   - Plataformas: Cualquier navegador moderno
-   - Features: Catálogo público, pedidos online, tracking
+| Componente | URL | Puerto |
+|------------|-----|--------|
+| API Backend | `api.uniformesconsuelorios.com` | 8000 |
+| Web Portal (Clientes) | `uniformesconsuelorios.com` | 3000 |
+| Admin Portal | `admin.uniformesconsuelorios.com` | 3001 |
+| Desktop App | Conecta a API via HTTPS | - |
 
 ---
 
-## 🗺️ Roadmap de Implementación
+## Componentes del Sistema
 
-### **FASE 1: Testing Local (Mac ↔ Windows)** ⏱️ 2-3 días
-**Objetivo:** Probar comunicación multi-computadora en red local
+### 1. Backend API (FastAPI)
 
-**Estado:** 🔄 En progreso
+**Ubicacion:** `/backend/`
 
-**Cambios necesarios:**
-- ✅ Configurar backend para escuchar en `0.0.0.0` (todas las interfaces)
-- ✅ Actualizar CORS para aceptar conexiones de red local
-- ✅ Crear sistema de configuración de entorno en frontend
-- ✅ Documentación de testing creada (PHASE1_TESTING.md)
-- ⏳ Compilar app Tauri para Windows (.exe)
-- ⏳ Testing: Mac (servidor) ↔ Windows (cliente)
+**Stack:**
+- Python 3.10+
+- FastAPI 0.104.1
+- SQLAlchemy 2.0 (async)
+- PostgreSQL 15
+- Alembic (migraciones)
+- Pydantic v2
 
-**Resultado esperado:**
-- Backend corriendo en Mac accesible desde Windows en LAN
-- App Tauri en Windows conectándose exitosamente al backend Mac
+**Configuracion de Produccion:**
+```bash
+# Servicio systemd
+/etc/systemd/system/uniformes-api.service
+
+# Configuracion
+WorkingDirectory=/var/www/uniformes-system-v2/backend
+ExecStart=/var/www/uniformes-system-v2/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Variables de Entorno (`.env`):**
+```env
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/uniformes_db
+SECRET_KEY=<jwt-secret>
+CORS_ORIGINS=["https://uniformesconsuelorios.com","https://admin.uniformesconsuelorios.com"]
+```
+
+### 2. Web Portal - Clientes (Next.js)
+
+**Ubicacion:** `/web-portal/`
+
+**Stack:**
+- Next.js 14 (App Router)
+- TypeScript
+- Tailwind CSS
+- Zustand (estado)
+
+**Funcionalidades:**
+- Catalogo de productos por colegio
+- Carrito de compras
+- Sistema de pedidos web
+- Verificacion telefonica
+- Seleccion de zona de entrega
+
+**PM2 Config:**
+```bash
+pm2 start npm --name "uniformes-web" -- start -- -p 3000
+```
+
+### 3. Admin Portal (Next.js)
+
+**Ubicacion:** `/admin-portal/`
+
+**Stack:**
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS
+- Zustand (estado)
+
+**Funcionalidades:**
+- Dashboard de administracion
+- Gestion de colegios (CRUD)
+- Gestion de usuarios y roles
+- Cuentas de pago
+- Zonas de entrega
+- Productos e inventario
+- Contabilidad (gastos, balances)
+
+**PM2 Config:**
+```bash
+pm2 start npm --name "uniformes-admin" -- start -- -p 3001
+```
+
+### 4. Desktop App (Tauri)
+
+**Ubicacion:** `/frontend/`
+
+**Stack:**
+- Tauri (Rust + WebView)
+- React 18 + TypeScript
+- Tailwind CSS
+- Zustand (estado)
+- Axios
+
+**Funcionalidades:**
+- POS completo de ventas
+- Gestion de inventario
+- Sistema de cambios/devoluciones
+- Impresion de recibos
+- Encargos personalizados
+- Contabilidad global
 
 ---
 
-### **FASE 2: Cloud Deployment** ⏱️ 1 semana
-**Objetivo:** Backend en producción accesible desde internet
+## Infraestructura de Servidor
 
-**Estado:** ⏳ Pendiente
+### VPS (Vultr)
 
-**Infraestructura recomendada:**
-- **Servidor:** DigitalOcean Droplet ($12/mes) - Ubuntu 22.04
-- **Specs:** 2GB RAM, 1 vCPU, 50GB SSD
-- **Stack:** Nginx + Docker Compose + PostgreSQL + Redis
-- **SSL:** Certbot (Let's Encrypt - gratuito)
-- **Dominio:** tu-dominio.com (requerido para SSL)
+**Especificaciones:**
+- **IP:** 104.156.247.226
+- **OS:** Ubuntu 22.04 LTS
+- **RAM:** 2GB
+- **CPU:** 1 vCPU
+- **Storage:** 55GB NVMe
 
-**Pasos:**
-1. Configurar servidor VPS
-2. Docker Compose para producción
-3. Nginx como reverse proxy
-4. SSL con Certbot
-5. Migración de base de datos
-6. Backups automáticos
-
-**Costos estimados:**
-- Servidor: $12/mes (DigitalOcean)
-- Dominio: $10-15/año
+**Costos:**
+- Servidor: ~$12/mes
+- Dominio: ~$10/year
 - SSL: Gratuito (Let's Encrypt)
-- **Total:** ~$12-13/mes
+
+### Nginx Configuration
+
+**Archivo:** `/etc/nginx/sites-available/uniformes`
+
+```nginx
+# API Backend
+server {
+    listen 443 ssl;
+    server_name api.uniformesconsuelorios.com;
+
+    ssl_certificate /etc/letsencrypt/live/api.uniformesconsuelorios.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.uniformesconsuelorios.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# Web Portal (Clientes)
+server {
+    listen 443 ssl;
+    server_name uniformesconsuelorios.com www.uniformesconsuelorios.com;
+
+    ssl_certificate /etc/letsencrypt/live/uniformesconsuelorios.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/uniformesconsuelorios.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# Admin Portal
+server {
+    listen 443 ssl;
+    server_name admin.uniformesconsuelorios.com;
+
+    ssl_certificate /etc/letsencrypt/live/admin.uniformesconsuelorios.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/admin.uniformesconsuelorios.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# HTTP to HTTPS redirects
+server {
+    listen 80;
+    server_name uniformesconsuelorios.com www.uniformesconsuelorios.com api.uniformesconsuelorios.com admin.uniformesconsuelorios.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+### PostgreSQL (Docker)
+
+```bash
+# Docker container
+docker run -d \
+  --name uniformes-postgres \
+  -e POSTGRES_USER=uniformes \
+  -e POSTGRES_PASSWORD=<password> \
+  -e POSTGRES_DB=uniformes_db \
+  -p 5432:5432 \
+  -v postgres_data:/var/lib/postgresql/data \
+  postgres:15
+```
+
+### PM2 Process Manager
+
+```bash
+# Ver procesos
+pm2 list
+
+# Procesos activos:
+# - uniformes-web (puerto 3000)
+# - uniformes-admin (puerto 3001)
+
+# Logs
+pm2 logs uniformes-web
+pm2 logs uniformes-admin
+
+# Restart
+pm2 restart all
+```
+
+### Systemd Service (Backend)
+
+```ini
+# /etc/systemd/system/uniformes-api.service
+[Unit]
+Description=Uniformes API
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/var/www/uniformes-system-v2/backend
+ExecStart=/var/www/uniformes-system-v2/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ---
 
-### **FASE 3: Desktop App Multi-Entorno** ⏱️ 3-5 días
-**Objetivo:** App Tauri que se conecte a local O cloud
+## Comandos de Deployment
 
-**Estado:** ⏳ Pendiente
+### Deploy Completo
 
-**Features:**
-- Selector de entorno en Settings (Local / LAN / Cloud)
-- Builds multi-plataforma (Windows, macOS, Linux)
-- Auto-update capability (opcional)
-- Instaladores profesionales
+```bash
+# SSH al servidor
+ssh root@104.156.247.226
 
-**Distribución:**
-- Windows: `.exe` installer (MSI o NSIS)
-- macOS: `.app` bundle (DMG)
-- Linux: `.AppImage` o `.deb`
+# Pull cambios
+cd /var/www/uniformes-system-v2
+git pull origin develop
+
+# Backend (si hay cambios)
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+systemctl restart uniformes-api
+
+# Web Portal (si hay cambios)
+cd ../web-portal
+npm install
+npm run build
+pm2 restart uniformes-web
+
+# Admin Portal (si hay cambios)
+cd ../admin-portal
+npm run build
+pm2 restart uniformes-admin
+```
+
+### Deploy Rapido (Solo Frontend)
+
+```bash
+# Desde local - una linea
+ssh root@104.156.247.226 "cd /var/www/uniformes-system-v2 && git pull origin develop && cd admin-portal && npm run build && pm2 restart uniformes-admin"
+```
+
+### Verificar Estado
+
+```bash
+# Servicios
+systemctl status uniformes-api
+pm2 status
+
+# Logs
+journalctl -u uniformes-api -f
+pm2 logs
+
+# Nginx
+nginx -t
+systemctl status nginx
+```
 
 ---
 
-### **FASE 4: Web Portal para Clientes** ⏱️ 2 semanas
-**Objetivo:** Portal público para pedidos online
+## SSL/HTTPS (Certbot)
 
-**Estado:** ⏳ Pendiente
+### Certificados Instalados
 
-**Nuevo proyecto:**
+```bash
+# Listar certificados
+certbot certificates
+
+# Certificados:
+# - api.uniformesconsuelorios.com
+# - uniformesconsuelorios.com
+# - admin.uniformesconsuelorios.com
+```
+
+### Renovacion Automatica
+
+```bash
+# Cron job (automatico)
+certbot renew --quiet
+
+# Renovar manualmente
+certbot renew
+
+# Nuevo certificado
+certbot --nginx -d nuevo-subdominio.uniformesconsuelorios.com
+```
+
+---
+
+## DNS Configuration (Cloudflare/Registrador)
+
+```
+Tipo    Nombre    Contenido          TTL
+A       @         104.156.247.226    Auto
+A       www       104.156.247.226    Auto
+A       api       104.156.247.226    Auto
+A       admin     104.156.247.226    Auto
+```
+
+---
+
+## Estructura del Proyecto
+
 ```
 uniformes-system-v2/
-├── backend/           # Compartido
-├── frontend/          # Desktop App
-└── customer-portal/   # NUEVO - Web público
+├── backend/                    # API FastAPI
+│   ├── app/
+│   │   ├── api/routes/        # Endpoints
+│   │   ├── models/            # SQLAlchemy models
+│   │   ├── schemas/           # Pydantic schemas
+│   │   ├── services/          # Business logic
+│   │   └── main.py            # Entry point
+│   ├── alembic/               # Migraciones DB
+│   ├── requirements.txt
+│   └── .env                   # Variables (gitignored)
+│
+├── frontend/                   # Desktop App (Tauri)
+│   ├── src/
+│   │   ├── pages/             # React pages
+│   │   ├── components/        # UI components
+│   │   ├── services/          # API clients
+│   │   └── stores/            # Zustand stores
+│   ├── src-tauri/             # Rust backend
+│   └── package.json
+│
+├── web-portal/                 # Portal Clientes (Next.js)
+│   ├── app/                   # App Router pages
+│   │   └── [school_slug]/     # Rutas por colegio
+│   ├── lib/                   # Utilities
+│   └── package.json
+│
+├── admin-portal/               # Panel Admin (Next.js)
+│   ├── app/
+│   │   ├── login/             # Pagina login
+│   │   └── (dashboard)/       # Rutas protegidas
+│   │       ├── schools/
+│   │       ├── users/
+│   │       ├── products/
+│   │       ├── payment-accounts/
+│   │       ├── delivery-zones/
+│   │       └── accounting/
+│   ├── lib/
+│   │   ├── adminAuth.ts       # Auth store
+│   │   ├── api.ts             # API client
+│   │   └── services/          # API services
+│   └── package.json
+│
+└── docs/                       # Documentacion
 ```
 
-**Features del portal:**
-- Catálogo por colegio
-- Carrito de compras
-- Checkout (crear orden)
-- Tracking de pedido
-- Guía de tallas
-- Filtros por tipo de prenda
+---
 
-**Deployment:**
-- Opción A: Vercel/Netlify (gratuito, recomendado)
-- Opción B: Mismo servidor con Nginx
+## Seguridad
+
+### Implementado
+
+- HTTPS obligatorio (SSL/TLS)
+- JWT con expiracion (tokens)
+- Passwords hasheados (bcrypt)
+- CORS configurado por dominio
+- Autenticacion de superuser para admin portal
+- Validacion de datos con Pydantic
+
+### Configuracion CORS (Backend)
+
+```python
+# app/main.py
+CORS_ORIGINS = [
+    "https://uniformesconsuelorios.com",
+    "https://www.uniformesconsuelorios.com",
+    "https://admin.uniformesconsuelorios.com",
+    "https://api.uniformesconsuelorios.com",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "tauri://localhost",
+]
+```
 
 ---
 
-## 📋 Estado Actual del Proyecto
+## Monitoreo y Logs
 
-### ✅ Completado (95% del MVP)
+### Ubicacion de Logs
 
-**Backend:**
-- ✅ API REST completa (43+ endpoints)
-- ✅ Multi-tenant architecture
-- ✅ JWT authentication
-- ✅ CRUD services (8 servicios)
-- ✅ Sistema de ventas
-- ✅ Sistema de cambios/devoluciones
-- ✅ Gestión de inventario
-- ✅ PostgreSQL + Redis en Docker
-
-**Frontend:**
-- ✅ Tauri desktop app funcional
-- ✅ 7 páginas implementadas
-- ✅ Login con JWT
-- ✅ Sistema de ventas completo
-- ✅ Gestión de cambios UI
-- ✅ Impresión de recibos
-- ✅ Validación de stock
-
-### ⏳ Pendiente (5%)
-
-**Backend:**
-- Tests unitarios
-- Reportes avanzados
-- Exportación Excel/PDF
-
-**Frontend:**
-- Páginas: Clients, Orders, Settings (solo placeholders)
-- Dashboard con stats reales
-- Reportes y gráficos
-
----
-
-## 🔐 Seguridad
-
-### Producción
-- ✅ JWT con expiración
-- ✅ Passwords hasheados (bcrypt)
-- ✅ CORS configurado por entorno
-- ⏳ Rate limiting (TODO)
-- ⏳ HTTPS obligatorio (Fase 2)
-- ⏳ Backups automáticos (Fase 2)
-
-### Desarrollo
-- ✅ Secrets en `.env` (gitignored)
-- ✅ `.env.example` documentado
-- ⏳ Vault para secrets en producción (Fase 2)
-
----
-
-## 🔄 Flujo de Actualización
-
-### Desarrollo Local
 ```bash
-# Backend
+# Backend API
+journalctl -u uniformes-api -f
+/var/log/uniformes/backend.log
+
+# Web Apps
+pm2 logs uniformes-web
+pm2 logs uniformes-admin
+
+# Nginx
+/var/log/nginx/access.log
+/var/log/nginx/error.log
+
+# PostgreSQL
+docker logs uniformes-postgres
+```
+
+### Comandos Utiles
+
+```bash
+# Estado general
+systemctl status uniformes-api
+pm2 status
+docker ps
+
+# Memoria y CPU
+htop
+free -h
+df -h
+
+# Conexiones activas
+netstat -tlnp
+```
+
+---
+
+## Backups
+
+### Base de Datos
+
+```bash
+# Backup manual
+docker exec uniformes-postgres pg_dump -U uniformes uniformes_db > backup_$(date +%Y%m%d).sql
+
+# Restaurar
+cat backup.sql | docker exec -i uniformes-postgres psql -U uniformes uniformes_db
+```
+
+### Codigo
+
+```bash
+# Git es el backup del codigo
+git push origin develop
+```
+
+---
+
+## Troubleshooting
+
+### API no responde
+
+```bash
+systemctl status uniformes-api
+systemctl restart uniformes-api
+journalctl -u uniformes-api -n 100
+```
+
+### Web Portal no carga
+
+```bash
+pm2 status
+pm2 restart uniformes-web
+pm2 logs uniformes-web --lines 100
+```
+
+### Error de CORS
+
+1. Verificar que el dominio este en CORS_ORIGINS del backend
+2. Reiniciar backend: `systemctl restart uniformes-api`
+
+### Error 502 Bad Gateway
+
+```bash
+# Verificar que el servicio este corriendo
+systemctl status uniformes-api
+pm2 status
+
+# Verificar Nginx
+nginx -t
+systemctl restart nginx
+```
+
+### Certificado SSL expirado
+
+```bash
+certbot renew
+systemctl restart nginx
+```
+
+---
+
+## Desarrollo Local
+
+### Backend
+
+```bash
 cd backend
-git pull origin develop
 source venv/bin/activate
-alembic upgrade head
-uvicorn app.main:app --reload
-
-# Frontend
-cd frontend
-git pull origin develop
-npm install
-npm run tauri dev
+uvicorn app.main:app --reload --port 8000
 ```
 
-### Producción (Post-Fase 2)
+### Web Portal
+
 ```bash
-# En servidor
-cd uniformes-system-v2
-git pull origin main
-docker-compose -f docker/docker-compose.prod.yml up -d --build
-docker exec backend alembic upgrade head
+cd web-portal
+npm run dev
+```
+
+### Admin Portal
+
+```bash
+cd admin-portal
+npm run dev
+```
+
+### Desktop App
+
+```bash
+cd frontend
+npm run tauri:dev
 ```
 
 ---
 
-## 📞 Soporte y Escalabilidad
+## Contacto y Soporte
 
-### Capacidad Actual (Post-Fase 2)
-- **Usuarios simultáneos:** 50-100 usuarios
-- **Colegios:** Ilimitados (multi-tenant)
-- **Transacciones/día:** ~1000-5000
-- **Almacenamiento:** 50GB (expandible)
-
-### Escalabilidad Futura
-Si se necesita más capacidad:
-- Upgrade servidor: 4GB RAM ($24/mes)
-- Load balancer + múltiples workers
-- PostgreSQL con réplicas de lectura
-- CDN para assets estáticos
-- Redis Cluster para caché distribuido
+**Desarrollador:** Angel Samuel Suesca Rios
+**GitHub:** https://github.com/Samsuesca
+**Servidor:** 104.156.247.226
+**Dominio:** uniformesconsuelorios.com
 
 ---
 
-## 📊 Monitoreo (Fase 2+)
-
-### Métricas Clave
-- Uptime del servidor (objetivo: 99.9%)
-- Tiempo de respuesta API (<200ms)
-- Errores 5xx (<0.1%)
-- Espacio en disco
-- Memoria/CPU usage
-
-### Herramientas Recomendadas
-- Logs: Docker logs + rotación
-- Monitoring: Grafana + Prometheus (opcional)
-- Alerts: Email/SMS en downtime
-- Backups: Daily PostgreSQL dumps
-
----
-
-## 🎯 Próximos Pasos Inmediatos
-
-**HOY:**
-1. ✅ Resolver problema de paths absolutos (COMPLETADO)
-2. ✅ Configurar backend para red local (COMPLETADO)
-3. ✅ Crear sistema de entornos en frontend (COMPLETADO)
-4. ✅ Documentar testing Fase 1 (COMPLETADO)
-5. ⏳ Compilar app para Windows
-
-**ESTA SEMANA:**
-5. Testing Mac ↔ Windows en LAN
-6. Documentar proceso de build multi-plataforma
-7. Preparar servidor cloud (opcional: ya empezar)
-
-**PRÓXIMAS 2 SEMANAS:**
-8. Deployment a cloud
-9. Testing en producción
-10. Builds finales para distribución
-
----
-
-**Última actualización:** 2025-11-09
-**Versión:** v2.0.0-dev
-**Autor:** Angel Samuel Suesca Rios
+**Ultima actualizacion:** 2026-01-10
+**Version:** v2.0.0
+**Estado:** EN PRODUCCION
