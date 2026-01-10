@@ -196,7 +196,8 @@ export default function CatalogPage() {
 
         } catch (error: any) {
             console.error('Error loading products:', error);
-            setError(error.response?.data?.detail || 'Error al cargar productos');
+            // School validation is now done in layout.tsx, so this error is for products only
+            setError(error.response?.data?.detail || 'Error al cargar los productos. Por favor, intenta de nuevo.');
         } finally {
             setLoading(false);
         }
