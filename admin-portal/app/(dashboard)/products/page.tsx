@@ -72,7 +72,7 @@ export default function ProductsPage() {
 
       // Load global products
       try {
-        const globalProducts = await productService.listGlobal({ limit: 1000 });
+        const globalProducts = await productService.listGlobal({ limit: 500 });
         allProducts.push(...globalProducts.map(p => ({ ...p, is_global: true })));
       } catch (e) {
         console.error('Error loading global products:', e);
@@ -81,7 +81,7 @@ export default function ProductsPage() {
       // Load products and garment types from each school
       for (const school of schoolsData) {
         try {
-          const schoolProducts = await productService.listBySchool(school.id, { limit: 1000 });
+          const schoolProducts = await productService.listBySchool(school.id, { limit: 500 });
           allProducts.push(...schoolProducts.map(p => ({ ...p, school_id: school.id, is_global: false })));
 
           const schoolGarmentTypes = await productService.listGarmentTypes(school.id);
