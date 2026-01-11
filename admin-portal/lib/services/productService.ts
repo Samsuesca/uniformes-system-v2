@@ -1,4 +1,4 @@
-import apiClient, { Product, GarmentType } from '../api';
+import apiClient, { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../api';
 
 export interface CreateProductData {
   code: string;
@@ -75,25 +75,33 @@ const productService = {
 
   // List global products
   listGlobal: async (params?: { skip?: number; limit?: number }) => {
-    const response = await apiClient.get<Product[]>('/products/global', { params });
+    const response = await apiClient.get<GlobalProduct[]>('/global/products', { params });
+    return response.data;
+  },
+
+  // Get global products with inventory
+  getGlobalProducts: async (withInventory: boolean = true) => {
+    const response = await apiClient.get<GlobalProduct[]>('/global/products', {
+      params: { with_inventory: withInventory },
+    });
     return response.data;
   },
 
   // Create global product
   createGlobal: async (data: CreateProductData) => {
-    const response = await apiClient.post<Product>('/products/global', data);
+    const response = await apiClient.post<Product>('/global/products', data);
     return response.data;
   },
 
   // Update global product
   updateGlobal: async (productId: string, data: UpdateProductData) => {
-    const response = await apiClient.put<Product>(`/products/global/${productId}`, data);
+    const response = await apiClient.put<Product>(`/global/products/${productId}`, data);
     return response.data;
   },
 
   // Delete global product
   deleteGlobal: async (productId: string) => {
-    const response = await apiClient.delete(`/products/global/${productId}`);
+    const response = await apiClient.delete(`/global/products/${productId}`);
     return response.data;
   },
 
@@ -125,7 +133,27 @@ const productService = {
 
   // List global garment types
   listGlobalGarmentTypes: async () => {
-    const response = await apiClient.get<GarmentType[]>('/garment-types/global');
+    const response = await apiClient.get<GlobalGarmentType[]>('/global/garment-types');
+    return response.data;
+  },
+
+  // Get products with inventory (school-specific)
+  getProducts: async (schoolId: string, withInventory: boolean = true) => {
+    const response = await apiClient.get<Product[]>(`/schools/${schoolId}/products`, {
+      params: { with_inventory: withInventory },
+    });
+    return response.data;
+  },
+
+  // Get garment types for school
+  getGarmentTypes: async (schoolId: string) => {
+    const response = await apiClient.get<GarmentType[]>(`/schools/${schoolId}/garment-types`);
+    return response.data;
+  },
+
+  // Get global garment types
+  getGlobalGarmentTypes: async () => {
+    const response = await apiClient.get<GlobalGarmentType[]>('/global/garment-types');
     return response.data;
   },
 };

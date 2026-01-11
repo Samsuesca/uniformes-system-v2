@@ -161,12 +161,13 @@ export default function AccountingPage() {
     }
   };
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | string) => {
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
       minimumFractionDigits: 0,
-    }).format(value);
+    }).format(numValue || 0);
   };
 
   const formatDate = (dateStr: string) => {
@@ -177,10 +178,10 @@ export default function AccountingPage() {
     });
   };
 
-  // Calculate totals (handle undefined/null values)
-  const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const totalPaid = expenses.reduce((sum, e) => sum + (e.amount_paid || 0), 0);
-  const totalPending = expenses.reduce((sum, e) => sum + (e.balance || 0), 0);
+  // Calculate totals (handle undefined/null values and string decimals from API)
+  const totalExpenses = expenses.reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
+  const totalPaid = expenses.reduce((sum, e) => sum + (parseFloat(String(e.amount_paid)) || 0), 0);
+  const totalPending = expenses.reduce((sum, e) => sum + (parseFloat(String(e.balance)) || 0), 0);
 
   return (
     <div className="space-y-6">

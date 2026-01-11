@@ -18,10 +18,15 @@ import schoolService from '@/lib/services/schoolService';
 import productService from '@/lib/services/productService';
 import type { School, Product, GarmentType } from '@/lib/api';
 
+// Extended type to track school association
+interface GarmentTypeWithSchool extends GarmentType {
+  school_id?: string;
+}
+
 export default function ProductsPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+  const [garmentTypes, setGarmentTypes] = useState<GarmentTypeWithSchool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,7 +92,8 @@ export default function ProductsPage() {
           const schoolGarmentTypes = await productService.listGarmentTypes(school.id);
           schoolGarmentTypes.forEach(gt => {
             if (!allGarmentTypes.find(t => t.id === gt.id)) {
-              allGarmentTypes.push(gt);
+              // Add school_id to track which school this garment type belongs to
+              allGarmentTypes.push({ ...gt, school_id: school.id });
             }
           });
         } catch (e) {
@@ -336,7 +342,11 @@ export default function ProductsPage() {
           {/* School Filter */}
           <select
             value={selectedSchool}
-            onChange={(e) => setSelectedSchool(e.target.value)}
+            onChange={(e) => {
+              setSelectedSchool(e.target.value);
+              // Reset garment type filter when school changes
+              setSelectedGarmentType('all');
+            }}
             className="admin-input"
           >
             <option value="all">Todos los colegios</option>
@@ -348,18 +358,27 @@ export default function ProductsPage() {
             ))}
           </select>
 
-          {/* Garment Type Filter */}
+          {/* Garment Type Filter - filtered by selected school */}
           <select
             value={selectedGarmentType}
             onChange={(e) => setSelectedGarmentType(e.target.value)}
             className="admin-input"
           >
             <option value="all">Todos los tipos</option>
-            {garmentTypes.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
+            {garmentTypes
+              .filter((type) => {
+                // If "all" or "global" is selected, show all types
+                if (selectedSchool === 'all' || selectedSchool === 'global') {
+                  return true;
+                }
+                // Otherwise, only show types from the selected school
+                return type.school_id === selectedSchool;
+              })
+              .map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
           </select>
 
           {/* Stock Filter */}

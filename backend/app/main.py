@@ -69,9 +69,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         return response
 
-app.add_middleware(RequestLoggingMiddleware)
-
 # CORS - Allow specific origins
+# NOTE: In FastAPI middleware is processed in LIFO order (last added = first executed)
+# CORS middleware must be added LAST so it runs FIRST and handles preflight requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -79,6 +79,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Logging middleware (added after CORS so CORS headers are always included)
+app.add_middleware(RequestLoggingMiddleware)
 
 # Routes
 app.include_router(health.router, tags=["Health"])
