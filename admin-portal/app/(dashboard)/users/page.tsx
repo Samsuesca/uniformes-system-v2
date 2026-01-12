@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import {
   Plus,
   Search,
@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Building2,
 } from 'lucide-react';
 import userService from '@/lib/services/userService';
 import schoolService from '@/lib/services/schoolService';
@@ -191,9 +192,8 @@ export default function UsersPage() {
 
     try {
       setSaving(true);
-      await userService.addSchoolRole(selectedUser.id, roleFormData.school_id, {
-        role: roleFormData.role,
-      });
+      setFormError(null);
+      await userService.addSchoolRole(selectedUser.id, roleFormData.school_id, roleFormData.role);
       // Refresh roles
       const roles = await userService.getSchoolRoles(selectedUser.id);
       setUserRoles((prev) => ({ ...prev, [selectedUser.id]: roles }));
@@ -202,6 +202,17 @@ export default function UsersPage() {
       setFormError(err.response?.data?.detail || 'Error al asignar rol');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUpdateRole = async (userId: string, schoolId: string, newRole: 'owner' | 'admin' | 'seller' | 'viewer') => {
+    try {
+      await userService.updateSchoolRole(userId, schoolId, newRole);
+      // Refresh roles
+      const roles = await userService.getSchoolRoles(userId);
+      setUserRoles((prev) => ({ ...prev, [userId]: roles }));
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al actualizar rol');
     }
   };
 
@@ -287,11 +298,12 @@ export default function UsersPage() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th></th>
+                <th className="w-10"></th>
                 <th>Usuario</th>
                 <th>Email</th>
                 <th>Nombre</th>
                 <th>Tipo</th>
+                <th>Colegios</th>
                 <th>Estado</th>
                 <th className="text-right">Acciones</th>
               </tr>
@@ -299,21 +311,21 @@ export default function UsersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8">
+                  <td colSpan={8} className="text-center py-8">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-brand-500"></div>
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">
+                  <td colSpan={8} className="text-center py-8 text-slate-500">
                     <UsersIcon className="w-12 h-12 mx-auto mb-2 text-slate-300" />
                     No se encontraron usuarios
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <>
-                    <tr key={user.id}>
+                  <Fragment key={user.id}>
+                    <tr>
                       <td className="w-10">
                         <button
                           onClick={() => loadUserRoles(user.id)}
@@ -339,6 +351,23 @@ export default function UsersPage() {
                           </span>
                         ) : (
                           <span className="badge badge-default">Usuario</span>
+                        )}
+                      </td>
+                      <td>
+                        {user.is_superuser ? (
+                          <span className="text-slate-400 text-sm">Todos</span>
+                        ) : userRoles[user.id] ? (
+                          <span className="inline-flex items-center gap-1 text-sm">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                            {userRoles[user.id].length} {userRoles[user.id].length === 1 ? 'colegio' : 'colegios'}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => loadUserRoles(user.id)}
+                            className="text-sm text-brand-600 hover:underline"
+                          >
+                            Ver roles
+                          </button>
                         )}
                       </td>
                       <td>
@@ -394,38 +423,54 @@ export default function UsersPage() {
                     {/* Expanded Roles Row */}
                     {expandedUserId === user.id && userRoles[user.id] && (
                       <tr>
-                        <td colSpan={7} className="bg-slate-50 px-8 py-4">
+                        <td colSpan={8} className="bg-slate-50 px-8 py-4">
                           <div className="text-sm">
-                            <p className="font-medium text-slate-700 mb-3">
-                              Roles por Colegio:
-                            </p>
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="font-medium text-slate-700">
+                                Roles por Colegio:
+                              </p>
+                              <button
+                                onClick={() => openRoleModal(user)}
+                                className="text-brand-600 hover:text-brand-700 text-sm flex items-center gap-1"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Agregar acceso
+                              </button>
+                            </div>
                             {userRoles[user.id].length === 0 ? (
                               <p className="text-slate-500">
-                                No tiene roles asignados
+                                No tiene roles asignados. {!user.is_superuser && 'Agrega un rol para darle acceso a un colegio.'}
                               </p>
                             ) : (
-                              <div className="flex flex-wrap gap-2">
+                              <div className="space-y-2">
                                 {userRoles[user.id].map((role) => (
                                   <div
                                     key={role.school_id}
-                                    className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200"
+                                    className="flex items-center justify-between bg-white px-4 py-3 rounded-lg border border-slate-200"
                                   >
-                                    <span className="font-medium">
-                                      {role.school_name}
+                                    <span className="font-medium text-slate-800">
+                                      {role.school?.name || 'Colegio'}
                                     </span>
-                                    <span
-                                      className={`badge ${getRoleColor(role.role)}`}
-                                    >
-                                      {getRoleLabel(role.role)}
-                                    </span>
-                                    <button
-                                      onClick={() =>
-                                        handleRemoveRole(user.id, role.school_id)
-                                      }
-                                      className="text-red-500 hover:text-red-700"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                      <select
+                                        value={role.role}
+                                        onChange={(e) => handleUpdateRole(user.id, role.school_id, e.target.value as 'owner' | 'admin' | 'seller' | 'viewer')}
+                                        className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                      >
+                                        {ROLES.map((r) => (
+                                          <option key={r.value} value={r.value}>
+                                            {r.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        onClick={() => handleRemoveRole(user.id, role.school_id)}
+                                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Quitar acceso"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -434,7 +479,7 @@ export default function UsersPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </tbody>
@@ -581,11 +626,17 @@ export default function UsersPage() {
                   required
                 >
                   <option value="">Seleccionar colegio</option>
-                  {schools.map((school) => (
-                    <option key={school.id} value={school.id}>
-                      {school.name}
-                    </option>
-                  ))}
+                  {schools
+                    .filter((school) => {
+                      // Filter out schools where user already has a role
+                      const existingRoles = userRoles[selectedUser.id] || [];
+                      return !existingRoles.some((r) => r.school_id === school.id);
+                    })
+                    .map((school) => (
+                      <option key={school.id} value={school.id}>
+                        {school.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 

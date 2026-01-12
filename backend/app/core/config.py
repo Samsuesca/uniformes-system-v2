@@ -31,9 +31,11 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "tauri://localhost",
-        "http://localhost:3000",
+        "http://localhost:3000",  # Web portal dev
+        "http://localhost:3001",  # Admin portal dev
         "http://localhost:8080",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
         "http://localhost:5173",  # Vite dev server
         "https://uniformesconsuelorios.com",  # Production web portal
         "https://www.uniformesconsuelorios.com",  # Production web portal (www)

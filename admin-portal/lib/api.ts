@@ -67,6 +67,22 @@ export interface School {
   created_at: string;
 }
 
+export interface SchoolInfoForRole {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+}
+
+export interface UserSchoolRole {
+  id: string;
+  user_id: string;
+  school_id: string;
+  role: 'owner' | 'admin' | 'seller' | 'viewer';
+  created_at: string;
+  school: SchoolInfoForRole;  // Nested school info from backend
+}
+
 export interface User {
   id: string;
   username: string;
@@ -76,12 +92,8 @@ export interface User {
   is_superuser: boolean;
   last_login?: string;
   created_at: string;
-}
-
-export interface UserSchoolRole {
-  school_id: string;
-  school_name: string;
-  role: 'owner' | 'admin' | 'seller' | 'viewer';
+  updated_at?: string;
+  school_roles?: UserSchoolRole[];
 }
 
 export interface PaymentAccount {

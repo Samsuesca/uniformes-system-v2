@@ -15,9 +15,7 @@ export interface UpdateUserData {
   is_superuser?: boolean;
 }
 
-export interface AddRoleData {
-  role: 'owner' | 'admin' | 'seller' | 'viewer';
-}
+export type UserRole = 'owner' | 'admin' | 'seller' | 'viewer';
 
 const userService = {
   // List all users
@@ -56,15 +54,19 @@ const userService = {
     return response.data;
   },
 
-  // Add user role for school
-  addSchoolRole: async (userId: string, schoolId: string, data: AddRoleData) => {
-    const response = await apiClient.post(`/users/${userId}/schools/${schoolId}/role`, data);
+  // Add user role for school (role as query param)
+  addSchoolRole: async (userId: string, schoolId: string, role: 'owner' | 'admin' | 'seller' | 'viewer') => {
+    const response = await apiClient.post(`/users/${userId}/schools/${schoolId}/role`, null, {
+      params: { role }
+    });
     return response.data;
   },
 
-  // Update user role for school
-  updateSchoolRole: async (userId: string, schoolId: string, data: AddRoleData) => {
-    const response = await apiClient.put(`/users/${userId}/schools/${schoolId}/role`, data);
+  // Update user role for school (role as query param)
+  updateSchoolRole: async (userId: string, schoolId: string, role: 'owner' | 'admin' | 'seller' | 'viewer') => {
+    const response = await apiClient.put(`/users/${userId}/schools/${schoolId}/role`, null, {
+      params: { role }
+    });
     return response.data;
   },
 
