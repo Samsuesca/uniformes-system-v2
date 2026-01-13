@@ -62,8 +62,8 @@ services:
       - SECRET_KEY=uniformes-production-secret-key-2025-very-secure-random-string
       - ENV=development
       - DEBUG=true
-      # Email (Resend)
-      - RESEND_API_KEY=***REMOVED***
+      # Email (Resend) - Use .env file or pass via environment
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
       - EMAIL_FROM=Uniformes Consuelo <noreply@uniformesconsuelorios.com>
       - FRONTEND_URL=https://uniformesconsuelorios.com
     volumes:
