@@ -10,7 +10,7 @@ from pathlib import Path
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts, delivery_zones, dashboard, documents
+from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts, delivery_zones, dashboard, documents, fixed_expenses, employees, payroll, alterations, notifications
 
 
 @asynccontextmanager
@@ -69,6 +69,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         return response
 
+# Logging middleware (added first so it runs after CORS)
+app.add_middleware(RequestLoggingMiddleware)
+
 # CORS - Allow specific origins
 # NOTE: In FastAPI middleware is processed in LIFO order (last added = first executed)
 # CORS middleware must be added LAST so it runs FIRST and handles preflight requests
@@ -79,9 +82,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Logging middleware (added after CORS so CORS headers are always included)
-app.add_middleware(RequestLoggingMiddleware)
 
 # Routes
 app.include_router(health.router, tags=["Health"])
@@ -101,12 +101,17 @@ app.include_router(inventory.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(reports.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(accounting.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(global_accounting.router, prefix=f"{settings.API_V1_STR}")  # Global accounting endpoints
+app.include_router(fixed_expenses.router, prefix=f"{settings.API_V1_STR}")  # Fixed/recurring expenses
+app.include_router(employees.router, prefix=f"{settings.API_V1_STR}")  # Employee management
+app.include_router(payroll.router, prefix=f"{settings.API_V1_STR}")  # Payroll runs
 app.include_router(global_products.router, prefix=f"{settings.API_V1_STR}")
 app.include_router(contacts.router, prefix=f"{settings.API_V1_STR}")  # PQRS Contact messages
 app.include_router(payment_accounts.router, prefix=f"{settings.API_V1_STR}")  # Payment accounts (bank accounts, QR)
 app.include_router(delivery_zones.router, prefix=f"{settings.API_V1_STR}")  # Delivery zones for web orders
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}")  # Global dashboard stats
 app.include_router(documents.router, prefix=f"{settings.API_V1_STR}")  # Enterprise documents (superuser only)
+app.include_router(alterations.router, prefix=f"{settings.API_V1_STR}")  # Alterations/repairs portal (global)
+app.include_router(notifications.router, prefix=f"{settings.API_V1_STR}")  # User notifications
 
 # Mount static files for uploads (payment proofs, etc.)
 # Use environment-based path: production uses /var/www/..., development uses relative path

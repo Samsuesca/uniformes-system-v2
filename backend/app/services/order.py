@@ -15,13 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
 from app.models.order import Order, OrderItem, OrderStatus, OrderItemStatus
-from app.models.product import GarmentType, Product
+from app.models.product import GarmentType, Product, GlobalProduct, GlobalGarmentType
 from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
 from app.models.client import Client
 from app.schemas.order import OrderCreate, OrderUpdate, OrderPayment
 from app.schemas.accounting import AccountsReceivableCreate
 from app.services.base import SchoolIsolatedService
-from app.services.email import send_activation_email
+from app.services.email import send_welcome_with_activation_email
 import secrets
 
 # Required measurements for yomber orders
@@ -57,15 +57,46 @@ class OrderService(SchoolIsolatedService[Order]):
         subtotal = Decimal("0")
 
         for item_data in order_data.items:
-            # Get garment type
-            garment = await self.db.execute(
-                select(GarmentType).where(
-                    GarmentType.id == item_data.garment_type_id,
-                    GarmentType.school_id == order_data.school_id,
-                    GarmentType.is_active == True
+            # Detect if this is a global product to determine garment type source
+            is_global_product = getattr(item_data, 'is_global_product', False)
+            has_global_product_id = getattr(item_data, 'global_product_id', None) is not None
+
+            # Get garment type - from global_garment_types for global products, garment_types for school products
+            garment = None
+            garment_type_id_to_use = item_data.garment_type_id
+
+            if is_global_product or has_global_product_id:
+                # For global products, first try to get the garment type from global_garment_types
+                global_garment_result = await self.db.execute(
+                    select(GlobalGarmentType).where(
+                        GlobalGarmentType.id == item_data.garment_type_id,
+                        GlobalGarmentType.is_active == True
+                    )
                 )
-            )
-            garment = garment.scalar_one_or_none()
+                global_garment = global_garment_result.scalar_one_or_none()
+
+                if global_garment:
+                    # Use a placeholder garment object with just the name for display
+                    garment = global_garment
+                else:
+                    # Fallback: try school garment types (in case of data inconsistency)
+                    school_garment_result = await self.db.execute(
+                        select(GarmentType).where(
+                            GarmentType.id == item_data.garment_type_id,
+                            GarmentType.is_active == True
+                        )
+                    )
+                    garment = school_garment_result.scalar_one_or_none()
+            else:
+                # For school products, get from school-specific garment_types
+                school_garment_result = await self.db.execute(
+                    select(GarmentType).where(
+                        GarmentType.id == item_data.garment_type_id,
+                        GarmentType.school_id == order_data.school_id,
+                        GarmentType.is_active == True
+                    )
+                )
+                garment = school_garment_result.scalar_one_or_none()
 
             if not garment:
                 raise ValueError(f"Garment type {item_data.garment_type_id} not found")
@@ -74,6 +105,8 @@ class OrderService(SchoolIsolatedService[Order]):
             order_type = getattr(item_data, 'order_type', 'custom')
             additional_price = getattr(item_data, 'additional_price', None) or Decimal("0")
             product_id = None
+            global_product_id = None
+            is_global_product = getattr(item_data, 'is_global_product', False)
             item_size = item_data.size
             item_color = item_data.color
 
@@ -82,50 +115,97 @@ class OrderService(SchoolIsolatedService[Order]):
             quantity_reserved = 0
 
             if order_type == "catalog":
-                # CATALOG: Price from selected product
-                if not item_data.product_id:
-                    raise ValueError("product_id requerido para encargos de catálogo")
+                # CATALOG: Price from selected product (school or global)
 
-                product_result = await self.db.execute(
-                    select(Product).where(
-                        Product.id == item_data.product_id,
-                        Product.school_id == order_data.school_id,
-                        Product.is_active == True
+                # Check if it's a global product
+                if is_global_product or getattr(item_data, 'global_product_id', None):
+                    # GLOBAL PRODUCT
+                    gp_id = getattr(item_data, 'global_product_id', None) or item_data.product_id
+                    if not gp_id:
+                        raise ValueError("global_product_id requerido para encargos de catálogo con producto global")
+
+                    gp_result = await self.db.execute(
+                        select(GlobalProduct).where(
+                            GlobalProduct.id == gp_id,
+                            GlobalProduct.is_active == True
+                        )
                     )
-                )
-                product = product_result.scalar_one_or_none()
+                    global_product = gp_result.scalar_one_or_none()
 
-                if not product:
-                    raise ValueError(f"Product {item_data.product_id} not found")
+                    if not global_product:
+                        raise ValueError(f"Global product {gp_id} not found")
 
-                unit_price = Decimal(str(product.price)) + additional_price
-                product_id = product.id
-                # Use product's size/color if not specified
-                item_size = item_data.size or product.size
-                item_color = item_data.color or product.color
+                    unit_price = Decimal(str(global_product.price)) + additional_price
+                    global_product_id = global_product.id
+                    is_global_product = True
+                    # Use product's size/color if not specified
+                    item_size = item_data.size or global_product.size
+                    item_color = item_data.color or global_product.color
 
-                # === STOCK RESERVATION ("PISAR") ===
-                # Reserve stock if available and reserve_stock flag is True
-                should_reserve = getattr(item_data, 'reserve_stock', True)
-                if should_reserve:
-                    from app.services.inventory import InventoryService
-                    inventory_service = InventoryService(self.db)
+                    # === STOCK RESERVATION FOR GLOBAL PRODUCTS ===
+                    should_reserve = getattr(item_data, 'reserve_stock', True)
+                    if should_reserve:
+                        from app.services.global_product import GlobalInventoryService
+                        global_inv_service = GlobalInventoryService(self.db)
 
-                    # Check available stock
-                    inventory = await inventory_service.get_by_product(product_id, order_data.school_id)
+                        # Check available stock
+                        global_inventory = await global_inv_service.get_by_product(global_product_id)
 
-                    if inventory and inventory.quantity > 0:
-                        # Reserve up to available stock (partial reservation if not enough)
-                        quantity_to_reserve = min(item_data.quantity, inventory.quantity)
+                        if global_inventory and global_inventory.quantity > 0:
+                            quantity_to_reserve = min(item_data.quantity, global_inventory.quantity)
+                            if quantity_to_reserve > 0:
+                                await global_inv_service.reserve_stock(
+                                    product_id=global_product_id,
+                                    quantity=quantity_to_reserve
+                                )
+                                reserved_from_stock = True
+                                quantity_reserved = quantity_to_reserve
 
-                        if quantity_to_reserve > 0:
-                            await inventory_service.reserve_stock(
-                                product_id=product_id,
-                                school_id=order_data.school_id,
-                                quantity=quantity_to_reserve
-                            )
-                            reserved_from_stock = True
-                            quantity_reserved = quantity_to_reserve
+                else:
+                    # SCHOOL PRODUCT
+                    if not item_data.product_id:
+                        raise ValueError("product_id requerido para encargos de catálogo")
+
+                    product_result = await self.db.execute(
+                        select(Product).where(
+                            Product.id == item_data.product_id,
+                            Product.school_id == order_data.school_id,
+                            Product.is_active == True
+                        )
+                    )
+                    product = product_result.scalar_one_or_none()
+
+                    if not product:
+                        raise ValueError(f"Product {item_data.product_id} not found")
+
+                    unit_price = Decimal(str(product.price)) + additional_price
+                    product_id = product.id
+                    # Use product's size/color if not specified
+                    item_size = item_data.size or product.size
+                    item_color = item_data.color or product.color
+
+                    # === STOCK RESERVATION ("PISAR") ===
+                    # Reserve stock if available and reserve_stock flag is True
+                    should_reserve = getattr(item_data, 'reserve_stock', True)
+                    if should_reserve:
+                        from app.services.inventory import InventoryService
+                        inventory_service = InventoryService(self.db)
+
+                        # Check available stock
+                        inventory = await inventory_service.get_by_product(product_id, order_data.school_id)
+
+                        if inventory and inventory.quantity > 0:
+                            # Reserve up to available stock (partial reservation if not enough)
+                            quantity_to_reserve = min(item_data.quantity, inventory.quantity)
+
+                            if quantity_to_reserve > 0:
+                                await inventory_service.reserve_stock(
+                                    product_id=product_id,
+                                    school_id=order_data.school_id,
+                                    quantity=quantity_to_reserve
+                                )
+                                reserved_from_stock = True
+                                quantity_reserved = quantity_to_reserve
 
             elif order_type == "yomber":
                 # YOMBER: Validate measurements + get base price
@@ -166,10 +246,23 @@ class OrderService(SchoolIsolatedService[Order]):
 
             item_subtotal = unit_price * item_data.quantity
 
+            # Determine which garment type field to use based on product type
+            if is_global_product or has_global_product_id:
+                # For global products, use global_garment_type_id
+                garment_type_id_value = None
+                global_garment_type_id_value = garment.id
+            else:
+                # For school products, use garment_type_id
+                garment_type_id_value = garment.id
+                global_garment_type_id_value = None
+
             items_data.append({
                 "school_id": order_data.school_id,
-                "garment_type_id": garment.id,
+                "garment_type_id": garment_type_id_value,
+                "global_garment_type_id": global_garment_type_id_value,
                 "product_id": product_id,
+                "global_product_id": global_product_id,
+                "is_global_product": is_global_product,
                 "quantity": item_data.quantity,
                 "unit_price": unit_price,
                 "subtotal": item_subtotal,
@@ -269,10 +362,10 @@ class OrderService(SchoolIsolatedService[Order]):
 
         await self.db.flush()
 
-        # === ENVIAR EMAIL DE ACTIVACIÓN AL CLIENTE ===
-        # Si el cliente tiene email y no está verificado, enviar invitación
+        # === ENVIAR EMAIL DE BIENVENIDA EN PRIMERA TRANSACCIÓN ===
+        # Si el cliente tiene email y es su primera transacción, enviar email de bienvenida
         if order_data.client_id:
-            await self._send_activation_email_if_needed(order_data.client_id, order.code)
+            await self._send_welcome_email_if_first_transaction(order_data.client_id, order.code)
 
         return order
 
@@ -385,6 +478,10 @@ class OrderService(SchoolIsolatedService[Order]):
         new_status: OrderStatus
     ) -> Order | None:
         """Update order status and sync item statuses"""
+        # Get current status BEFORE update for notification
+        current_order = await self.get(order_id, school_id)
+        old_status = current_order.status.value if current_order else None
+
         order = await self.update(
             order_id,
             school_id,
@@ -394,6 +491,13 @@ class OrderService(SchoolIsolatedService[Order]):
         # Sync item statuses when order is marked as DELIVERED
         if order and new_status == OrderStatus.DELIVERED:
             await self._sync_item_statuses_from_order(order_id, school_id, new_status)
+
+        # === NOTIFICATION ===
+        # Notify about status change (only if status actually changed)
+        if order and old_status and old_status != new_status.value:
+            from app.services.notification import NotificationService
+            notification_service = NotificationService(self.db)
+            await notification_service.notify_order_status_changed(order, old_status, new_status.value)
 
         return order
 
@@ -718,6 +822,12 @@ class OrderService(SchoolIsolatedService[Order]):
 
         await self.db.flush()
         await self.db.refresh(order)
+
+        # === NOTIFICATION ===
+        # Notify about new web order
+        from app.services.notification import NotificationService
+        notification_service = NotificationService(self.db)
+        await notification_service.notify_new_web_order(order)
 
         return order
 
@@ -1204,16 +1314,18 @@ class OrderService(SchoolIsolatedService[Order]):
         await self.db.refresh(order)
         return order
 
-    async def _send_activation_email_if_needed(
+    async def _send_welcome_email_if_first_transaction(
         self,
         client_id: UUID,
         order_code: str
     ) -> bool:
         """
-        Send activation email to client if they have email and are not verified.
+        Send welcome email with activation link on client's FIRST transaction.
 
-        This allows clients created from internal UI to activate their account
-        and see their order status in the web portal.
+        This is the preferred approach:
+        - NOT sent when client is created
+        - SENT when client has their first order or sale
+        - Includes activation link, portal instructions, and business contact info
 
         Args:
             client_id: Client UUID
@@ -1231,20 +1343,15 @@ class OrderService(SchoolIsolatedService[Order]):
         if not client:
             return False
 
-        # Check if client has email and is not already verified
+        # Check if client has email
         if not client.email:
-            print(f"[ORDER] Client {client.name} has no email, skipping activation")
+            print(f"[ORDER] Client {client.name} has no email, skipping welcome email")
             return False
 
-        if client.is_verified:
-            print(f"[ORDER] Client {client.name} already verified, skipping activation")
+        # Check if welcome email was already sent (not first transaction)
+        if client.welcome_email_sent:
+            print(f"[ORDER] Client {client.name} already received welcome email, skipping")
             return False
-
-        # Check if token already exists and is valid
-        if client.verification_token and client.verification_token_expires:
-            if client.verification_token_expires > datetime.utcnow():
-                print(f"[ORDER] Client {client.name} has valid token, skipping new email")
-                return False
 
         # Generate new activation token (64 chars hex)
         activation_token = secrets.token_hex(32)
@@ -1253,22 +1360,35 @@ class OrderService(SchoolIsolatedService[Order]):
         client.verification_token = activation_token
         client.verification_token_expires = datetime.utcnow() + timedelta(days=7)
 
+        # Mark welcome email as sent
+        client.welcome_email_sent = True
+        client.welcome_email_sent_at = datetime.utcnow()
+
         await self.db.flush()
 
-        # Send activation email
+        # Send welcome email with activation link
         try:
-            sent = send_activation_email(
+            sent = send_welcome_with_activation_email(
                 email=client.email,
                 token=activation_token,
-                name=client.name
+                name=client.name,
+                transaction_type="encargo"
             )
             if sent:
-                print(f"✅ [ORDER] Activation email sent to {client.email} for order {order_code}")
+                print(f"✅ [ORDER] Welcome email sent to {client.email} for order {order_code}")
             else:
-                print(f"⚠️ [ORDER] Failed to send activation email to {client.email}")
+                print(f"⚠️ [ORDER] Failed to send welcome email to {client.email}")
+                # Rollback the flag if email failed
+                client.welcome_email_sent = False
+                client.welcome_email_sent_at = None
+                await self.db.flush()
             return sent
         except Exception as e:
-            print(f"❌ [ORDER] Error sending activation email: {e}")
+            print(f"❌ [ORDER] Error sending welcome email: {e}")
+            # Rollback the flag if email failed
+            client.welcome_email_sent = False
+            client.welcome_email_sent_at = None
+            await self.db.flush()
             return False
 
     async def cancel_order(

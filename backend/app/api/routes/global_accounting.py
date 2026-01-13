@@ -10,15 +10,16 @@ These endpoints operate on global accounts (school_id = NULL) for:
 For school-specific reports, use /schools/{school_id}/accounting/* endpoints.
 """
 from uuid import UUID
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 
 from app.api.dependencies import DatabaseSession, CurrentUser, require_any_school_admin
 from app.models.user import UserRole
 from app.models.accounting import (
-    TransactionType, ExpenseCategory, AccountType, AccPaymentMethod,
-    BalanceAccount, BalanceEntry, Expense, AccountsPayable, AccountsReceivable, Transaction
+    TransactionType, ExpenseCategory, AccountType, AccPaymentMethod, AdjustmentReason,
+    BalanceAccount, BalanceEntry, Expense, AccountsPayable, AccountsReceivable, Transaction,
+    ExpenseAdjustment
 )
 from app.models.school import School
 from app.schemas.accounting import (
@@ -29,7 +30,11 @@ from app.schemas.accounting import (
     GlobalAccountsPayableCreate, GlobalAccountsPayableResponse, AccountsPayableListResponse, AccountsPayablePayment,
     GlobalAccountsReceivableCreate, GlobalAccountsReceivableResponse, AccountsReceivableListResponse, AccountsReceivablePayment,
     BalanceGeneralSummary, BalanceGeneralDetailed,
-    TransactionListItemResponse, ExpenseCategorySummary, CashFlowPeriodItem, CashFlowReportResponse
+    TransactionListItemResponse, ExpenseCategorySummary, CashFlowPeriodItem, CashFlowReportResponse,
+    # Expense Adjustment schemas
+    ExpenseAdjustmentRequest, ExpenseRevertRequest, PartialRefundRequest,
+    ExpenseAdjustmentResponse, ExpenseAdjustmentListResponse,
+    ExpenseAdjustmentHistoryResponse, AdjustmentListPaginatedResponse
 )
 from sqlalchemy import select, func
 
@@ -750,10 +755,17 @@ async def list_global_expenses(
 ):
     """
     List global expenses (school_id = NULL)
+
+    Includes payment info (account name, method, date) for paid expenses.
     """
-    query = select(Expense).where(
-        Expense.school_id.is_(None),
-        Expense.is_active == True
+    # Query with LEFT JOIN to get payment account name
+    query = (
+        select(Expense, BalanceAccount.name.label("payment_account_name"))
+        .outerjoin(BalanceAccount, BalanceAccount.id == Expense.payment_account_id)
+        .where(
+            Expense.school_id.is_(None),
+            Expense.is_active == True
+        )
     )
 
     if category:
@@ -763,7 +775,7 @@ async def list_global_expenses(
 
     query = query.order_by(Expense.expense_date.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
-    expenses = result.scalars().all()
+    rows = result.all()
 
     return [
         ExpenseListResponse(
@@ -777,9 +789,12 @@ async def list_global_expenses(
             due_date=e.due_date,
             vendor=e.vendor,
             is_recurring=e.is_recurring,
-            balance=e.balance
+            balance=e.balance,
+            payment_method=e.payment_method,
+            payment_account_name=payment_account_name,
+            paid_at=e.paid_at
         )
-        for e in expenses
+        for e, payment_account_name in rows
     ]
 
 
@@ -815,7 +830,10 @@ async def get_pending_global_expenses(
             due_date=e.due_date,
             vendor=e.vendor,
             is_recurring=e.is_recurring,
-            balance=e.balance
+            balance=e.balance,
+            payment_method=e.payment_method,
+            payment_account_name=None,  # Pending expenses don't have payment info
+            paid_at=e.paid_at
         )
         for e in expenses
     ]
@@ -961,22 +979,27 @@ async def get_global_expense(
     expense_id: UUID,
     db: DatabaseSession
 ):
-    """Get global expense by ID"""
+    """Get global expense by ID with payment account info"""
     result = await db.execute(
-        select(Expense).where(
+        select(Expense, BalanceAccount.name.label("payment_account_name"))
+        .outerjoin(BalanceAccount, BalanceAccount.id == Expense.payment_account_id)
+        .where(
             Expense.id == expense_id,
             Expense.school_id.is_(None)
         )
     )
-    expense = result.scalar_one_or_none()
+    row = result.one_or_none()
 
-    if not expense:
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Global expense not found"
         )
 
-    return GlobalExpenseResponse.model_validate(expense)
+    expense, payment_account_name = row
+    response = GlobalExpenseResponse.model_validate(expense)
+    response.payment_account_name = payment_account_name
+    return response
 
 
 @router.patch(
@@ -1062,6 +1085,7 @@ async def pay_global_expense(
     from app.services.balance_integration import BalanceIntegrationService
     balance_service = BalanceIntegrationService(db)
 
+    payment_account_id = None
     try:
         # Si use_fallback es True y el pago es en efectivo, usar Caja Mayor directamente
         if payment.use_fallback and payment.payment_method == AccPaymentMethod.CASH:
@@ -1071,6 +1095,16 @@ async def pay_global_expense(
                 description=f"Pago gasto (desde Caja Mayor): {expense.description}",
                 created_by=current_user.id
             )
+            # Get Caja Mayor account ID
+            caja_mayor = await db.execute(
+                select(BalanceAccount).where(
+                    BalanceAccount.code == "1102",
+                    BalanceAccount.school_id.is_(None)
+                )
+            )
+            caja_mayor_account = caja_mayor.scalar_one_or_none()
+            if caja_mayor_account:
+                payment_account_id = caja_mayor_account.id
         else:
             await balance_service.record_expense_payment(
                 amount=payment.amount,
@@ -1078,21 +1112,40 @@ async def pay_global_expense(
                 description=f"Pago gasto: {expense.description}",
                 created_by=current_user.id
             )
+            # Get the account ID used for the payment
+            payment_account_id = await balance_service.get_account_for_payment_method(
+                payment.payment_method
+            )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 
-    # Update expense only after successful balance deduction
+    # Update expense with payment info
     expense.amount_paid = (expense.amount_paid or Decimal("0")) + payment.amount
+    # Handle both enum and string payment_method
+    expense.payment_method = payment.payment_method.value if hasattr(payment.payment_method, 'value') else payment.payment_method
+    expense.payment_account_id = payment_account_id
+    expense.paid_at = datetime.utcnow()
+
     if expense.amount_paid >= expense.amount:
         expense.is_paid = True
 
     await db.commit()
     await db.refresh(expense)
 
-    return GlobalExpenseResponse.model_validate(expense)
+    # Get payment account name for response
+    payment_account_name = None
+    if expense.payment_account_id:
+        result = await db.execute(
+            select(BalanceAccount.name).where(BalanceAccount.id == expense.payment_account_id)
+        )
+        payment_account_name = result.scalar_one_or_none()
+
+    response = GlobalExpenseResponse.model_validate(expense)
+    response.payment_account_name = payment_account_name
+    return response
 
 
 # ============================================
@@ -1865,4 +1918,411 @@ async def get_cash_flow_report(
         total_expenses=total_expenses,
         net_flow=total_income - total_expenses,
         periods=periods
+    )
+
+
+# ============================================
+# Expense Adjustments (Rollbacks)
+# ============================================
+
+@router.post(
+    "/expenses/{expense_id}/adjust",
+    response_model=ExpenseAdjustmentResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def adjust_expense(
+    expense_id: UUID,
+    adjustment_data: ExpenseAdjustmentRequest,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Adjust a paid expense's amount and/or payment account.
+
+    Use cases:
+    - Correct a wrong payment amount
+    - Move payment from one account to another (e.g., Caja to Banco)
+    - Both amount and account correction
+
+    Creates compensatory balance entries to maintain accounting integrity.
+
+    Args:
+        expense_id: The expense UUID to adjust
+        adjustment_data: The adjustment details
+
+    Returns:
+        ExpenseAdjustmentResponse with adjustment details
+    """
+    from app.services.expense_adjustment import ExpenseAdjustmentService
+    from app.models.user import User
+
+    service = ExpenseAdjustmentService(db)
+
+    try:
+        adjustment = await service.adjust_expense(
+            expense_id=expense_id,
+            new_amount=adjustment_data.new_amount,
+            new_payment_account_id=adjustment_data.new_payment_account_id,
+            new_payment_method=adjustment_data.new_payment_method,
+            reason=adjustment_data.reason,
+            description=adjustment_data.description,
+            adjusted_by=current_user.id
+        )
+
+        await db.commit()
+
+        # Build response with account names
+        response = ExpenseAdjustmentResponse.model_validate(adjustment)
+
+        # Get account names
+        if adjustment.previous_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adjustment.previous_payment_account_id
+                )
+            )
+            response.previous_payment_account_name = result.scalar_one_or_none()
+
+        if adjustment.new_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adjustment.new_payment_account_id
+                )
+            )
+            response.new_payment_account_name = result.scalar_one_or_none()
+
+        # Get username
+        result = await db.execute(
+            select(User.username).where(User.id == current_user.id)
+        )
+        response.adjusted_by_username = result.scalar_one_or_none()
+
+        return response
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al ajustar gasto: {str(e)}"
+        )
+
+
+@router.post(
+    "/expenses/{expense_id}/revert",
+    response_model=ExpenseAdjustmentResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def revert_expense_payment(
+    expense_id: UUID,
+    revert_data: ExpenseRevertRequest,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Completely revert an expense payment (full rollback).
+
+    This returns the full paid amount to the original account
+    and marks the expense as unpaid.
+
+    Use this when a payment was made in error and needs to be undone entirely.
+
+    Args:
+        expense_id: The expense UUID to revert
+        revert_data: Optional description of the reversion
+
+    Returns:
+        ExpenseAdjustmentResponse with reversion details
+    """
+    from app.services.expense_adjustment import ExpenseAdjustmentService
+    from app.models.user import User
+
+    service = ExpenseAdjustmentService(db)
+
+    try:
+        adjustment = await service.revert_expense_payment(
+            expense_id=expense_id,
+            description=revert_data.description,
+            adjusted_by=current_user.id
+        )
+
+        await db.commit()
+
+        # Build response
+        response = ExpenseAdjustmentResponse.model_validate(adjustment)
+
+        # Get account name
+        if adjustment.previous_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adjustment.previous_payment_account_id
+                )
+            )
+            response.previous_payment_account_name = result.scalar_one_or_none()
+
+        # Get username
+        result = await db.execute(
+            select(User.username).where(User.id == current_user.id)
+        )
+        response.adjusted_by_username = result.scalar_one_or_none()
+
+        return response
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al revertir pago: {str(e)}"
+        )
+
+
+@router.post(
+    "/expenses/{expense_id}/refund",
+    response_model=ExpenseAdjustmentResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def partial_refund_expense(
+    expense_id: UUID,
+    refund_data: PartialRefundRequest,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Issue a partial refund on an expense payment.
+
+    Use this when part of the expense payment needs to be returned,
+    but not the full amount.
+
+    Args:
+        expense_id: The expense UUID
+        refund_data: The refund amount and description
+
+    Returns:
+        ExpenseAdjustmentResponse with refund details
+    """
+    from app.services.expense_adjustment import ExpenseAdjustmentService
+    from app.models.user import User
+
+    service = ExpenseAdjustmentService(db)
+
+    try:
+        adjustment = await service.partial_refund(
+            expense_id=expense_id,
+            refund_amount=refund_data.refund_amount,
+            description=refund_data.description,
+            adjusted_by=current_user.id
+        )
+
+        await db.commit()
+
+        # Build response
+        response = ExpenseAdjustmentResponse.model_validate(adjustment)
+
+        # Get account name
+        if adjustment.previous_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adjustment.previous_payment_account_id
+                )
+            )
+            response.previous_payment_account_name = result.scalar_one_or_none()
+
+        if adjustment.new_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adjustment.new_payment_account_id
+                )
+            )
+            response.new_payment_account_name = result.scalar_one_or_none()
+
+        # Get username
+        result = await db.execute(
+            select(User.username).where(User.id == current_user.id)
+        )
+        response.adjusted_by_username = result.scalar_one_or_none()
+
+        return response
+
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al procesar reembolso: {str(e)}"
+        )
+
+
+@router.get(
+    "/expenses/{expense_id}/adjustments",
+    response_model=ExpenseAdjustmentHistoryResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def get_expense_adjustment_history(
+    expense_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Get the adjustment history for a specific expense.
+
+    Returns the expense details along with all adjustments made,
+    ordered by most recent first.
+
+    Args:
+        expense_id: The expense UUID
+
+    Returns:
+        ExpenseAdjustmentHistoryResponse with expense and adjustment details
+    """
+    from app.services.expense_adjustment import ExpenseAdjustmentService
+    from app.models.user import User
+
+    service = ExpenseAdjustmentService(db)
+
+    # Get expense
+    expense = await service.get_expense_by_id(expense_id, include_adjustments=True)
+    if not expense:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Gasto no encontrado"
+        )
+
+    # Get adjustments
+    adjustments = await service.get_adjustment_history(expense_id)
+
+    # Build adjustment responses with account names
+    adjustment_responses = []
+    for adj in adjustments:
+        adj_response = ExpenseAdjustmentResponse.model_validate(adj)
+
+        # Get account names
+        if adj.previous_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adj.previous_payment_account_id
+                )
+            )
+            adj_response.previous_payment_account_name = result.scalar_one_or_none()
+
+        if adj.new_payment_account_id:
+            result = await db.execute(
+                select(BalanceAccount.name).where(
+                    BalanceAccount.id == adj.new_payment_account_id
+                )
+            )
+            adj_response.new_payment_account_name = result.scalar_one_or_none()
+
+        # Get username
+        if adj.adjusted_by:
+            result = await db.execute(
+                select(User.username).where(User.id == adj.adjusted_by)
+            )
+            adj_response.adjusted_by_username = result.scalar_one_or_none()
+
+        adjustment_responses.append(adj_response)
+
+    return ExpenseAdjustmentHistoryResponse(
+        expense_id=expense.id,
+        expense_description=expense.description,
+        expense_category=expense.category,
+        expense_vendor=expense.vendor,
+        current_amount=expense.amount,
+        current_amount_paid=expense.amount_paid,
+        current_is_paid=expense.is_paid,
+        adjustments=adjustment_responses,
+        total_adjustments=len(adjustment_responses)
+    )
+
+
+@router.get(
+    "/adjustments",
+    response_model=AdjustmentListPaginatedResponse,
+    dependencies=[Depends(require_any_school_admin)]
+)
+async def list_expense_adjustments(
+    db: DatabaseSession,
+    start_date: date = Query(..., description="Start date (inclusive)"),
+    end_date: date = Query(..., description="End date (inclusive)"),
+    reason: AdjustmentReason | None = Query(None, description="Filter by reason"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """
+    List expense adjustments within a date range.
+
+    Use this for audit reports and tracking adjustments over time.
+
+    Args:
+        start_date: Start date for filtering
+        end_date: End date for filtering
+        reason: Optional filter by adjustment reason
+        limit: Maximum records per page
+        offset: Records to skip
+
+    Returns:
+        Paginated list of adjustments
+    """
+    from app.services.expense_adjustment import ExpenseAdjustmentService
+    from app.models.user import User
+
+    service = ExpenseAdjustmentService(db)
+
+    adjustments, total = await service.get_adjustments_by_date_range(
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        limit=limit,
+        offset=offset
+    )
+
+    # Build list responses
+    items = []
+    for adj in adjustments:
+        # Get expense description
+        expense_result = await db.execute(
+            select(Expense.description).where(Expense.id == adj.expense_id)
+        )
+        expense_description = expense_result.scalar_one_or_none()
+
+        # Get username
+        adjusted_by_username = None
+        if adj.adjusted_by:
+            user_result = await db.execute(
+                select(User.username).where(User.id == adj.adjusted_by)
+            )
+            adjusted_by_username = user_result.scalar_one_or_none()
+
+        items.append(ExpenseAdjustmentListResponse(
+            id=adj.id,
+            expense_id=adj.expense_id,
+            expense_description=expense_description,
+            reason=adj.reason,
+            description=adj.description,
+            previous_amount_paid=adj.previous_amount_paid,
+            new_amount_paid=adj.new_amount_paid,
+            adjustment_delta=adj.adjustment_delta,
+            adjusted_by_username=adjusted_by_username,
+            adjusted_at=adj.adjusted_at
+        ))
+
+    return AdjustmentListPaginatedResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset
     )

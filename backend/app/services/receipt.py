@@ -528,7 +528,8 @@ class ReceiptService:
     <div style="max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%); padding: 30px 20px; text-align: center;">
-            <h1 style="color: #C9A227; margin: 0; font-size: 24px;">{school_name}</h1>
+            <h1 style="color: #C9A227; margin: 0 0 8px 0; font-size: 20px;">Uniformes Consuelo Rios</h1>
+            <p style="color: #9ca3af; margin: 0; font-size: 14px;">{school_name}</p>
         </div>
 
         <!-- Content -->
@@ -586,10 +587,170 @@ class ReceiptService:
                 Uniformes Consuelo Rios
             </p>
             <p style="color: #6b7280; margin: 0; font-size: 12px;">
-                Tel: 311-XXX-XXXX | Bogota, Colombia
+                Tel: 310 599 7451 | WhatsApp: 310 599 7451
             </p>
-            <p style="color: #6b7280; margin: 8px 0 0 0; font-size: 12px;">
-                2026 Todos los derechos reservados.
+            <p style="color: #6b7280; margin: 4px 0 0 0; font-size: 12px;">
+                Calle 56 D #26 BE 04, Boston - Medellin, Antioquia
+            </p>
+            <p style="color: #6b7280; margin: 8px 0 0 0; font-size: 11px;">
+                {datetime.now().year} Todos los derechos reservados.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+    def generate_sale_email_html(
+        self,
+        sale: Sale,
+        school_name: str = "Uniformes Consuelo Rios",
+    ) -> str:
+        """
+        Generate HTML email for sale confirmation.
+        Professional email format (not thermal printing).
+        """
+        # Build items HTML
+        items_html = ""
+        for item in sale.items:
+            product_name = item.product.name if item.product else "Producto"
+            size = item.size or ""
+            qty = item.quantity
+            price = format_currency(item.unit_price)
+            subtotal = format_currency(item.subtotal)
+            items_html += f"""
+            <tr>
+                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">{product_name} {size}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">{qty}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">{price}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">{subtotal}</td>
+            </tr>
+            """
+
+        # Client info
+        client_name = sale.client.name if sale.client else "Cliente General"
+        student_name = sale.client.student_name if sale.client and sale.client.student_name else None
+
+        # Payment method
+        payment_methods = {
+            "cash": "Efectivo",
+            "nequi": "Nequi",
+            "transfer": "Transferencia",
+            "card": "Tarjeta",
+            "credit": "Credito",
+        }
+        payment_method_text = payment_methods.get(sale.payment_method, sale.payment_method) if sale.payment_method else "No especificado"
+
+        # Payment status
+        paid_amount = float(sale.paid_amount or 0)
+        total = float(sale.total)
+        balance = total - paid_amount
+
+        if balance <= 0:
+            payment_html = """
+            <div style="background: #d1fae5; color: #065f46; padding: 12px; border-radius: 8px; text-align: center; margin: 16px 0;">
+                <strong>PAGADO</strong>
+            </div>
+            """
+        elif paid_amount > 0:
+            payment_html = f"""
+            <div style="background: #fef3c7; color: #92400e; padding: 12px; border-radius: 8px; margin: 16px 0;">
+                <strong>Abono:</strong> {format_currency(paid_amount)}<br>
+                <strong>Saldo pendiente:</strong> {format_currency(balance)}
+            </div>
+            """
+        else:
+            payment_html = f"""
+            <div style="background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin: 16px 0;">
+                <strong>Pendiente de pago:</strong> {format_currency(total)}
+            </div>
+            """
+
+        # Status text
+        status_map = {
+            "pending": "Pendiente",
+            "completed": "Completada",
+            "cancelled": "Cancelada",
+        }
+        status_text = status_map.get(sale.status, sale.status)
+
+        return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+    <div style="max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%); padding: 30px 20px; text-align: center;">
+            <h1 style="color: #C9A227; margin: 0 0 8px 0; font-size: 20px;">Uniformes Consuelo Rios</h1>
+            <p style="color: #9ca3af; margin: 0; font-size: 14px;">{school_name}</p>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 30px;">
+            <h2 style="color: #1f2937; margin: 0 0 8px 0;">Recibo de Venta</h2>
+            <p style="color: #6b7280; margin: 0 0 24px 0;">Venta <strong>#{sale.code}</strong></p>
+
+            <div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+                <p style="margin: 0 0 8px 0; color: #374151;">
+                    <strong>Cliente:</strong> {client_name}
+                </p>
+                {f'<p style="margin: 0 0 8px 0; color: #374151;"><strong>Estudiante:</strong> {student_name}</p>' if student_name else ''}
+                <p style="margin: 0 0 8px 0; color: #374151;">
+                    <strong>Fecha:</strong> {format_date(sale.sale_date)}
+                </p>
+                <p style="margin: 0 0 8px 0; color: #374151;">
+                    <strong>Estado:</strong> <span style="background: #e5e7eb; padding: 2px 8px; border-radius: 4px;">{status_text}</span>
+                </p>
+                <p style="margin: 0; color: #374151;">
+                    <strong>Metodo de pago:</strong> {payment_method_text}
+                </p>
+            </div>
+
+            <!-- Products Table -->
+            <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+                <thead>
+                    <tr style="background: #f3f4f6;">
+                        <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e5e7eb;">Producto</th>
+                        <th style="padding: 12px; text-align: center; border-bottom: 2px solid #e5e7eb;">Cant.</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e5e7eb;">Precio</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e5e7eb;">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items_html}
+                </tbody>
+            </table>
+
+            <!-- Totals -->
+            <div style="text-align: right; margin: 24px 0;">
+                <p style="margin: 4px 0; color: #6b7280;">Subtotal: {format_currency(sale.subtotal)}</p>
+                {f'<p style="margin: 4px 0; color: #6b7280;">Descuento: -{format_currency(sale.discount)}</p>' if sale.discount and sale.discount > 0 else ''}
+                <p style="margin: 8px 0 0 0; font-size: 20px; font-weight: bold; color: #1f2937;">Total: {format_currency(sale.total)}</p>
+            </div>
+
+            {payment_html}
+
+            <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
+                Gracias por su compra. Cambios dentro de 8 dias con recibo y producto sin uso.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #1f2937; padding: 20px; text-align: center;">
+            <p style="color: #9ca3af; margin: 0 0 8px 0; font-size: 14px;">
+                Uniformes Consuelo Rios
+            </p>
+            <p style="color: #6b7280; margin: 0; font-size: 12px;">
+                Tel: 310 599 7451 | WhatsApp: 310 599 7451
+            </p>
+            <p style="color: #6b7280; margin: 4px 0 0 0; font-size: 12px;">
+                Calle 56 D #26 BE 04, Boston - Medellin, Antioquia
+            </p>
+            <p style="color: #6b7280; margin: 8px 0 0 0; font-size: 11px;">
+                {datetime.now().year} Todos los derechos reservados.
             </p>
         </div>
     </div>

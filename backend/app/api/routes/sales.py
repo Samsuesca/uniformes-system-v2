@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from app.api.dependencies import DatabaseSession, CurrentUser, require_school_access, UserSchoolIds
 from app.models.user import UserRole, User
-from app.models.sale import Sale, SaleSource, SaleStatus
+from app.models.sale import Sale, SaleItem, SaleSource, SaleStatus
 from app.models.client import Client
 from app.models.school import School
 from app.schemas.sale import (
@@ -23,6 +23,7 @@ from app.schemas.sale import (
 from app.models.sale import PaymentMethod
 from app.services.sale import SaleService
 from app.services.receipt import ReceiptService
+from app.services.email import send_sale_confirmation_email
 from fastapi.responses import HTMLResponse
 
 
@@ -165,6 +166,144 @@ async def get_sale_global(
         )
 
     return SaleResponse.model_validate(sale)
+
+
+@router.get(
+    "/sales/{sale_id}/details",
+    response_model=SaleWithItems,
+    summary="Get sale with full details (from any accessible school)"
+)
+async def get_sale_details_global(
+    sale_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds
+):
+    """
+    Get a specific sale with all items and details from any school the user has access to.
+    Does not require school_id in URL - validates access based on the sale's school.
+    """
+    from app.schemas.sale import SaleItemWithProduct
+    from app.models.product import GlobalProduct
+
+    # First, get the sale to validate access
+    result = await db.execute(
+        select(Sale)
+        .options(
+            selectinload(Sale.items).selectinload(SaleItem.product),
+            selectinload(Sale.items).selectinload(SaleItem.global_product),
+            selectinload(Sale.payments)
+        )
+        .where(
+            Sale.id == sale_id,
+            Sale.school_id.in_(user_school_ids)
+        )
+    )
+    sale = result.scalar_one_or_none()
+
+    if not sale:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venta no encontrada o sin acceso"
+        )
+
+    # Build items with product information
+    items_with_products = []
+    for item in sale.items:
+        global_product_data = None
+        if item.is_global_product and item.global_product_id:
+            if item.global_product:
+                global_product_data = item.global_product
+            else:
+                gp_result = await db.execute(
+                    select(GlobalProduct).where(GlobalProduct.id == item.global_product_id)
+                )
+                global_product_data = gp_result.scalar_one_or_none()
+
+        item_dict = {
+            "id": item.id,
+            "sale_id": item.sale_id,
+            "product_id": item.product_id,
+            "global_product_id": item.global_product_id,
+            "is_global_product": item.is_global_product,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "subtotal": item.subtotal,
+            "product_code": item.product.code if item.product else None,
+            "product_name": item.product.name if item.product else None,
+            "product_size": item.product.size if item.product else None,
+            "product_color": item.product.color if item.product else None,
+            "global_product_code": global_product_data.code if global_product_data else None,
+            "global_product_name": global_product_data.name if global_product_data else None,
+            "global_product_size": global_product_data.size if global_product_data else None,
+            "global_product_color": global_product_data.color if global_product_data else None,
+        }
+        items_with_products.append(SaleItemWithProduct(**item_dict))
+
+    # Get client name
+    client_name = None
+    if sale.client_id:
+        result = await db.execute(
+            select(Client).where(Client.id == sale.client_id)
+        )
+        client = result.scalar_one_or_none()
+        client_name = client.name if client else None
+
+    # Get user name (seller)
+    user_name = None
+    if sale.user_id:
+        result = await db.execute(
+            select(User).where(User.id == sale.user_id)
+        )
+        user = result.scalar_one_or_none()
+        user_name = user.username if user else None
+
+    # Get school name
+    school_name = None
+    if sale.school_id:
+        result = await db.execute(
+            select(School).where(School.id == sale.school_id)
+        )
+        school = result.scalar_one_or_none()
+        school_name = school.name if school else None
+
+    # Build payments list
+    from app.schemas.sale import SalePaymentResponse
+    payments_list = [
+        SalePaymentResponse(
+            id=p.id,
+            sale_id=p.sale_id,
+            amount=p.amount,
+            payment_method=p.payment_method,
+            notes=p.notes,
+            transaction_id=p.transaction_id,
+            created_at=p.created_at
+        )
+        for p in (sale.payments or [])
+    ]
+
+    return SaleWithItems(
+        id=sale.id,
+        school_id=sale.school_id,
+        code=sale.code,
+        client_id=sale.client_id,
+        user_id=sale.user_id,
+        status=sale.status,
+        source=sale.source,
+        is_historical=sale.is_historical,
+        payment_method=sale.payment_method,
+        total=sale.total,
+        paid_amount=sale.paid_amount,
+        sale_date=sale.sale_date,
+        notes=sale.notes,
+        created_at=sale.created_at,
+        updated_at=sale.updated_at,
+        items=items_with_products,
+        payments=payments_list,
+        client_name=client_name,
+        user_name=user_name,
+        school_name=school_name
+    )
 
 
 # =============================================================================
@@ -371,6 +510,15 @@ async def get_sale_with_items(
         user = result.scalar_one_or_none()
         user_name = user.username if user else None
 
+    # Get school name
+    school_name = None
+    if sale.school_id:
+        result = await db.execute(
+            select(School).where(School.id == sale.school_id)
+        )
+        school = result.scalar_one_or_none()
+        school_name = school.name if school else None
+
     # Build payments list
     from app.schemas.sale import SalePaymentResponse
     payments_list = [
@@ -405,7 +553,8 @@ async def get_sale_with_items(
         items=items_with_products,
         payments=payments_list,
         client_name=client_name,
-        user_name=user_name
+        user_name=user_name,
+        school_name=school_name
     )
 
 
@@ -435,6 +584,60 @@ async def get_sale_receipt(
         )
 
     return HTMLResponse(content=html)
+
+
+@school_router.post(
+    "/{sale_id}/send-receipt",
+    dependencies=[Depends(require_school_access(UserRole.SELLER))],
+    summary="Send sale receipt by email"
+)
+async def send_sale_receipt_email(
+    school_id: UUID,
+    sale_id: UUID,
+    db: DatabaseSession
+):
+    """
+    Send sale receipt by email to the client.
+
+    Requires the client to have a valid email address.
+    Returns success/failure status.
+    """
+    # Get sale with details
+    receipt_service = ReceiptService(db)
+    sale = await receipt_service.get_sale_with_details(sale_id)
+
+    if not sale:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venta no encontrada"
+        )
+
+    # Check client email
+    if not sale.client or not sale.client.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El cliente no tiene email registrado"
+        )
+
+    # Generate email HTML
+    school_name = sale.school.name if sale.school else "Uniformes Consuelo Rios"
+    email_html = receipt_service.generate_sale_email_html(sale, school_name)
+
+    # Send email
+    success = send_sale_confirmation_email(
+        email=sale.client.email,
+        name=sale.client.name,
+        sale_code=sale.code,
+        html_content=email_html
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al enviar el email"
+        )
+
+    return {"message": f"Recibo enviado a {sale.client.email}", "success": True}
 
 
 # ============================================

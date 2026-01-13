@@ -127,6 +127,7 @@ class InventoryService(SchoolIsolatedService[Inventory]):
         if not inventory:
             raise ValueError("Inventory not found for this product")
 
+        old_quantity = inventory.quantity
         new_quantity = inventory.quantity + adjust_data.adjustment
 
         if new_quantity < 0:
@@ -139,7 +140,47 @@ class InventoryService(SchoolIsolatedService[Inventory]):
         inventory.quantity = new_quantity
         await self.db.flush()
         await self.db.refresh(inventory)
+
+        # === LOW STOCK NOTIFICATION ===
+        # Only notify when stock drops below minimum (not when it was already below)
+        if (
+            adjust_data.adjustment < 0  # Stock decreased
+            and new_quantity < inventory.min_stock_alert  # Now below minimum
+            and old_quantity >= inventory.min_stock_alert  # Was above minimum before
+        ):
+            await self._notify_low_stock(product_id, school_id, new_quantity, inventory.min_stock_alert)
+
         return inventory
+
+    async def _notify_low_stock(
+        self,
+        product_id: UUID,
+        school_id: UUID,
+        current_quantity: int,
+        min_stock_alert: int
+    ) -> None:
+        """Send low stock notification"""
+        try:
+            # Get product info
+            product = await self.db.execute(
+                select(Product).where(Product.id == product_id)
+            )
+            product = product.scalar_one_or_none()
+
+            if product:
+                from app.services.notification import NotificationService
+                notification_service = NotificationService(self.db)
+                await notification_service.notify_low_stock(
+                    product_id=product_id,
+                    product_code=product.code,
+                    product_name=product.name,
+                    current_quantity=current_quantity,
+                    min_stock_alert=min_stock_alert,
+                    school_id=school_id
+                )
+        except Exception as e:
+            # Don't fail the inventory operation if notification fails
+            print(f"Warning: Failed to send low stock notification: {e}")
 
     async def add_stock(
         self,

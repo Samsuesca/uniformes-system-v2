@@ -62,14 +62,26 @@ async def login(
     )
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserWithRoles)
 async def get_current_user_info(
-    current_user: CurrentUser
+    current_user: CurrentUser,
+    db: DatabaseSession
 ):
     """
-    Get current authenticated user information
+    Get current authenticated user information including school roles
     """
-    return UserResponse.model_validate(current_user)
+    user_service = UserService(db)
+
+    # Get user's school roles
+    school_roles = await user_service.get_user_schools(current_user.id)
+    school_roles_response = [
+        UserSchoolRoleResponse.model_validate(role)
+        for role in school_roles
+    ]
+
+    # Build response with roles
+    user_data = UserResponse.model_validate(current_user).model_dump()
+    return UserWithRoles(**user_data, school_roles=school_roles_response)
 
 
 @router.post("/change-password")

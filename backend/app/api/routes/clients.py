@@ -136,7 +136,10 @@ async def list_clients(
             student_grade=c.student_grade,
             is_active=c.is_active,
             client_type=c.client_type,
-            student_count=len(c.students) if c.students else 0
+            student_count=len(c.students) if c.students else 0,
+            is_verified=c.is_verified,
+            welcome_email_sent=c.welcome_email_sent,
+            has_password=c.password_hash is not None
         )
         for c in clients
     ]
@@ -167,7 +170,10 @@ async def search_clients(
             student_grade=c.student_grade,
             is_active=c.is_active,
             client_type=c.client_type,
-            student_count=len(c.students) if c.students else 0
+            student_count=len(c.students) if c.students else 0,
+            is_verified=c.is_verified,
+            welcome_email_sent=c.welcome_email_sent,
+            has_password=c.password_hash is not None
         )
         for c in clients
     ]
@@ -334,6 +340,77 @@ async def delete_client(
     # Soft delete
     await client_service.soft_delete(client_id)
     await db.commit()
+
+
+@router.post(
+    "/{client_id}/resend-activation",
+    status_code=status.HTTP_200_OK
+)
+async def resend_activation_email(
+    client_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser
+):
+    """
+    Resend activation email to a client.
+
+    Generates a new activation token and sends the welcome email.
+    Only works for clients with email who haven't activated their account yet.
+    """
+    from app.services.email import send_welcome_with_activation_email
+    import secrets
+    from datetime import datetime, timedelta
+
+    client_service = ClientService(db)
+
+    client = await client_service.get(client_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado"
+        )
+
+    if not client.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El cliente no tiene email registrado"
+        )
+
+    if client.is_verified and client.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El cliente ya activó su cuenta"
+        )
+
+    # Generate new activation token
+    activation_token = secrets.token_hex(32)
+    client.verification_token = activation_token
+    client.verification_token_expires = datetime.utcnow() + timedelta(days=7)
+
+    # Send activation email
+    sent = send_welcome_with_activation_email(
+        email=client.email,
+        token=activation_token,
+        name=client.name,
+        transaction_type="recordatorio"
+    )
+
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al enviar el correo. Intenta de nuevo."
+        )
+
+    # Update welcome_email_sent flag
+    client.welcome_email_sent = True
+    client.welcome_email_sent_at = datetime.utcnow()
+
+    await db.commit()
+
+    return {
+        "message": f"Correo de activación enviado a {client.email}",
+        "email": client.email
+    }
 
 
 # =============================================================================
@@ -670,12 +747,14 @@ async def get_client_orders(
             "id": str(order.id),
             "code": order.code,
             "status": order.status.value,
+            "source": order.source.value if order.source else "desktop_app",  # Origen del pedido
             "total": float(order.total),
             "balance": float(order.balance),
             "created_at": order.created_at.isoformat() if order.created_at else None,
             "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
             "items_count": len(order.items) if order.items else 0,
-            "payment_proof_url": order.payment_proof_url,  # Add payment proof URL
+            "payment_proof_url": order.payment_proof_url,
+            "payment_proof_status": order.payment_proof_status.value if order.payment_proof_status else None,  # Estado del comprobante
             "items": [
                 {
                     "id": str(item.id),

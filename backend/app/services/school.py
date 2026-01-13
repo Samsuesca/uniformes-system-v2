@@ -129,7 +129,7 @@ class SchoolService(BaseService[School]):
             School summary or None if not found
         """
         from app.models.product import Product
-        from app.models.client import Client
+        from app.models.client import ClientStudent
         from app.models.sale import Sale
 
         school = await self.get(school_id)
@@ -140,8 +140,11 @@ class SchoolService(BaseService[School]):
         products_count = await self.db.execute(
             select(func.count(Product.id)).where(Product.school_id == school_id)
         )
+        # Clients are now GLOBAL, count unique clients with students in this school
         clients_count = await self.db.execute(
-            select(func.count(Client.id)).where(Client.school_id == school_id)
+            select(func.count(func.distinct(ClientStudent.client_id))).where(
+                ClientStudent.school_id == school_id
+            )
         )
         sales_count = await self.db.execute(
             select(func.count(Sale.id)).where(Sale.school_id == school_id)

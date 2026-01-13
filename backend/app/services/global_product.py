@@ -359,3 +359,35 @@ class GlobalInventoryService:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def reserve_stock(
+        self,
+        product_id: UUID,
+        quantity: int
+    ) -> GlobalInventory | None:
+        """
+        Reserve stock for a sale/order (decreases inventory)
+
+        Args:
+            product_id: Global Product UUID
+            quantity: Quantity to reserve
+
+        Returns:
+            Updated inventory
+
+        Raises:
+            ValueError: If insufficient stock
+        """
+        inventory = await self.get_by_product(product_id)
+        if not inventory:
+            raise ValueError(f"No inventory found for global product {product_id}")
+
+        if inventory.quantity < quantity:
+            raise ValueError(
+                f"Insufficient stock. Available: {inventory.quantity}, Requested: {quantity}"
+            )
+
+        inventory.quantity -= quantity
+        await self.db.flush()
+        await self.db.refresh(inventory)
+        return inventory

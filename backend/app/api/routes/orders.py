@@ -174,6 +174,114 @@ async def get_order_global(
     return OrderResponse.model_validate(order)
 
 
+@router.get(
+    "/orders/{order_id}/details",
+    response_model=OrderWithItems,
+    summary="Get order with full details (from any accessible school)"
+)
+async def get_order_details_global(
+    order_id: UUID,
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    user_school_ids: UserSchoolIds
+):
+    """
+    Get a specific order with all items and details from any school the user has access to.
+    Does not require school_id in URL - validates access based on the order's school.
+    """
+    # First, get custom school IDs (schools with "+" prefix) for web portal orders
+    custom_schools_result = await db.execute(
+        select(School.id).where(School.name.like('+%'))
+    )
+    custom_school_ids = [row[0] for row in custom_schools_result.fetchall()]
+    all_accessible_school_ids = list(set(list(user_school_ids) + custom_school_ids))
+
+    # Get order with all relations
+    result = await db.execute(
+        select(Order)
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.garment_type),
+            joinedload(Order.client)
+        )
+        .where(
+            Order.id == order_id,
+            Order.school_id.in_(all_accessible_school_ids)
+        )
+    )
+    order = result.unique().scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Encargo no encontrado o sin acceso"
+        )
+
+    # Get school name
+    school_name = None
+    if order.school_id:
+        school_result = await db.execute(
+            select(School).where(School.id == order.school_id)
+        )
+        school = school_result.scalar_one_or_none()
+        school_name = school.name if school else None
+
+    # Build response with client and items info
+    items_response = []
+    for item in order.items:
+        item_dict = {
+            "id": item.id,
+            "order_id": item.order_id,
+            "school_id": item.school_id,
+            "garment_type_id": item.garment_type_id,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "subtotal": item.subtotal,
+            "size": item.size,
+            "color": item.color,
+            "gender": item.gender,
+            "custom_measurements": item.custom_measurements,
+            "embroidery_text": item.embroidery_text,
+            "notes": item.notes,
+            "item_status": item.item_status,
+            "status_updated_at": item.status_updated_at,
+            "garment_type_name": item.garment_type.name if item.garment_type else "Unknown",
+            "garment_type_category": item.garment_type.category if item.garment_type else None,
+            "requires_embroidery": item.garment_type.requires_embroidery if item.garment_type else False,
+            "has_custom_measurements": bool(item.custom_measurements)
+        }
+        items_response.append(item_dict)
+
+    return OrderWithItems(
+        id=order.id,
+        school_id=order.school_id,
+        code=order.code,
+        client_id=order.client_id,
+        status=order.status,
+        delivery_date=order.delivery_date,
+        notes=order.notes,
+        subtotal=order.subtotal,
+        tax=order.tax,
+        total=order.total,
+        paid_amount=order.paid_amount,
+        balance=order.balance,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+        items=items_response,
+        client_name=order.client.name if order.client else "Unknown",
+        client_phone=order.client.phone if order.client else None,
+        client_email=order.client.email if order.client else None,
+        student_name=order.client.student_name if order.client else None,
+        delivery_type=order.delivery_type,
+        delivery_address=order.delivery_address,
+        delivery_neighborhood=order.delivery_neighborhood,
+        delivery_city=order.delivery_city,
+        delivery_references=order.delivery_references,
+        delivery_zone_id=order.delivery_zone_id,
+        delivery_fee=order.delivery_fee,
+        school_name=school_name
+    )
+
+
 # =============================================================================
 # School-Specific Orders Router (original endpoints)
 # =============================================================================
@@ -311,6 +419,15 @@ async def get_order_for_school(
             detail="Order not found"
         )
 
+    # Get school name
+    school_name = None
+    if order.school_id:
+        result = await db.execute(
+            select(School).where(School.id == order.school_id)
+        )
+        school = result.scalar_one_or_none()
+        school_name = school.name if school else None
+
     # Build response with client and items info
     items_response = []
     for item in order.items:
@@ -364,7 +481,8 @@ async def get_order_for_school(
         delivery_city=order.delivery_city,
         delivery_references=order.delivery_references,
         delivery_zone_id=order.delivery_zone_id,
-        delivery_fee=order.delivery_fee
+        delivery_fee=order.delivery_fee,
+        school_name=school_name
     )
 
 
@@ -935,9 +1053,11 @@ async def upload_payment_proof(
             detail=f"Error al guardar el archivo: {str(e)}"
         )
 
-    # Update order with payment proof URL
+    # Update order with payment proof URL and set status to pending
+    from app.models.order import PaymentProofStatus
     file_url = f"/uploads/payment-proofs/{unique_filename}"
     order.payment_proof_url = file_url
+    order.payment_proof_status = PaymentProofStatus.PENDING  # Marcar como pendiente de revisión
     if payment_notes:
         order.payment_notes = payment_notes
 
@@ -1006,7 +1126,9 @@ async def approve_payment(
         )
 
     # Update order status to in_production (payment approved)
+    from app.models.order import PaymentProofStatus
     order.status = OrderStatus.IN_PRODUCTION
+    order.payment_proof_status = PaymentProofStatus.APPROVED  # Marcar comprobante como aprobado
     order.payment_notes = (order.payment_notes or "") + f"\n[Pago aprobado por {current_user.full_name}]"
 
     await db.commit()
@@ -1068,9 +1190,11 @@ async def reject_payment(
             detail="No hay comprobante de pago para rechazar"
         )
 
-    # Add rejection notes
+    # Add rejection notes and mark as rejected
+    from app.models.order import PaymentProofStatus
     rejection_msg = f"\n[Pago rechazado por {current_user.full_name}]: {rejection_notes}"
     order.payment_notes = (order.payment_notes or "") + rejection_msg
+    order.payment_proof_status = PaymentProofStatus.REJECTED  # Marcar como rechazado
 
     # Clear payment proof URL so client can upload a new one
     order.payment_proof_url = None

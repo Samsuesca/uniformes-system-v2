@@ -15,10 +15,14 @@ from sqlalchemy.orm import selectinload
 
 from app.models.sale import Sale, SaleItem, SalePayment, SaleStatus, SaleChange, ChangeStatus, ChangeType, PaymentMethod
 from app.models.product import Product, GlobalProduct
+from app.models.client import Client
 from app.models.accounting import Transaction, TransactionType, AccPaymentMethod, AccountsReceivable
 from app.schemas.sale import SaleCreate, SaleUpdate, SaleChangeCreate, SaleChangeUpdate, AddPaymentToSale
 from app.services.base import SchoolIsolatedService
 from app.services.global_product import GlobalInventoryService
+from app.services.email import send_welcome_with_activation_email
+import secrets
+from datetime import timedelta
 
 
 class SaleService(SchoolIsolatedService[Sale]):
@@ -283,7 +287,7 @@ class SaleService(SchoolIsolatedService[Sale]):
                         type=TransactionType.INCOME,
                         amount=payment_info["amount"],
                         payment_method=acc_payment_method,
-                        description=f"Venta {sale.code}" + (f" ({payment_info['method'].value})" if len(payments_to_process) > 1 else ""),
+                        description=f"Venta {sale.code}" + (f" ({payment_info['method'].value if hasattr(payment_info['method'], 'value') else payment_info['method']})" if len(payments_to_process) > 1 else ""),
                         category="sales",
                         reference_code=sale.code,
                         transaction_date=sale.sale_date.date() if hasattr(sale.sale_date, 'date') else sale.sale_date,
@@ -322,6 +326,11 @@ class SaleService(SchoolIsolatedService[Sale]):
 
         # Refresh sale with items and payments loaded
         await self.db.refresh(sale, ["items", "payments"])
+
+        # === ENVIAR EMAIL DE BIENVENIDA EN PRIMERA TRANSACCIÓN ===
+        # Solo para ventas no históricas con cliente asociado
+        if not is_historical and sale.client_id:
+            await self._send_welcome_email_if_first_transaction(sale.client_id, sale.code)
 
         return sale
 
@@ -824,3 +833,84 @@ class SaleService(SchoolIsolatedService[Sale]):
         await self.db.flush()
 
         return payment
+
+    # ============================================
+    # Welcome Email on First Transaction
+    # ============================================
+
+    async def _send_welcome_email_if_first_transaction(
+        self,
+        client_id: UUID,
+        sale_code: str
+    ) -> bool:
+        """
+        Send welcome email with activation link on client's FIRST transaction.
+
+        This is the preferred approach:
+        - NOT sent when client is created
+        - SENT when client has their first order or sale
+        - Includes activation link, portal instructions, and business contact info
+
+        Args:
+            client_id: Client UUID
+            sale_code: Sale code for context in email
+
+        Returns:
+            True if email was sent, False otherwise
+        """
+        # Get client
+        result = await self.db.execute(
+            select(Client).where(Client.id == client_id)
+        )
+        client = result.scalar_one_or_none()
+
+        if not client:
+            return False
+
+        # Check if client has email
+        if not client.email:
+            print(f"[SALE] Client {client.name} has no email, skipping welcome email")
+            return False
+
+        # Check if welcome email was already sent (not first transaction)
+        if client.welcome_email_sent:
+            print(f"[SALE] Client {client.name} already received welcome email, skipping")
+            return False
+
+        # Generate new activation token (64 chars hex)
+        activation_token = secrets.token_hex(32)
+
+        # Set token expiration to 7 days
+        client.verification_token = activation_token
+        client.verification_token_expires = datetime.utcnow() + timedelta(days=7)
+
+        # Mark welcome email as sent
+        client.welcome_email_sent = True
+        client.welcome_email_sent_at = datetime.utcnow()
+
+        await self.db.flush()
+
+        # Send welcome email with activation link
+        try:
+            sent = send_welcome_with_activation_email(
+                email=client.email,
+                token=activation_token,
+                name=client.name,
+                transaction_type="compra"
+            )
+            if sent:
+                print(f"✅ [SALE] Welcome email sent to {client.email} for sale {sale_code}")
+            else:
+                print(f"⚠️ [SALE] Failed to send welcome email to {client.email}")
+                # Rollback the flag if email failed
+                client.welcome_email_sent = False
+                client.welcome_email_sent_at = None
+                await self.db.flush()
+            return sent
+        except Exception as e:
+            print(f"❌ [SALE] Error sending welcome email: {e}")
+            # Rollback the flag if email failed
+            client.welcome_email_sent = False
+            client.welcome_email_sent_at = None
+            await self.db.flush()
+            return False
