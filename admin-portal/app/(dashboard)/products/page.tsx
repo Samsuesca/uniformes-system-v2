@@ -10,58 +10,64 @@ import {
   Package,
   Filter,
   X,
-  Plus as PlusIcon,
-  Minus,
-  Check,
+  Building2,
+  Globe,
+  Tag,
+  AlertCircle,
 } from 'lucide-react';
 import schoolService from '@/lib/services/schoolService';
 import productService from '@/lib/services/productService';
-import type { School, Product, GarmentType } from '@/lib/api';
+import { useAdminAuth } from '@/lib/adminAuth';
+import type { School, Product, GarmentType, GlobalProduct, GlobalGarmentType } from '@/lib/api';
 
-// Extended type to track school association
-interface GarmentTypeWithSchool extends GarmentType {
-  school_id?: string;
-}
+// Import modals
+import GarmentTypeModal from '@/components/products/GarmentTypeModal';
+import SchoolProductModal from '@/components/products/SchoolProductModal';
+import GlobalProductModal from '@/components/products/GlobalProductModal';
+import InventoryAdjustmentModal from '@/components/products/InventoryAdjustmentModal';
+
+type TabType = 'school' | 'global' | 'garment-types';
+type GarmentTypeSubTab = 'school' | 'global';
 
 export default function ProductsPage() {
+  const { user } = useAdminAuth();
+  const isSuperuser = user?.is_superuser ?? false;
+
+  // Data state
   const [schools, setSchools] = useState<School[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [garmentTypes, setGarmentTypes] = useState<GarmentTypeWithSchool[]>([]);
+  const [schoolProducts, setSchoolProducts] = useState<Product[]>([]);
+  const [globalProducts, setGlobalProducts] = useState<GlobalProduct[]>([]);
+  const [schoolGarmentTypes, setSchoolGarmentTypes] = useState<GarmentType[]>([]);
+  const [globalGarmentTypes, setGlobalGarmentTypes] = useState<GlobalGarmentType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabType>('school');
+  const [garmentTypeSubTab, setGarmentTypeSubTab] = useState<GarmentTypeSubTab>('school');
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchool, setSelectedSchool] = useState<string>('all');
   const [selectedGarmentType, setSelectedGarmentType] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<string>('all');
-  const [showGlobalOnly, setShowGlobalOnly] = useState(false);
 
   // Modal states
-  const [showModal, setShowModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    size: '',
-    price: 0,
-    stock: 0,
-    garment_type_id: '',
-    image_url: '',
-    school_id: '',
-    is_global: false,
-  });
-  const [formError, setFormError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  // Inventory modal
+  const [showSchoolProductModal, setShowSchoolProductModal] = useState(false);
+  const [showGlobalProductModal, setShowGlobalProductModal] = useState(false);
+  const [showGarmentTypeModal, setShowGarmentTypeModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
-  const [inventoryProduct, setInventoryProduct] = useState<Product | null>(null);
-  const [inventoryData, setInventoryData] = useState({
-    adjustment_type: 'add' as 'add' | 'remove' | 'set',
-    quantity: 0,
-    reason: '',
-  });
+
+  // Edit states
+  const [editingSchoolProduct, setEditingSchoolProduct] = useState<Product | null>(null);
+  const [editingGlobalProduct, setEditingGlobalProduct] = useState<GlobalProduct | null>(null);
+  const [editingGarmentType, setEditingGarmentType] = useState<GarmentType | GlobalGarmentType | null>(null);
+  const [isEditingGlobalType, setIsEditingGlobalType] = useState(false);
+  const [inventoryProduct, setInventoryProduct] = useState<Product | GlobalProduct | null>(null);
+  const [inventoryIsGlobal, setInventoryIsGlobal] = useState(false);
+
+  // Selected school for creating new items
+  const [createSchoolId, setCreateSchoolId] = useState<string>('');
 
   const loadData = async () => {
     try {
@@ -71,38 +77,49 @@ export default function ProductsPage() {
       const schoolsData = await schoolService.list({ include_inactive: false });
       setSchools(schoolsData);
 
-      // Load products from all schools + global
-      const allProducts: Product[] = [];
-      const allGarmentTypes: GarmentType[] = [];
+      if (schoolsData.length > 0 && !createSchoolId) {
+        setCreateSchoolId(schoolsData[0].id);
+      }
+
+      // Load all data in parallel
+      const allSchoolProducts: Product[] = [];
+      const allSchoolGarmentTypes: GarmentType[] = [];
 
       // Load global products
       try {
-        const globalProducts = await productService.listGlobal({ limit: 500 });
-        allProducts.push(...globalProducts.map(p => ({ ...p, is_global: true })));
+        const globalProds = await productService.getGlobalProducts(true);
+        setGlobalProducts(globalProds);
       } catch (e) {
         console.error('Error loading global products:', e);
       }
 
-      // Load products and garment types from each school
+      // Load global garment types
+      try {
+        const globalTypes = await productService.listGlobalGarmentTypes();
+        setGlobalGarmentTypes(globalTypes);
+      } catch (e) {
+        console.error('Error loading global garment types:', e);
+      }
+
+      // Load school products and garment types
       for (const school of schoolsData) {
         try {
-          const schoolProducts = await productService.listBySchool(school.id, { limit: 500 });
-          allProducts.push(...schoolProducts.map(p => ({ ...p, school_id: school.id, is_global: false })));
+          const schoolProducts = await productService.getProducts(school.id, true);
+          allSchoolProducts.push(...schoolProducts.map(p => ({ ...p, school_id: school.id })));
 
-          const schoolGarmentTypes = await productService.listGarmentTypes(school.id);
-          schoolGarmentTypes.forEach(gt => {
-            if (!allGarmentTypes.find(t => t.id === gt.id)) {
-              // Add school_id to track which school this garment type belongs to
-              allGarmentTypes.push({ ...gt, school_id: school.id });
+          const schoolTypes = await productService.listGarmentTypes(school.id);
+          schoolTypes.forEach(gt => {
+            if (!allSchoolGarmentTypes.find(t => t.id === gt.id)) {
+              allSchoolGarmentTypes.push({ ...gt, school_id: school.id });
             }
           });
         } catch (e) {
-          console.error(`Error loading products for school ${school.name}:`, e);
+          console.error(`Error loading data for school ${school.name}:`, e);
         }
       }
 
-      setProducts(allProducts);
-      setGarmentTypes(allGarmentTypes);
+      setSchoolProducts(allSchoolProducts);
+      setSchoolGarmentTypes(allSchoolGarmentTypes);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al cargar datos');
     } finally {
@@ -114,153 +131,61 @@ export default function ProductsPage() {
     loadData();
   }, []);
 
-  // Filter products
-  const filteredProducts = products.filter((product) => {
+  // Filter school products
+  const filteredSchoolProducts = schoolProducts.filter((product) => {
     const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase());
+      (product.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (product.garment_type_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
 
-    const matchesSchool =
-      selectedSchool === 'all' ||
-      (selectedSchool === 'global' && product.is_global) ||
-      product.school_id === selectedSchool;
+    const matchesSchool = selectedSchool === 'all' || product.school_id === selectedSchool;
 
     const matchesGarmentType =
-      selectedGarmentType === 'all' ||
-      product.garment_type_id === selectedGarmentType;
+      selectedGarmentType === 'all' || product.garment_type_id === selectedGarmentType;
 
+    const stock = product.stock ?? product.inventory_quantity ?? 0;
     const matchesStock =
       stockFilter === 'all' ||
-      (stockFilter === 'in_stock' && product.stock > 0) ||
-      (stockFilter === 'low_stock' && product.stock > 0 && product.stock <= 5) ||
-      (stockFilter === 'out_of_stock' && product.stock === 0);
+      (stockFilter === 'in_stock' && stock > 0) ||
+      (stockFilter === 'low_stock' && stock > 0 && stock <= 5) ||
+      (stockFilter === 'out_of_stock' && stock === 0);
 
-    const matchesGlobal = !showGlobalOnly || product.is_global;
+    return matchesSearch && matchesSchool && matchesGarmentType && matchesStock;
+  });
 
-    return matchesSearch && matchesSchool && matchesGarmentType && matchesStock && matchesGlobal;
+  // Filter global products
+  const filteredGlobalProducts = globalProducts.filter((product) => {
+    const matchesSearch =
+      (product.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (product.garment_type_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+
+    const matchesGarmentType =
+      selectedGarmentType === 'all' || product.garment_type_id === selectedGarmentType;
+
+    const stock = product.inventory_quantity ?? 0;
+    const matchesStock =
+      stockFilter === 'all' ||
+      (stockFilter === 'in_stock' && stock > 0) ||
+      (stockFilter === 'low_stock' && stock > 0 && stock <= 5) ||
+      (stockFilter === 'out_of_stock' && stock === 0);
+
+    return matchesSearch && matchesGarmentType && matchesStock;
+  });
+
+  // Filter garment types
+  const filteredSchoolGarmentTypes = schoolGarmentTypes.filter((type) => {
+    const matchesSearch = (type.name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const matchesSchool = selectedSchool === 'all' || type.school_id === selectedSchool;
+    return matchesSearch && matchesSchool;
+  });
+
+  const filteredGlobalGarmentTypes = globalGarmentTypes.filter((type) => {
+    return (type.name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
   });
 
   const getSchoolName = (schoolId: string | undefined) => {
-    if (!schoolId) return 'Global';
+    if (!schoolId) return '-';
     const school = schools.find((s) => s.id === schoolId);
     return school?.name || 'Desconocido';
-  };
-
-  const openCreateModal = () => {
-    setEditingProduct(null);
-    setFormData({
-      code: '',
-      name: '',
-      size: '',
-      price: 0,
-      stock: 0,
-      garment_type_id: '',
-      image_url: '',
-      school_id: schools[0]?.id || '',
-      is_global: false,
-    });
-    setFormError(null);
-    setShowModal(true);
-  };
-
-  const openEditModal = (product: Product) => {
-    setEditingProduct(product);
-    setFormData({
-      code: product.code,
-      name: product.name,
-      size: product.size,
-      price: product.price,
-      stock: product.stock,
-      garment_type_id: product.garment_type_id || '',
-      image_url: product.image_url || '',
-      school_id: product.school_id || '',
-      is_global: product.is_global,
-    });
-    setFormError(null);
-    setShowModal(true);
-  };
-
-  const openInventoryModal = (product: Product) => {
-    setInventoryProduct(product);
-    setInventoryData({
-      adjustment_type: 'add',
-      quantity: 0,
-      reason: '',
-    });
-    setShowInventoryModal(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    setSaving(true);
-
-    try {
-      const productData = {
-        code: formData.code,
-        name: formData.name,
-        size: formData.size,
-        price: formData.price,
-        stock: formData.stock,
-        garment_type_id: formData.garment_type_id || undefined,
-        image_url: formData.image_url || undefined,
-      };
-
-      if (editingProduct) {
-        if (editingProduct.is_global) {
-          await productService.updateGlobal(editingProduct.id, productData);
-        } else {
-          await productService.update(editingProduct.school_id!, editingProduct.id, productData);
-        }
-      } else {
-        if (formData.is_global) {
-          await productService.createGlobal(productData);
-        } else {
-          await productService.create(formData.school_id, productData);
-        }
-      }
-      setShowModal(false);
-      loadData();
-    } catch (err: any) {
-      setFormError(err.response?.data?.detail || 'Error al guardar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleInventorySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inventoryProduct || !inventoryProduct.school_id) return;
-
-    try {
-      setSaving(true);
-      await productService.adjustInventory(
-        inventoryProduct.school_id,
-        inventoryProduct.id,
-        inventoryData
-      );
-      setShowInventoryModal(false);
-      loadData();
-    } catch (err: any) {
-      setFormError(err.response?.data?.detail || 'Error al ajustar inventario');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (product: Product) => {
-    if (!confirm(`¿Estás seguro de eliminar "${product.name}"?`)) return;
-
-    try {
-      if (product.is_global) {
-        await productService.deleteGlobal(product.id);
-      } else {
-        await productService.delete(product.school_id!, product.id);
-      }
-      loadData();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al eliminar');
-    }
   };
 
   const formatCurrency = (value: number) => {
@@ -276,11 +201,105 @@ export default function ProductsPage() {
     setSelectedSchool('all');
     setSelectedGarmentType('all');
     setStockFilter('all');
-    setShowGlobalOnly(false);
   };
 
   const hasActiveFilters =
-    searchTerm || selectedSchool !== 'all' || selectedGarmentType !== 'all' || stockFilter !== 'all' || showGlobalOnly;
+    searchTerm || selectedSchool !== 'all' || selectedGarmentType !== 'all' || stockFilter !== 'all';
+
+  // Handlers for modals
+  const openCreateSchoolProduct = () => {
+    if (!createSchoolId && schools.length > 0) {
+      setCreateSchoolId(schools[0].id);
+    }
+    setEditingSchoolProduct(null);
+    setShowSchoolProductModal(true);
+  };
+
+  const openEditSchoolProduct = (product: Product) => {
+    setEditingSchoolProduct(product);
+    setCreateSchoolId(product.school_id);
+    setShowSchoolProductModal(true);
+  };
+
+  const openCreateGlobalProduct = () => {
+    setEditingGlobalProduct(null);
+    setShowGlobalProductModal(true);
+  };
+
+  const openEditGlobalProduct = (product: GlobalProduct) => {
+    setEditingGlobalProduct(product);
+    setShowGlobalProductModal(true);
+  };
+
+  const openCreateGarmentType = (isGlobal: boolean) => {
+    setEditingGarmentType(null);
+    setIsEditingGlobalType(isGlobal);
+    if (!isGlobal && !createSchoolId && schools.length > 0) {
+      setCreateSchoolId(schools[0].id);
+    }
+    setShowGarmentTypeModal(true);
+  };
+
+  const openEditGarmentType = (type: GarmentType | GlobalGarmentType, isGlobal: boolean) => {
+    setEditingGarmentType(type);
+    setIsEditingGlobalType(isGlobal);
+    if (!isGlobal && 'school_id' in type) {
+      setCreateSchoolId(type.school_id);
+    }
+    setShowGarmentTypeModal(true);
+  };
+
+  const openInventory = (product: Product | GlobalProduct, isGlobal: boolean) => {
+    setInventoryProduct(product);
+    setInventoryIsGlobal(isGlobal);
+    setShowInventoryModal(true);
+  };
+
+  const handleDeleteSchoolProduct = async (product: Product) => {
+    if (!confirm(`¿Eliminar "${product.name}"?`)) return;
+    try {
+      await productService.delete(product.school_id, product.id);
+      loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al eliminar');
+    }
+  };
+
+  const handleDeleteGlobalProduct = async (product: GlobalProduct) => {
+    if (!confirm(`¿Eliminar "${product.name}"?`)) return;
+    try {
+      await productService.deleteGlobal(product.id);
+      loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al eliminar');
+    }
+  };
+
+  const handleDeleteGarmentType = async (type: GarmentType | GlobalGarmentType, isGlobal: boolean) => {
+    if (!confirm(`¿Eliminar tipo "${type.name}"?`)) return;
+    try {
+      if (isGlobal) {
+        await productService.deleteGlobalGarmentType(type.id);
+      } else if ('school_id' in type) {
+        await productService.deleteGarmentType(type.school_id, type.id);
+      }
+      loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al eliminar');
+    }
+  };
+
+  const genderLabels: Record<string, string> = {
+    unisex: 'Unisex',
+    male: 'Masculino',
+    female: 'Femenino',
+  };
+
+  const categoryLabels: Record<string, string> = {
+    uniforme_diario: 'Uniforme Diario',
+    uniforme_deportivo: 'Uniforme Deportivo',
+    accesorios: 'Accesorios',
+  };
 
   return (
     <div className="space-y-6">
@@ -291,7 +310,13 @@ export default function ProductsPage() {
             Productos e Inventario
           </h1>
           <p className="text-slate-600 mt-1">
-            {filteredProducts.length} de {products.length} productos
+            {activeTab === 'school' && `${filteredSchoolProducts.length} productos de colegio`}
+            {activeTab === 'global' && `${filteredGlobalProducts.length} productos globales`}
+            {activeTab === 'garment-types' && (
+              garmentTypeSubTab === 'school'
+                ? `${filteredSchoolGarmentTypes.length} tipos de colegio`
+                : `${filteredGlobalGarmentTypes.length} tipos globales`
+            )}
           </p>
         </div>
         <div className="flex gap-3">
@@ -303,438 +328,583 @@ export default function ProductsPage() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Actualizar
           </button>
-          <button onClick={openCreateModal} className="btn-primary flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Nuevo Producto
-          </button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          <Filter className="w-4 h-4" />
-          Filtros
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="ml-auto text-brand-600 hover:text-brand-700 flex items-center gap-1"
-            >
-              <X className="w-4 h-4" />
-              Limpiar
+          {activeTab === 'school' && (
+            <button onClick={openCreateSchoolProduct} className="btn-primary flex items-center gap-2">
+              <Plus className="w-5 h-5" />
+              Nuevo Producto
             </button>
           )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Search */}
-          <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nombre o código..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="admin-input pl-10"
-            />
-          </div>
-
-          {/* School Filter */}
-          <select
-            value={selectedSchool}
-            onChange={(e) => {
-              setSelectedSchool(e.target.value);
-              // Reset garment type filter when school changes
-              setSelectedGarmentType('all');
-            }}
-            className="admin-input"
-          >
-            <option value="all">Todos los colegios</option>
-            <option value="global">Solo Globales</option>
-            {schools.map((school) => (
-              <option key={school.id} value={school.id}>
-                {school.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Garment Type Filter - filtered by selected school */}
-          <select
-            value={selectedGarmentType}
-            onChange={(e) => setSelectedGarmentType(e.target.value)}
-            className="admin-input"
-          >
-            <option value="all">Todos los tipos</option>
-            {garmentTypes
-              .filter((type) => {
-                // If "all" or "global" is selected, show all types
-                if (selectedSchool === 'all' || selectedSchool === 'global') {
-                  return true;
-                }
-                // Otherwise, only show types from the selected school
-                return type.school_id === selectedSchool;
-              })
-              .map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-          </select>
-
-          {/* Stock Filter */}
-          <select
-            value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value)}
-            className="admin-input"
-          >
-            <option value="all">Todo el stock</option>
-            <option value="in_stock">En stock</option>
-            <option value="low_stock">Stock bajo (≤5)</option>
-            <option value="out_of_stock">Sin stock</option>
-          </select>
+          {activeTab === 'global' && isSuperuser && (
+            <button onClick={openCreateGlobalProduct} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition">
+              <Plus className="w-5 h-5" />
+              Nuevo Producto Global
+            </button>
+          )}
+          {activeTab === 'garment-types' && (
+            garmentTypeSubTab === 'school' ? (
+              <button onClick={() => openCreateGarmentType(false)} className="btn-primary flex items-center gap-2">
+                <Plus className="w-5 h-5" />
+                Nuevo Tipo
+              </button>
+            ) : isSuperuser && (
+              <button onClick={() => openCreateGarmentType(true)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition">
+                <Plus className="w-5 h-5" />
+                Nuevo Tipo Global
+              </button>
+            )
+          )}
         </div>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
-          {error}
-        </div>
-      )}
-
-      {/* Table */}
+      {/* Tabs */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="flex border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab('school')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition ${
+              activeTab === 'school'
+                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Productos Colegio
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">
+              {schoolProducts.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('global')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition ${
+              activeTab === 'global'
+                ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            Productos Globales
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">
+              {globalProducts.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('garment-types')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium transition ${
+              activeTab === 'garment-types'
+                ? 'text-slate-900 border-b-2 border-slate-900 bg-slate-50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            Tipos de Prenda
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">
+              {schoolGarmentTypes.length + globalGarmentTypes.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Garment Types Sub-tabs */}
+        {activeTab === 'garment-types' && (
+          <div className="flex border-b border-slate-200 bg-slate-50">
+            <button
+              onClick={() => setGarmentTypeSubTab('school')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition ${
+                garmentTypeSubTab === 'school'
+                  ? 'text-blue-600 bg-white border-b-2 border-blue-600'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Building2 className="w-3 h-3" />
+              Tipos del Colegio ({schoolGarmentTypes.length})
+            </button>
+            <button
+              onClick={() => setGarmentTypeSubTab('global')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition ${
+                garmentTypeSubTab === 'global'
+                  ? 'text-purple-600 bg-white border-b-2 border-purple-600'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Globe className="w-3 h-3" />
+              Tipos Globales ({globalGarmentTypes.length})
+            </button>
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
+            <Filter className="w-4 h-4" />
+            Filtros
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="ml-auto text-brand-600 hover:text-brand-700 flex items-center gap-1"
+              >
+                <X className="w-4 h-4" />
+                Limpiar
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Search */}
+            <div className="relative lg:col-span-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="admin-input pl-10"
+              />
+            </div>
+
+            {/* School Filter (for school products and school garment types) */}
+            {(activeTab === 'school' || (activeTab === 'garment-types' && garmentTypeSubTab === 'school')) && (
+              <select
+                value={selectedSchool}
+                onChange={(e) => {
+                  setSelectedSchool(e.target.value);
+                  setSelectedGarmentType('all');
+                }}
+                className="admin-input"
+              >
+                <option value="all">Todos los colegios</option>
+                {schools.map((school) => (
+                  <option key={school.id} value={school.id}>
+                    {school.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Stock Filter (for products only) */}
+            {(activeTab === 'school' || activeTab === 'global') && (
+              <select
+                value={stockFilter}
+                onChange={(e) => setStockFilter(e.target.value)}
+                className="admin-input"
+              >
+                <option value="all">Todo el stock</option>
+                <option value="in_stock">En stock</option>
+                <option value="low_stock">Stock bajo (≤5)</option>
+                <option value="out_of_stock">Sin stock</option>
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="p-4 bg-red-50 border-b border-red-200 text-red-600 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+            <button onClick={() => setError(null)} className="ml-auto">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Content */}
         <div className="overflow-x-auto">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Nombre</th>
-                <th>Talla</th>
-                <th>Precio</th>
-                <th>Stock</th>
-                <th>Colegio</th>
-                <th>Tipo</th>
-                <th className="text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+          {/* School Products Table */}
+          {activeTab === 'school' && (
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan={8} className="text-center py-8">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-brand-500"></div>
-                    <p className="mt-2 text-slate-500">Cargando productos...</p>
-                  </td>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Talla</th>
+                  <th>Color</th>
+                  <th>Precio</th>
+                  <th>Stock</th>
+                  <th>Estado</th>
+                  <th>Colegio</th>
+                  <th className="text-right">Acciones</th>
                 </tr>
-              ) : filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-8 text-slate-500">
-                    <Package className="w-12 h-12 mx-auto mb-2 text-slate-300" />
-                    No se encontraron productos
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map((product) => (
-                  <tr key={product.id}>
-                    <td className="font-mono text-sm">{product.code}</td>
-                    <td className="font-medium">{product.name}</td>
-                    <td>{product.size}</td>
-                    <td className="font-medium text-green-600">
-                      {formatCurrency(product.price)}
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          product.stock === 0
-                            ? 'badge-error'
-                            : product.stock <= 5
-                            ? 'badge-warning'
-                            : 'badge-success'
-                        }`}
-                      >
-                        {product.stock}
-                      </span>
-                    </td>
-                    <td>
-                      {product.is_global ? (
-                        <span className="badge bg-purple-100 text-purple-800">Global</span>
-                      ) : (
-                        <span className="text-sm text-slate-600">
-                          {getSchoolName(product.school_id)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="text-sm text-slate-600">
-                      {product.garment_type_name || '-'}
-                    </td>
-                    <td>
-                      <div className="flex items-center justify-end gap-1">
-                        {!product.is_global && (
-                          <button
-                            onClick={() => openInventoryModal(product)}
-                            className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Ajustar inventario"
-                          >
-                            <Package className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => openEditModal(product)}
-                          className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(product)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-brand-500"></div>
+                      <p className="mt-2 text-slate-500">Cargando productos...</p>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : filteredSchoolProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-8 text-slate-500">
+                      <Package className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                      No se encontraron productos
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSchoolProducts.map((product) => {
+                    const stock = product.stock ?? product.inventory_quantity ?? 0;
+                    return (
+                      <tr key={product.id}>
+                        <td className="font-medium">{product.name || '-'}</td>
+                        <td className="text-sm text-slate-600">{product.garment_type_name || '-'}</td>
+                        <td>{product.size}</td>
+                        <td className="text-sm">{product.color || '-'}</td>
+                        <td className="font-medium text-green-600">{formatCurrency(product.price)}</td>
+                        <td>
+                          <span className={`badge ${
+                            stock === 0 ? 'badge-error' : stock <= 5 ? 'badge-warning' : 'badge-success'
+                          }`}>
+                            {stock}
+                          </span>
+                        </td>
+                        <td>
+                          {product.is_active ? (
+                            <span className="badge badge-success">Activo</span>
+                          ) : (
+                            <span className="badge badge-error">Inactivo</span>
+                          )}
+                        </td>
+                        <td className="text-sm text-slate-600">{getSchoolName(product.school_id)}</td>
+                        <td>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openInventory(product, false)}
+                              className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Ajustar inventario"
+                            >
+                              <Package className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => openEditSchoolProduct(product)}
+                              className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              title="Editar"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSchoolProduct(product)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* Global Products Table */}
+          {activeTab === 'global' && (
+            <table className="admin-table">
+              <thead className="bg-purple-50">
+                <tr>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Talla</th>
+                  <th>Color</th>
+                  <th>Precio</th>
+                  <th>Stock</th>
+                  <th>Estado</th>
+                  <th className="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-purple-500"></div>
+                      <p className="mt-2 text-slate-500">Cargando productos globales...</p>
+                    </td>
+                  </tr>
+                ) : filteredGlobalProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8 text-slate-500">
+                      <Globe className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                      No se encontraron productos globales
+                    </td>
+                  </tr>
+                ) : (
+                  filteredGlobalProducts.map((product) => {
+                    const stock = product.inventory_quantity ?? 0;
+                    return (
+                      <tr key={product.id}>
+                        <td className="font-medium">{product.name || '-'}</td>
+                        <td className="text-sm text-slate-600">{product.garment_type_name || '-'}</td>
+                        <td>{product.size}</td>
+                        <td className="text-sm">{product.color || '-'}</td>
+                        <td className="font-medium text-green-600">{formatCurrency(product.price)}</td>
+                        <td>
+                          <span className={`badge ${
+                            stock === 0 ? 'badge-error' : stock <= 5 ? 'badge-warning' : 'badge-success'
+                          }`}>
+                            {stock}
+                          </span>
+                        </td>
+                        <td>
+                          {product.is_active ? (
+                            <span className="badge badge-success">Activo</span>
+                          ) : (
+                            <span className="badge badge-error">Inactivo</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="flex items-center justify-end gap-1">
+                            {isSuperuser && (
+                              <>
+                                <button
+                                  onClick={() => openInventory(product, true)}
+                                  className="p-2 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                  title="Ajustar inventario"
+                                >
+                                  <Package className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => openEditGlobalProduct(product)}
+                                  className="p-2 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                  title="Editar"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteGlobalProduct(product)}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* School Garment Types Table */}
+          {activeTab === 'garment-types' && garmentTypeSubTab === 'school' && (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Descripcion</th>
+                  <th>Categoria</th>
+                  <th>Bordado</th>
+                  <th>Medidas</th>
+                  <th>Estado</th>
+                  <th>Colegio</th>
+                  <th className="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-brand-500"></div>
+                      <p className="mt-2 text-slate-500">Cargando tipos de prenda...</p>
+                    </td>
+                  </tr>
+                ) : filteredSchoolGarmentTypes.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8 text-slate-500">
+                      <Tag className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                      No se encontraron tipos de prenda
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSchoolGarmentTypes.map((type) => (
+                    <tr key={type.id}>
+                      <td className="font-medium">{type.name}</td>
+                      <td className="text-sm text-slate-600 max-w-xs truncate">{type.description || '-'}</td>
+                      <td className="text-sm">{type.category ? categoryLabels[type.category] : '-'}</td>
+                      <td>
+                        {type.requires_embroidery ? (
+                          <span className="badge badge-info">Si</span>
+                        ) : (
+                          <span className="text-slate-400">No</span>
+                        )}
+                      </td>
+                      <td>
+                        {type.has_custom_measurements ? (
+                          <span className="badge badge-info">Si</span>
+                        ) : (
+                          <span className="text-slate-400">No</span>
+                        )}
+                      </td>
+                      <td>
+                        {type.is_active ? (
+                          <span className="badge badge-success">Activo</span>
+                        ) : (
+                          <span className="badge badge-error">Inactivo</span>
+                        )}
+                      </td>
+                      <td className="text-sm text-slate-600">{getSchoolName(type.school_id)}</td>
+                      <td>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditGarmentType(type, false)}
+                            className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteGarmentType(type, false)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* Global Garment Types Table */}
+          {activeTab === 'garment-types' && garmentTypeSubTab === 'global' && (
+            <table className="admin-table">
+              <thead className="bg-purple-50">
+                <tr>
+                  <th>Nombre</th>
+                  <th>Descripcion</th>
+                  <th>Categoria</th>
+                  <th>Bordado</th>
+                  <th>Medidas</th>
+                  <th>Estado</th>
+                  <th className="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-purple-500"></div>
+                      <p className="mt-2 text-slate-500">Cargando tipos globales...</p>
+                    </td>
+                  </tr>
+                ) : filteredGlobalGarmentTypes.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-slate-500">
+                      <Globe className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                      No se encontraron tipos globales
+                    </td>
+                  </tr>
+                ) : (
+                  filteredGlobalGarmentTypes.map((type) => (
+                    <tr key={type.id}>
+                      <td className="font-medium">{type.name}</td>
+                      <td className="text-sm text-slate-600 max-w-xs truncate">{type.description || '-'}</td>
+                      <td className="text-sm">{type.category ? categoryLabels[type.category] : '-'}</td>
+                      <td>
+                        {type.requires_embroidery ? (
+                          <span className="badge badge-info">Si</span>
+                        ) : (
+                          <span className="text-slate-400">No</span>
+                        )}
+                      </td>
+                      <td>
+                        {type.has_custom_measurements ? (
+                          <span className="badge badge-info">Si</span>
+                        ) : (
+                          <span className="text-slate-400">No</span>
+                        )}
+                      </td>
+                      <td>
+                        {type.is_active ? (
+                          <span className="badge badge-success">Activo</span>
+                        ) : (
+                          <span className="badge badge-error">Inactivo</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center justify-end gap-1">
+                          {isSuperuser && (
+                            <>
+                              <button
+                                onClick={() => openEditGarmentType(type, true)}
+                                className="p-2 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                title="Editar"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGarmentType(type, true)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {/* Product Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl my-8">
-            <h2 className="text-xl font-bold text-slate-900 mb-6">
-              {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
-            </h2>
+      {/* Modals */}
+      <SchoolProductModal
+        isOpen={showSchoolProductModal}
+        onClose={() => {
+          setShowSchoolProductModal(false);
+          setEditingSchoolProduct(null);
+        }}
+        onSuccess={loadData}
+        schoolId={createSchoolId}
+        schoolName={getSchoolName(createSchoolId)}
+        product={editingSchoolProduct}
+      />
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {!editingProduct && (
-                <div className="p-4 bg-slate-50 rounded-lg space-y-3">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="productType"
-                      checked={!formData.is_global}
-                      onChange={() => setFormData({ ...formData, is_global: false })}
-                      className="w-4 h-4 text-brand-500"
-                    />
-                    <div>
-                      <span className="font-medium">Producto de Colegio</span>
-                      <p className="text-xs text-slate-500">Solo disponible para un colegio específico</p>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="productType"
-                      checked={formData.is_global}
-                      onChange={() => setFormData({ ...formData, is_global: true, school_id: '' })}
-                      className="w-4 h-4 text-brand-500"
-                    />
-                    <div>
-                      <span className="font-medium">Producto Global</span>
-                      <p className="text-xs text-slate-500">Disponible para todos los colegios</p>
-                    </div>
-                  </label>
-                </div>
-              )}
+      <GlobalProductModal
+        isOpen={showGlobalProductModal}
+        onClose={() => {
+          setShowGlobalProductModal(false);
+          setEditingGlobalProduct(null);
+        }}
+        onSuccess={loadData}
+        product={editingGlobalProduct}
+      />
 
-              {!formData.is_global && !editingProduct && (
-                <div>
-                  <label className="admin-label">Colegio *</label>
-                  <select
-                    value={formData.school_id}
-                    onChange={(e) => setFormData({ ...formData, school_id: e.target.value })}
-                    className="admin-input"
-                    required={!formData.is_global}
-                  >
-                    <option value="">Seleccionar colegio</option>
-                    {schools.map((school) => (
-                      <option key={school.id} value={school.id}>
-                        {school.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+      <GarmentTypeModal
+        isOpen={showGarmentTypeModal}
+        onClose={() => {
+          setShowGarmentTypeModal(false);
+          setEditingGarmentType(null);
+        }}
+        onSuccess={loadData}
+        garmentType={editingGarmentType}
+        isGlobal={isEditingGlobalType}
+        schoolId={createSchoolId}
+      />
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="admin-label">Código *</label>
-                  <input
-                    type="text"
-                    value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                    className="admin-input"
-                    required
-                    placeholder="COD001"
-                  />
-                </div>
-                <div>
-                  <label className="admin-label">Talla *</label>
-                  <input
-                    type="text"
-                    value={formData.size}
-                    onChange={(e) => setFormData({ ...formData, size: e.target.value })}
-                    className="admin-input"
-                    required
-                    placeholder="M, L, XL..."
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="admin-label">Nombre *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="admin-input"
-                  required
-                  placeholder="Nombre del producto"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="admin-label">Precio (COP) *</label>
-                  <input
-                    type="number"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                    className="admin-input"
-                    required
-                    min={0}
-                    step={100}
-                  />
-                </div>
-                <div>
-                  <label className="admin-label">Stock Inicial</label>
-                  <input
-                    type="number"
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
-                    className="admin-input"
-                    min={0}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="admin-label">URL de Imagen</label>
-                <input
-                  type="url"
-                  value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                  className="admin-input"
-                  placeholder="https://..."
-                />
-              </div>
-
-              {formError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                  {formError}
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={saving} className="btn-primary flex-1">
-                  {saving ? 'Guardando...' : editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Inventory Modal */}
-      {showInventoryModal && inventoryProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Ajustar Inventario</h2>
-            <p className="text-slate-600 mb-6">
-              <strong>{inventoryProduct.name}</strong> - Stock actual: {inventoryProduct.stock}
-            </p>
-
-            <form onSubmit={handleInventorySubmit} className="space-y-4">
-              <div>
-                <label className="admin-label">Tipo de Ajuste</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'add', label: 'Agregar', icon: PlusIcon, color: 'text-green-600 border-green-500 bg-green-50' },
-                    { value: 'remove', label: 'Quitar', icon: Minus, color: 'text-red-600 border-red-500 bg-red-50' },
-                    { value: 'set', label: 'Establecer', icon: Check, color: 'text-blue-600 border-blue-500 bg-blue-50' },
-                  ].map((type) => {
-                    const Icon = type.icon;
-                    const isSelected = inventoryData.adjustment_type === type.value;
-                    return (
-                      <button
-                        key={type.value}
-                        type="button"
-                        onClick={() =>
-                          setInventoryData({
-                            ...inventoryData,
-                            adjustment_type: type.value as typeof inventoryData.adjustment_type,
-                          })
-                        }
-                        className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                          isSelected ? type.color : 'border-slate-200 text-slate-600'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {type.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label className="admin-label">Cantidad</label>
-                <input
-                  type="number"
-                  value={inventoryData.quantity}
-                  onChange={(e) =>
-                    setInventoryData({ ...inventoryData, quantity: parseInt(e.target.value) || 0 })
-                  }
-                  className="admin-input"
-                  min={0}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="admin-label">Razón (opcional)</label>
-                <input
-                  type="text"
-                  value={inventoryData.reason}
-                  onChange={(e) => setInventoryData({ ...inventoryData, reason: e.target.value })}
-                  className="admin-input"
-                  placeholder="Motivo del ajuste..."
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowInventoryModal(false)}
-                  className="btn-secondary flex-1"
-                >
-                  Cancelar
-                </button>
-                <button type="submit" disabled={saving} className="btn-primary flex-1">
-                  {saving ? 'Guardando...' : 'Aplicar Ajuste'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {inventoryProduct && (
+        <InventoryAdjustmentModal
+          isOpen={showInventoryModal}
+          onClose={() => {
+            setShowInventoryModal(false);
+            setInventoryProduct(null);
+          }}
+          onSuccess={loadData}
+          product={inventoryProduct}
+          isGlobal={inventoryIsGlobal}
+          schoolId={!inventoryIsGlobal && 'school_id' in inventoryProduct ? inventoryProduct.school_id : undefined}
+        />
       )}
     </div>
   );
