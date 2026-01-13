@@ -572,190 +572,33 @@ systemctl restart nginx
 
 ## Desarrollo Local
 
-### Arquitectura Desarrollo vs Produccion
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PRODUCCION (VPS)                         │
-│                    Rama: main                               │
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Web Portal   │  │ Admin Portal │  │ Desktop App  │      │
-│  │ PM2 :3000    │  │ PM2 :3001    │  │ (conecta)    │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         └─────────────────┼─────────────────┘              │
-│                           ▼                                │
-│              ┌────────────────────────┐                    │
-│              │  Backend API           │                    │
-│              │  systemd :8000         │                    │
-│              │  api.uniformes...com   │                    │
-│              └───────────┬────────────┘                    │
-│                          ▼                                 │
-│              ┌────────────────────────┐                    │
-│              │  PostgreSQL (native)   │                    │
-│              └────────────────────────┘                    │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│                    DESARROLLO (Local)                       │
-│                    Ramas: develop, feature/*, fix/*         │
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Web Portal   │  │ Admin Portal │  │ Tauri App    │      │
-│  │ npm dev :3000│  │ npm dev :3001│  │ tauri:dev    │      │
-│  │ .env.local   │  │ .env.local   │  │ (selector UI)│      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         └─────────────────┼─────────────────┘              │
-│                           ▼                                │
-│              ┌────────────────────────┐                    │
-│              │  Docker Backend        │                    │
-│              │  localhost:8000        │                    │
-│              └───────────┬────────────┘                    │
-│                          ▼                                 │
-│         ┌────────────────────────────────┐                 │
-│         │  Docker PostgreSQL + Redis     │                 │
-│         │  (copia de datos produccion)   │                 │
-│         └────────────────────────────────┘                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Entorno Docker (Recomendado)
-
-El entorno Docker incluye: PostgreSQL + Redis + Backend FastAPI.
-
-**Iniciar entorno completo:**
+### Backend
 
 ```bash
-# Desde la raiz del proyecto
-./scripts/dev.sh up
-
-# Salida esperada:
-# ✓ Entorno de desarrollo iniciado
-#   - Backend: http://localhost:8000
-#   - PostgreSQL: localhost:5432
-#   - Redis: localhost:6379
-```
-
-**Comandos disponibles (`./scripts/dev.sh`):**
-
-| Comando | Descripcion |
-|---------|-------------|
-| `up` | Iniciar todos los contenedores |
-| `down` | Detener todos los contenedores |
-| `restart` | Reiniciar contenedores |
-| `logs [servicio]` | Ver logs (ej: `logs backend`) |
-| `ps` | Ver estado de contenedores |
-| `db` | Conectar a PostgreSQL (DB desarrollo) |
-| `test-db` | Conectar a PostgreSQL (DB tests) |
-| `shell` | Abrir shell en contenedor backend |
-| `build` | Reconstruir imagen del backend |
-| `clean` | Eliminar contenedores y volumenes |
-
-**Migraciones (`./scripts/migrate.sh`):**
-
-| Comando | Descripcion |
-|---------|-------------|
-| `up` | Aplicar migraciones pendientes |
-| `down [n]` | Revertir n migraciones (default: 1) |
-| `new "mensaje"` | Crear nueva migracion |
-| `history` | Ver historial de migraciones |
-| `current` | Ver migracion actual |
-| `heads` | Ver cabezas de migracion |
-
-**Tests (`./scripts/test.sh`):**
-
-| Comando | Descripcion |
-|---------|-------------|
-| `all` | Correr todos los tests |
-| `unit` | Solo tests unitarios |
-| `api` | Solo tests de API |
-| `cov` | Tests con reporte de coverage |
-| `fast` | Tests rapidos (sin lentos) |
-
-### Configuracion de Environment
-
-**Web Portal - Desarrollo** (`web-portal/.env.local`):
-```env
-# Apunta al Docker local
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-**Web Portal - Produccion** (`web-portal/.env.production`):
-```env
-NEXT_PUBLIC_API_URL=https://api.uniformesconsuelorios.com
-```
-
-**Admin Portal - Desarrollo** (`admin-portal/.env.local`):
-```env
-# Apunta al Docker local
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-**Admin Portal - Produccion** (`admin-portal/.env.production`):
-```env
-NEXT_PUBLIC_API_URL=https://api.uniformesconsuelorios.com
-```
-
-**Tauri Desktop App:**
-- Tiene selector de servidor en la UI (Settings)
-- Puede apuntar a localhost:8000 o produccion
-
-### Iniciar Frontends en Desarrollo
-
-**Paso 1: Iniciar Docker Backend**
-```bash
-./scripts/dev.sh up
-# Esperar a que muestre "Backend: http://localhost:8000"
-```
-
-**Paso 2: Iniciar Frontend deseado**
-
-```bash
-# Web Portal (puerto 3000)
-cd web-portal
-npm run dev
-
-# Admin Portal (puerto 3001)
-cd admin-portal
-npm run dev
-
-# Desktop App (Tauri)
-cd frontend
-npm run tauri:dev
-```
-
-### Iniciar Frontends en Produccion (Build)
-
-**Web Portal:**
-```bash
-cd web-portal
-npm run build
-npm start -p 3000
-```
-
-**Admin Portal:**
-```bash
-cd admin-portal
-npm run build
-npm start -p 3001
-```
-
-**Desktop App:**
-```bash
-cd frontend
-npm run tauri:build
-# Genera instaladores en frontend/src-tauri/target/release/bundle/
-```
-
-### Backend Sin Docker (Alternativa)
-
-Si prefieres correr el backend sin Docker:
-
-```bash
-# Requiere PostgreSQL y Redis instalados localmente
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload --port 8000
+```
+
+### Web Portal
+
+```bash
+cd web-portal
+npm run dev
+```
+
+### Admin Portal
+
+```bash
+cd admin-portal
+npm run dev
+```
+
+### Desktop App
+
+```bash
+cd frontend
+npm run tauri:dev
 ```
 
 ---

@@ -1,345 +1,121 @@
 # Claude AI - Contexto del Proyecto
 
-Este archivo contiene informacion importante para que Claude Code pueda asistir efectivamente en el desarrollo del proyecto **Uniformes System v2.0**.
+> **ESTADO: EN PRODUCCION** | VPS: 104.156.247.226 | Dominio: uniformesconsuelo.com
+
+Sistema de gestion de uniformes **Uniformes Consuelo Rios** con arquitectura multi-tenant.
 
 ---
 
-## Informacion del Proyecto
+## Reglas Criticas (LEER PRIMERO)
 
-### Descripcion General
-Sistema de gestion de uniformes profesional con arquitectura **multi-tenant** (multiples colegios), disenado para manejar inventario, ventas, encargos personalizados y **contabilidad global del negocio**.
-
-### Caracteristicas Principales
-- **Multi-Colegio**: Un solo sistema gestiona multiples instituciones
-- **Contabilidad Global**: Un negocio, una caja, un banco - los colegios son fuentes de ingreso
-- **Aplicacion Nativa**: Desktop app multiplataforma (Windows, macOS, Linux) usando Tauri
-- **Portal Web**: Sistema de pedidos online para padres de familia
-- **API REST**: Backend robusto con FastAPI y PostgreSQL
-- **Cloud Deployment**: Servidor VPS en produccion
-
----
-
-## Arquitectura Contable (IMPORTANTE)
-
-### Concepto Clave: Contabilidad del NEGOCIO, no por Colegio
-
-El negocio "Uniformes Consuelo Rios" tiene:
-- **UNA SOLA Caja** (efectivo fisico en la tienda)
-- **UNA SOLA cuenta bancaria**
-- **UN SOLO balance general**
-- **Gastos compartidos** (luz, agua, salarios, proveedores)
-
-Los colegios son **fuentes de ingreso** - categorias para saber de donde viene el dinero, pero todo va a la misma caja/banco.
-
-### school_id en Contabilidad
-
-| Modelo | school_id | Razon |
-|--------|-----------|-------|
-| `BalanceAccount` | NULL (global) | Caja y Banco son del negocio |
-| `BalanceEntry` | NULL (global) | Entradas de auditoria globales |
-| `Expense` | OPCIONAL | Mayoría globales, algunos por colegio |
-| `AccountsPayable` | OPCIONAL | Proveedores del negocio |
-| `AccountsReceivable` | OPCIONAL | CxC pueden filtrar por origen |
-| `Transaction` | OPCIONAL | Para saber origen de ingreso |
-| `DailyCashRegister` | NULL (global) | Una caja diaria para todo |
-
-### Endpoints Globales (sin school_id)
+### 1. Contabilidad es GLOBAL (No por Colegio)
 
 ```
-GET  /global/accounting/cash-balances     # Saldos Caja y Banco
-GET  /global/accounting/expenses          # Gastos del negocio
-POST /global/accounting/expenses          # Crear gasto
-GET  /global/accounting/receivables-payables  # CxC y CxP
-POST /global/accounting/receivables       # Crear CxC
-POST /global/accounting/payables          # Crear CxP
-GET  /global/accounting/balance-accounts  # Cuentas contables
-POST /global/accounting/balance-accounts  # Crear cuenta
+CORRECTO:  /api/v1/global/accounting/expenses
+INCORRECTO: /api/v1/schools/{school_id}/accounting/expenses
 ```
 
-### AccountType Enum (valores en minuscula)
+- **UNA SOLA Caja** y **UNA SOLA cuenta bancaria** para todo el negocio
+- Los colegios son **fuentes de ingreso**, no entidades contables separadas
+- Usar `globalAccountingService.ts` para operaciones contables
+- `school_id` es OPCIONAL en contabilidad (solo para filtros/reportes)
 
-```python
-class AccountType(str, Enum):
-    asset_current = "asset_current"      # Activo Corriente (Caja, Banco)
-    asset_fixed = "asset_fixed"          # Activo Fijo (Equipos, Maquinaria)
-    liability_current = "liability_current"  # Pasivo Corriente
-    liability_long = "liability_long"    # Pasivo Largo Plazo
-    equity = "equity"                    # Patrimonio
-    income = "income"                    # Ingresos
-    expense = "expense"                  # Gastos
-```
+### 2. Entorno de Produccion
+
+| Aspecto | Valor |
+|---------|-------|
+| VPS | 104.156.247.226 (Vultr) |
+| Dominio | uniformesconsuelo.com |
+| Branch produccion | `main` |
+| Branch desarrollo | `develop` |
+| API Docs | https://uniformesconsuelo.com/docs |
+
+### 3. Antes de Modificar Codigo
+
+- [ ] Leer el archivo existente antes de editar
+- [ ] Verificar que los tests pasen localmente
+- [ ] No introducir breaking changes sin consultar
+- [ ] Mantener compatibilidad con datos existentes en produccion
 
 ---
 
-## Stack Tecnologico
+## Arquitectura del Sistema
 
-**Backend:**
-- Python 3.10+
-- FastAPI 0.104.1
-- SQLAlchemy 2.0.23 (async)
-- PostgreSQL 15
-- Alembic (migraciones)
-- Pydantic v2
+### Stack Tecnologico
 
-**Frontend (Tauri Desktop):**
-- Tauri (Rust + WebView)
-- React 18 + TypeScript
-- Tailwind CSS
-- Zustand (estado)
-- Axios
+| Capa | Tecnologia | Version |
+|------|------------|---------|
+| Backend | FastAPI + SQLAlchemy (async) | Python 3.10+ |
+| Base de Datos | PostgreSQL | 15 |
+| Desktop App | Tauri + React + TypeScript | Tauri 2.x |
+| Web Portal | Next.js (App Router) | 14 |
+| Admin Portal | Next.js | 16 |
+| Estado | Zustand | - |
+| Estilos | Tailwind CSS | v4 |
 
-**Portal Web (Next.js):**
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-
-**Infraestructura:**
-- VPS: 104.156.247.226 (Vultr)
-- Dominio: uniformesconsuelo.com
-- SSL: Certbot/Let's Encrypt
-- Nginx: Reverse proxy
-- Systemd: Servicios backend
-
----
-
-## Estructura del Proyecto
+### Estructura de Carpetas
 
 ```
 uniformes-system-v2/
-├── backend/
+├── backend/                 # API FastAPI
 │   ├── app/
-│   │   ├── api/routes/
-│   │   │   ├── accounting.py         # Contabilidad por colegio
-│   │   │   ├── global_accounting.py  # Contabilidad GLOBAL
-│   │   │   ├── sales.py
-│   │   │   ├── orders.py
-│   │   │   ├── products.py
-│   │   │   └── ...
-│   │   ├── models/
-│   │   │   ├── accounting.py  # BalanceAccount, Expense, CxC, CxP
-│   │   │   └── ...
-│   │   ├── services/
-│   │   │   ├── accounting.py
-│   │   │   ├── balance_integration.py
-│   │   │   └── ...
-│   │   └── schemas/
-│   │       └── accounting.py  # Pydantic schemas
-│   └── alembic/               # Migraciones
+│   │   ├── api/routes/      # Endpoints (18 archivos)
+│   │   ├── models/          # SQLAlchemy models
+│   │   ├── services/        # Logica de negocio
+│   │   └── schemas/         # Pydantic schemas
+│   ├── alembic/             # Migraciones DB
+│   └── tests/               # pytest (284 tests)
 │
-├── frontend/                  # App Tauri (desktop)
+├── frontend/                # App Tauri (vendedores)
 │   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Accounting.tsx     # Vista contabilidad GLOBAL
-│   │   │   ├── Sales.tsx
-│   │   │   ├── Products.tsx
-│   │   │   └── ...
-│   │   ├── services/
-│   │   │   ├── globalAccountingService.ts  # API global
-│   │   │   ├── accountingService.ts        # API por colegio
-│   │   │   └── ...
-│   │   └── stores/
-│   │       └── authStore.ts
-│   └── src-tauri/
+│   │   ├── pages/           # 18 vistas principales
+│   │   ├── components/      # 45+ componentes
+│   │   ├── services/        # 14 clientes API
+│   │   └── stores/          # Estado Zustand
+│   └── src-tauri/           # Codigo Rust
 │
-├── web-portal/               # Portal padres (Next.js)
-│   ├── app/
-│   │   └── [school_slug]/    # Rutas por colegio
-│   └── lib/
-│
-└── docs/
+├── web-portal/              # Portal padres (Next.js)
+├── admin-portal/            # Portal admin (Next.js)
+└── docs/                    # Documentacion organizada
 ```
 
 ---
 
-## Estado Actual del Desarrollo
+## Patrones de Desarrollo
 
-### Completado
+### Multi-Tenancy (Colegios)
 
-**Infraestructura Cloud:**
-- VPS configurado y operativo
-- SSL/HTTPS funcionando
-- Nginx como reverse proxy
-- Backend como servicio systemd
-- Dominio uniformesconsuelo.com
+```python
+# Endpoints POR COLEGIO - requieren school_id
+GET  /api/v1/schools/{school_id}/products
+POST /api/v1/schools/{school_id}/sales
+GET  /api/v1/schools/{school_id}/clients
 
-**Backend API:**
-- Autenticacion JWT
-- Multi-tenancy (school_id)
-- Sistema de ventas completo
-- Sistema de cambios/devoluciones
-- Contabilidad global (endpoints /global/*)
-- Balance de cuentas CRUD
-- Activos fijos y pasivos
-- CxC y CxP globales
-- Gastos del negocio
-- Integracion automatica ventas → contabilidad
-
-**Frontend Desktop (Tauri):**
-- Login funcional
-- Dashboard
-- Gestion de productos
-- Sistema de ventas completo
-- Cambios y devoluciones
-- Contabilidad GLOBAL (independiente del selector de colegio)
-- Balance de cuentas (Activos, Pasivos, Patrimonio)
-- Gastos del negocio
-- CxC y CxP
-- Impresion de recibos
-
-**Portal Web:**
-- Catalogo de productos por colegio
-- Carrito de compras
-- Sistema de pedidos web
-- Verificacion telefonica
-
-### Pendiente (TODO)
-
-**Alta Prioridad:**
-- [ ] Pagina de Reportes con filtros por colegio
-- [ ] Dashboard con estadisticas reales
-- [ ] Conectar paginas Clients y Orders con API
-
-**Media Prioridad:**
-- [ ] Sistema de encargos personalizados UI
-- [ ] Exportacion a Excel/PDF
-- [ ] Tests unitarios
-- [ ] Notificaciones
-
----
-
-## Base de Datos
-
-### Tablas Principales
-
-**Sistema:**
-- `users`, `user_school_roles`
-
-**Tenants:**
-- `schools`
-
-**Catalogos (por colegio):**
-- `garment_types`, `products`, `inventory`
-
-**Operaciones (por colegio):**
-- `clients`, `sales`, `sale_items`, `sale_changes`
-- `orders`, `order_items`
-- `web_orders`, `web_order_items`
-
-**Contabilidad (GLOBAL - school_id nullable):**
-- `balance_accounts` - Cuentas contables
-- `balance_entries` - Movimientos/Auditoria
-- `expenses` - Gastos del negocio
-- `accounts_receivable` - Cuentas por cobrar
-- `accounts_payable` - Cuentas por pagar
-- `transactions` - Transacciones
-- `daily_cash_registers` - Caja diaria
-
-### Migraciones Aplicadas
-
-1. `4093d4173dee` - Initial multi-tenant schema
-2. `d868decca943` - Add sale_changes table
-3. `xxx_global_accounting` - school_id nullable en contabilidad
-4. Multiples migraciones de ajustes contables
-
----
-
-## Servicios Frontend
-
-### globalAccountingService.ts (USAR PARA CONTABILIDAD)
-
-```typescript
-// Saldos de caja y banco
-getCashBalances(): Promise<CashBalancesResponse>
-
-// Gastos
-getExpenses(params): Promise<PaginatedResponse<Expense>>
-createExpense(data): Promise<Expense>
-
-// CxC y CxP
-getReceivablesPayables(): Promise<ReceivablesPayablesResponse>
-createReceivable(data): Promise<AccountsReceivable>
-createPayable(data): Promise<AccountsPayable>
-
-// Cuentas de balance
-getBalanceAccounts(params): Promise<BalanceAccount[]>
-createBalanceAccount(data): Promise<BalanceAccount>
-updateBalanceAccount(id, data): Promise<BalanceAccount>
-deleteBalanceAccount(id): Promise<void>
+# Endpoints GLOBALES - sin school_id
+GET  /api/v1/global/accounting/cash-balances
+POST /api/v1/global/accounting/expenses
+GET  /api/v1/users
 ```
 
-### accountingService.ts (por colegio - para reportes)
+### AccountType Enum (MINUSCULAS)
 
-```typescript
-// Para reportes especificos de un colegio
-getSchoolTransactions(schoolId, params)
-getSchoolReceivables(schoolId)
+```python
+# CORRECTO
+account_type = "asset_current"
+account_type = "asset_fixed"
+
+# INCORRECTO
+account_type = "ASSET_CURRENT"  # NO usar mayusculas
 ```
 
----
-
-## Comandos Utiles
-
-### Desarrollo Local
-
-```bash
-# Backend
-cd backend && source venv/bin/activate
-uvicorn app.main:app --reload
-
-# Frontend Tauri
-cd frontend && npm run tauri:dev
-
-# Portal Web
-cd web-portal && npm run dev
-```
-
-### Servidor (VPS)
-
-```bash
-# Deploy
-ssh root@104.156.247.226 "cd /var/www/uniformes-system-v2 && git pull origin develop && systemctl restart uniformes-api"
-
-# Ver logs
-ssh root@104.156.247.226 "tail -100 /var/log/uniformes/backend.log"
-
-# Restart servicios
-ssh root@104.156.247.226 "systemctl restart uniformes-api"
-```
-
-### Git
-
-```bash
-git checkout develop
-git pull origin develop
-git checkout -b feature/nombre
-# ... cambios ...
-git add . && git commit -m "feat: descripcion"
-git push -u origin feature/nombre
-```
-
----
-
-## Notas para Claude
-
-### Al Asistir en Contabilidad
-
-1. **NUNCA** hacer contabilidad dependiente del selector de colegio del header
-2. Usar `globalAccountingService` para operaciones contables
-3. Los endpoints son `/global/accounting/*` (sin school_id en URL)
-4. `school_id` es OPCIONAL en gastos, CxC, CxP - para filtrar/reportes
-5. AccountType enum usa valores **minuscula**: `asset_fixed`, no `ASSET_FIXED`
-
-### Convenciones de Codigo
-
-**Python:**
-- Async/await obligatorio
-- Type hints en todo
-- SQLAlchemy 2.0 style
-
-**TypeScript:**
-- Functional components + hooks
-- Zustand para estado global
-- Types estrictos
+Valores validos:
+- `asset_current` - Activo Corriente (Caja, Banco)
+- `asset_fixed` - Activo Fijo (Equipos)
+- `liability_current` - Pasivo Corriente
+- `liability_long` - Pasivo Largo Plazo
+- `equity` - Patrimonio
+- `income` - Ingresos
+- `expense` - Gastos
 
 ### Metodos de Pago
 
@@ -349,15 +125,267 @@ type PaymentMethod = 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
 
 ---
 
-## Informacion del Desarrollador
+## Convenciones de Codigo
 
-- **Nombre**: Angel Samuel Suesca Rios
-- **GitHub**: https://github.com/Samsuesca
-- **Servidor**: 104.156.247.226
-- **Dominio**: uniformesconsuelo.com
+### Python (Backend)
+
+```python
+# Async obligatorio para DB
+async def get_products(db: AsyncSession) -> list[Product]:
+    result = await db.execute(select(Product))
+    return result.scalars().all()
+
+# Type hints siempre
+def calculate_total(items: list[SaleItem]) -> Decimal:
+    return sum(item.subtotal for item in items)
+
+# SQLAlchemy 2.0 style
+stmt = select(Product).where(Product.school_id == school_id)
+result = await db.execute(stmt)
+```
+
+### TypeScript (Frontend)
+
+```typescript
+// Componentes funcionales + hooks
+const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
+  const [loading, setLoading] = useState(false);
+  // ...
+};
+
+// Servicios tipados
+const products = await productService.getAll(schoolId);
+
+// Zustand para estado global
+const { currentSchool } = useSchoolStore();
+```
+
+### Commits (Conventional Commits)
+
+```bash
+feat: add new product modal
+fix: resolve inventory update bug
+docs: update API documentation
+refactor: simplify sale service logic
+test: add tests for accounting service
+chore: update dependencies
+```
 
 ---
 
-**Ultima actualizacion**: 2026-01-06
-**Version del proyecto**: v2.0.0
-**Estado**: **EN PRODUCCION** - Cloud deployment activo
+## Comandos Frecuentes
+
+### Desarrollo Local
+
+```bash
+# Backend
+cd backend && source venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend Tauri
+cd frontend && npm run tauri:dev
+
+# Web Portal
+cd web-portal && npm run dev
+
+# Tests Backend
+cd backend && pytest -v
+cd backend && pytest --cov=app  # Con cobertura
+```
+
+### Deployment a Produccion
+
+```bash
+# Deploy rapido (desde local)
+git push origin develop
+# Luego en VPS: git pull && systemctl restart uniformes-api
+
+# Ver logs del servidor
+ssh root@104.156.247.226 "tail -100 /var/log/uniformes/backend.log"
+
+# Restart servicios
+ssh root@104.156.247.226 "systemctl restart uniformes-api"
+
+# Estado del servicio
+ssh root@104.156.247.226 "systemctl status uniformes-api"
+```
+
+### Base de Datos
+
+```bash
+# Nueva migracion
+cd backend && alembic revision --autogenerate -m "descripcion"
+
+# Aplicar migraciones
+cd backend && alembic upgrade head
+
+# Ver historial
+cd backend && alembic history
+```
+
+---
+
+## Flujos de Trabajo
+
+### Nuevo Feature
+
+1. `git checkout develop && git pull`
+2. `git checkout -b feature/nombre-descriptivo`
+3. Desarrollar y probar localmente
+4. `git add . && git commit -m "feat: descripcion"`
+5. `git push -u origin feature/nombre-descriptivo`
+6. Crear PR hacia `develop`
+
+### Bug Fix en Produccion
+
+1. `git checkout main && git pull`
+2. `git checkout -b hotfix/descripcion-bug`
+3. Fix minimo necesario
+4. Test local
+5. PR hacia `main` Y `develop`
+
+### Agregar Endpoint
+
+1. Crear schema en `backend/app/schemas/`
+2. Crear/modificar modelo en `backend/app/models/`
+3. Crear servicio en `backend/app/services/`
+4. Crear ruta en `backend/app/api/routes/`
+5. Agregar tests en `backend/tests/`
+6. Crear servicio frontend en `frontend/src/services/`
+
+---
+
+## Troubleshooting
+
+### Error 422 Unprocessable Entity
+
+```python
+# Verificar que el schema Pydantic coincida con el request
+# Revisar validadores y campos requeridos
+# Verificar tipos de datos (UUID vs string, etc.)
+```
+
+### Error de CORS
+
+```python
+# backend/app/main.py - Verificar origins permitidos
+origins = [
+    "http://localhost:5173",
+    "https://uniformesconsuelo.com",
+    "tauri://localhost"
+]
+```
+
+### Inventario No Actualiza
+
+```python
+# Verificar que se llame a inventory_service.update_stock()
+# Verificar transaccion de DB (commit/rollback)
+# Revisar logs: /var/log/uniformes/backend.log
+```
+
+### Frontend No Conecta a API
+
+```typescript
+// Verificar VITE_API_URL en .env
+// Verificar que el backend este corriendo
+// Revisar Network tab en DevTools
+```
+
+---
+
+## Tablas de Base de Datos
+
+### Sistema
+- `users` - Usuarios del sistema
+- `user_school_roles` - Roles por colegio
+
+### Multi-Tenant (por colegio)
+- `schools` - Colegios/tenants
+- `garment_types` - Tipos de prenda
+- `products` - Productos
+- `inventory` - Stock por talla
+- `clients` - Clientes
+- `sales`, `sale_items` - Ventas
+- `sale_changes` - Cambios/devoluciones
+- `orders`, `order_items` - Pedidos
+
+### Contabilidad (GLOBAL)
+- `balance_accounts` - Cuentas contables (Caja, Banco)
+- `balance_entries` - Movimientos
+- `expenses` - Gastos
+- `accounts_receivable` - CxC
+- `accounts_payable` - CxP
+- `transactions` - Transacciones
+- `daily_cash_registers` - Cierre de caja
+
+---
+
+## APIs Importantes
+
+### globalAccountingService.ts
+
+```typescript
+// Usar SIEMPRE para operaciones contables
+getCashBalances()           // Saldos Caja y Banco
+getExpenses(params)         // Listar gastos
+createExpense(data)         // Crear gasto
+getReceivablesPayables()    // CxC y CxP
+createReceivable(data)      // Crear CxC
+createPayable(data)         // Crear CxP
+getBalanceAccounts(params)  // Cuentas contables
+```
+
+### Endpoints Clave
+
+| Endpoint | Descripcion |
+|----------|-------------|
+| `POST /auth/login` | Autenticacion JWT |
+| `GET /schools` | Lista de colegios |
+| `GET /schools/{id}/products` | Productos del colegio |
+| `POST /schools/{id}/sales` | Crear venta |
+| `GET /global/accounting/cash-balances` | Saldos globales |
+
+---
+
+## Seguridad
+
+### NO Hacer
+
+- Hardcodear credenciales en codigo
+- Commit de archivos .env
+- Deshabilitar SSL verification
+- Usar `SELECT *` sin limites
+- Exponer stack traces en produccion
+
+### SI Hacer
+
+- Variables de entorno para secrets
+- Validar input con Pydantic
+- Sanitizar queries SQL (SQLAlchemy lo hace)
+- Logging apropiado (sin datos sensibles)
+- Rate limiting en endpoints publicos
+
+---
+
+## Documentacion Adicional
+
+| Documento | Ubicacion |
+|-----------|-----------|
+| Arquitectura | [docs/architecture/](docs/architecture/README.md) |
+| Deployment | [docs/deployment/](docs/deployment/README.md) |
+| Desarrollo | [docs/development/](docs/development/README.md) |
+| Testing | [docs/test/](docs/test/README.md) |
+| Guia Usuario | [docs/user-guide/](docs/user-guide/README.md) |
+
+---
+
+## Contacto
+
+- **Desarrollador**: Angel Samuel Suesca Rios
+- **GitHub**: https://github.com/Samsuesca
+- **Produccion**: https://uniformesconsuelo.com
+
+---
+
+*Ultima actualizacion: 2026-01-10 | Version: v2.0.0*

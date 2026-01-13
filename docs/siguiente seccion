@@ -1,9 +1,0 @@
-tareas:
-
-- la aplicacion crashea cuando se trata de hacer un reembolso (dice sobre el estado pendiente pero luego sale una pantalla totalmente blanca) (INFO:     127.0.0.1:53712 - "POST /api/v1/schools/050f6088-9ae2-41a3-a415-84c669250169/sales/8198b127-46f2-462a-984d-161408e9092c/changes HTTP/1.1" 422 Unprocessable Entity
-- implementar un UI para que yo como desarrollador pueda ir probando la aplicacion amigablemente en AMBOS ENTORNOS (MAC COMO DESARROLLO, Y WINDOWS PARA VER LA EXPERIENCIA DEL ADMIN/VENDEDOR)
-- modulo de contabilidad necesita ser implementado (No se trata solo de cuentas, aqui se debe de tener todos los aspectos de la contabilidad fundamental de un negocio)
-- Se deben de distinguir cuatro roles fundamentales en la base de datos (Desarrollador: ACCESO MAXIMO A TODO (Configuraciones maximas). Administrador del negocio: Debe poder acceder a todos los datos del negocio pero no deberia tratar con las configuraciones de la BD. Vendedor: puede ejecutar ventas y acceder a informacion sobre ellas(no debe tener acceso a contabilidad puntualmente pero si inventario). Cliente: Este rol nos servira cuando implementemos la pagina web para clientes)
-- Todos los datos de la base deberian poder ser modificados en la interfaz por el superusuario (desarrolador). 
-- Los datos del primer colegio estan en la imagen ListasPrecios/PHOTO-2024-12-27-17-12-02.jpg (TU GEMINI DEBES LEER LA IMAGEN Y PASARLE LA ESTRUCTURA DE LOS DATOS DEL COLEGIO EN EL PROMPT)
-- Los test deben de ser implementados antes de pasar a subir la app a la nube.
