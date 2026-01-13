@@ -7,7 +7,8 @@ import {
   Calculator, TrendingUp, TrendingDown, DollarSign, Plus,
   Loader2, AlertCircle, Receipt, X, Building2, Users, Wallet,
   Landmark, CreditCard, Clock, PiggyBank, Pencil,
-  Settings, Trash2, Car, Package
+  Settings, Trash2, Car, Package, CheckCircle, CalendarClock,
+  RotateCcw, History
 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import CurrencyInput from '../components/CurrencyInput';
@@ -21,8 +22,29 @@ import {
   globalAccountingService,
   type GlobalPatrimonySummary,
   type GlobalBalanceAccountCreate,
-  type GlobalBalanceAccountResponse
+  type GlobalBalanceAccountResponse,
+  type AdjustmentReason,
+  type ExpenseAdjustmentResponse,
+  type ExpenseAdjustmentRequest
 } from '../services/globalAccountingService';
+import {
+  getFixedExpenses,
+  createFixedExpense,
+  updateFixedExpense,
+  deleteFixedExpense,
+  generateExpenses,
+  getPendingGeneration,
+  getExpenseTypeLabel,
+  getFrequencyLabel,
+  getExpenseTypeColor,
+  formatAmountRange,
+  type FixedExpenseListItem,
+  type FixedExpenseCreate,
+  type FixedExpenseUpdate,
+  type FixedExpenseType,
+  type ExpenseFrequency,
+  type PendingGenerationResponse
+} from '../services/fixedExpenseService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { useUserRole } from '../hooks/useUserRole';
 import type {
@@ -35,7 +57,7 @@ import type {
 } from '../types/api';
 
 // Tabs
-type TabType = 'dashboard' | 'receivables' | 'payables' | 'patrimony';
+type TabType = 'dashboard' | 'fixed_expenses' | 'receivables' | 'payables' | 'patrimony';
 
 // Balance Account Modal Type - uses lowercase values to match backend enum (asset_fixed, liability_current, liability_long)
 type BalanceAccountModalType = 'asset_fixed' | 'liability_current' | 'liability_long';
@@ -95,6 +117,31 @@ export default function Accounting() {
   // Global Patrimony data
   const [patrimony, setPatrimony] = useState<GlobalPatrimonySummary | null>(null);
 
+  // Fixed Expenses data
+  const [fixedExpensesList, setFixedExpensesList] = useState<FixedExpenseListItem[]>([]);
+  const [pendingGeneration, setPendingGeneration] = useState<PendingGenerationResponse | null>(null);
+  const [showFixedExpenseModal, setShowFixedExpenseModal] = useState(false);
+  const [editingFixedExpense, setEditingFixedExpense] = useState<FixedExpenseListItem | null>(null);
+  const [fixedExpenseFilter, setFixedExpenseFilter] = useState<'all' | 'active' | 'inactive'>('active');
+  const [generatingExpenses, setGeneratingExpenses] = useState(false);
+  const [fixedExpenseForm, setFixedExpenseForm] = useState<Partial<FixedExpenseCreate>>({
+    name: '',
+    description: '',
+    category: 'other',
+    expense_type: 'exact',
+    amount: 0,
+    frequency: 'monthly',
+    day_of_month: 1,
+    auto_generate: true,
+    vendor: '',
+    // New recurrence system
+    recurrence_frequency: undefined,
+    recurrence_interval: 1,
+    recurrence_weekdays: [],
+    recurrence_month_days: [],
+    recurrence_month_day_type: undefined,
+  });
+  const [useAdvancedRecurrence, setUseAdvancedRecurrence] = useState(false);
 
   // Modal states
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -120,6 +167,7 @@ export default function Accounting() {
   const [showExpenseHistoryModal, setShowExpenseHistoryModal] = useState(false);
   const [expenseHistoryFilter, setExpenseHistoryFilter] = useState<'all' | 'pending' | 'paid'>('all');
   const [allExpenses, setAllExpenses] = useState<ExpenseListItem[]>([]);
+  const [selectedExpenseDetail, setSelectedExpenseDetail] = useState<ExpenseListItem | null>(null);
 
   // Cash Fallback Modal states (when Caja Menor doesn't have enough funds)
   const [showCashFallbackModal, setShowCashFallbackModal] = useState(false);
@@ -181,8 +229,22 @@ export default function Accounting() {
   });
 
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<AccPaymentMethod>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<AccPaymentMethod | ''>('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Expense Adjustment states
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [showRevertModal, setShowRevertModal] = useState(false);
+  const [showAdjustmentHistoryModal, setShowAdjustmentHistoryModal] = useState(false);
+  const [adjustingExpense, setAdjustingExpense] = useState<ExpenseListItem | null>(null);
+  const [adjustmentHistory, setAdjustmentHistory] = useState<ExpenseAdjustmentResponse[]>([]);
+  const [adjustmentForm, setAdjustmentForm] = useState<Partial<ExpenseAdjustmentRequest>>({
+    new_amount: 0,
+    new_payment_account_id: '',
+    reason: 'amount_correction',
+    description: ''
+  });
+  const [revertDescription, setRevertDescription] = useState('');
 
   // Note: currentSchool is available if needed for filtering in reports
   // Global accounting operations don't require a school to be selected
@@ -192,7 +254,7 @@ export default function Accounting() {
     if (canAccessAccounting || isSuperuser) {
       loadData();
     }
-  }, [canAccessAccounting, isSuperuser, activeTab]);
+  }, [canAccessAccounting, isSuperuser, activeTab, fixedExpenseFilter]);
 
   const loadData = async () => {
     try {
@@ -269,6 +331,15 @@ export default function Accounting() {
         // Load global patrimony summary (business-wide)
         const patrimonyData = await globalAccountingService.getGlobalPatrimonySummary();
         setPatrimony(patrimonyData);
+      } else if (activeTab === 'fixed_expenses') {
+        // Load fixed expenses and pending generation info
+        const isActiveFilter = fixedExpenseFilter === 'active' ? true : fixedExpenseFilter === 'inactive' ? false : undefined;
+        const [fixedExpenses, pendingGen] = await Promise.all([
+          getFixedExpenses({ is_active: isActiveFilter }),
+          getPendingGeneration()
+        ]);
+        setFixedExpensesList(fixedExpenses);
+        setPendingGeneration(pendingGen);
       }
     } catch (err: any) {
       console.error('Error loading accounting data:', err);
@@ -293,6 +364,93 @@ export default function Accounting() {
         return allExpenses.filter(e => e.is_paid);
       default:
         return allExpenses;
+    }
+  };
+
+  // ============================================
+  // Expense Adjustment Handlers
+  // ============================================
+
+  const openAdjustModal = (expense: ExpenseListItem) => {
+    setAdjustingExpense(expense);
+    setAdjustmentForm({
+      new_amount: expense.amount,
+      new_payment_account_id: '',
+      reason: 'amount_correction',
+      description: ''
+    });
+    setShowAdjustModal(true);
+  };
+
+  const openRevertModal = (expense: ExpenseListItem) => {
+    setAdjustingExpense(expense);
+    setRevertDescription('');
+    setShowRevertModal(true);
+  };
+
+  const loadAdjustmentHistory = async (expenseId: string) => {
+    try {
+      const history = await globalAccountingService.getExpenseAdjustments(expenseId);
+      setAdjustmentHistory(history);
+      setShowAdjustmentHistoryModal(true);
+    } catch (err: any) {
+      console.error('Error loading adjustment history:', err);
+      setError(getErrorMessage(err, 'Error al cargar historial de ajustes'));
+    }
+  };
+
+  const handleAdjustExpense = async () => {
+    if (!adjustingExpense || !adjustmentForm.description || adjustmentForm.description.length < 10) {
+      setModalError('La descripción debe tener al menos 10 caracteres');
+      return;
+    }
+    // Must have at least one change
+    const hasAmountChange = adjustmentForm.new_amount !== undefined && adjustmentForm.new_amount !== adjustingExpense.amount;
+    const hasAccountChange = adjustmentForm.new_payment_account_id && adjustmentForm.new_payment_account_id !== '';
+    if (!hasAmountChange && !hasAccountChange) {
+      setModalError('Debe cambiar el monto o la cuenta de pago');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setModalError(null);
+      await globalAccountingService.adjustExpense(adjustingExpense.id, {
+        new_amount: hasAmountChange ? adjustmentForm.new_amount : undefined,
+        new_payment_account_id: hasAccountChange ? adjustmentForm.new_payment_account_id : undefined,
+        reason: adjustmentForm.reason || 'amount_correction',
+        description: adjustmentForm.description
+      });
+      setShowAdjustModal(false);
+      setAdjustingExpense(null);
+      setSelectedExpenseDetail(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error adjusting expense:', err);
+      setModalError(getErrorMessage(err, 'Error al ajustar gasto'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRevertPayment = async () => {
+    if (!adjustingExpense || !revertDescription || revertDescription.length < 10) {
+      setModalError('La descripción debe tener al menos 10 caracteres');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      setModalError(null);
+      await globalAccountingService.revertExpensePayment(adjustingExpense.id, revertDescription);
+      setShowRevertModal(false);
+      setAdjustingExpense(null);
+      setSelectedExpenseDetail(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error reverting expense:', err);
+      setModalError(getErrorMessage(err, 'Error al revertir pago'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -360,7 +518,7 @@ export default function Accounting() {
       // Proceed with payment
       await globalAccountingService.payGlobalExpense(selectedExpense.id, {
         amount: paymentAmount,
-        payment_method: paymentMethod,
+        payment_method: paymentMethod as AccPaymentMethod,
         use_fallback: useFallback
       });
       setShowPaymentModal(false);
@@ -825,6 +983,7 @@ export default function Accounting() {
       <nav className="-mb-px flex space-x-8">
         {[
           { id: 'dashboard', label: 'Dashboard', icon: Calculator },
+          { id: 'fixed_expenses', label: 'Gastos Fijos', icon: CalendarClock },
           { id: 'receivables', label: 'Cuentas por Cobrar', icon: Users },
           { id: 'payables', label: 'Cuentas por Pagar', icon: Building2 },
           { id: 'patrimony', label: 'Patrimonio', icon: PiggyBank }
@@ -1572,6 +1731,752 @@ export default function Accounting() {
     </>
   );
 
+  // ===================== FIXED EXPENSES TAB =====================
+
+  const handleCreateFixedExpense = async () => {
+    if (!fixedExpenseForm.name || !fixedExpenseForm.amount) return;
+    try {
+      setSubmitting(true);
+      await createFixedExpense(fixedExpenseForm as FixedExpenseCreate);
+      setShowFixedExpenseModal(false);
+      setFixedExpenseForm({
+        name: '',
+        description: '',
+        category: 'other',
+        expense_type: 'exact',
+        amount: 0,
+        frequency: 'monthly',
+        day_of_month: 1,
+        auto_generate: true,
+        vendor: ''
+      });
+      loadData();
+    } catch (err: any) {
+      setModalError(getErrorMessage(err, 'Error al crear gasto fijo'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateFixedExpense = async () => {
+    if (!editingFixedExpense || !fixedExpenseForm.name) return;
+    try {
+      setSubmitting(true);
+      await updateFixedExpense(editingFixedExpense.id, fixedExpenseForm as FixedExpenseUpdate);
+      setShowFixedExpenseModal(false);
+      setEditingFixedExpense(null);
+      setFixedExpenseForm({
+        name: '',
+        description: '',
+        category: 'other',
+        expense_type: 'exact',
+        amount: 0,
+        frequency: 'monthly',
+        day_of_month: 1,
+        auto_generate: true,
+        vendor: ''
+      });
+      loadData();
+    } catch (err: any) {
+      setModalError(getErrorMessage(err, 'Error al actualizar gasto fijo'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteFixedExpense = async (id: string) => {
+    if (!confirm('¿Está seguro de eliminar este gasto fijo?')) return;
+    try {
+      await deleteFixedExpense(id);
+      loadData();
+    } catch (err: any) {
+      setError(getErrorMessage(err, 'Error al eliminar gasto fijo'));
+    }
+  };
+
+  const handleGenerateExpenses = async () => {
+    try {
+      setGeneratingExpenses(true);
+      const result = await generateExpenses();
+      alert(`Se generaron ${result.generated_count} gastos exitosamente.`);
+      loadData();
+    } catch (err: any) {
+      setError(getErrorMessage(err, 'Error al generar gastos'));
+    } finally {
+      setGeneratingExpenses(false);
+    }
+  };
+
+  const openEditFixedExpense = (item: FixedExpenseListItem) => {
+    setEditingFixedExpense(item);
+    // Check if using advanced recurrence
+    const usesAdvanced = item.uses_new_recurrence || item.recurrence_frequency != null;
+    setUseAdvancedRecurrence(usesAdvanced);
+    setFixedExpenseForm({
+      name: item.name,
+      description: '',
+      category: item.category,
+      expense_type: item.expense_type,
+      amount: item.amount,
+      min_amount: item.min_amount ?? undefined,
+      max_amount: item.max_amount ?? undefined,
+      // Legacy fields
+      frequency: item.frequency ?? undefined,
+      day_of_month: item.day_of_month ?? undefined,
+      // Advanced recurrence fields
+      recurrence_frequency: item.recurrence_frequency ?? undefined,
+      recurrence_interval: item.recurrence_interval ?? 1,
+      recurrence_weekdays: item.recurrence_weekdays ?? [],
+      recurrence_month_days: item.recurrence_month_days ?? [],
+      recurrence_month_day_type: item.recurrence_month_day_type ?? undefined,
+      // Common
+      auto_generate: item.auto_generate,
+      vendor: item.vendor || ''
+    });
+    setShowFixedExpenseModal(true);
+  };
+
+  const renderFixedExpenses = () => (
+    <>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Gastos Fijos Activos</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {fixedExpensesList.filter(e => e.is_active).length}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <CalendarClock className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Total Mensual Estimado</p>
+              <p className="text-2xl font-bold text-green-600">
+                ${fixedExpensesList
+                  .filter(e => e.is_active)
+                  .reduce((sum, e) => {
+                    const amount = Number(e.amount);
+
+                    // Check if using advanced recurrence
+                    if (e.uses_new_recurrence || e.recurrence_frequency) {
+                      const interval = e.recurrence_interval || 1;
+                      // Calculate monthly multiplier based on recurrence
+                      switch (e.recurrence_frequency) {
+                        case 'daily':
+                          // ~30 times per month / interval
+                          return sum + (amount * (30 / interval));
+                        case 'weekly':
+                          // ~4 times per month / interval, considering selected weekdays
+                          const weekdayCount = e.recurrence_weekdays?.length || 1;
+                          return sum + (amount * ((4 / interval) * weekdayCount));
+                        case 'monthly':
+                          // N times per month based on month_days or 1
+                          const monthDayCount = e.recurrence_month_days?.length || 1;
+                          return sum + (amount * (monthDayCount / interval));
+                        case 'yearly':
+                          // 1/12 per month / interval
+                          return sum + (amount * (1 / (12 * interval)));
+                        default:
+                          return sum + amount;
+                      }
+                    }
+
+                    // Legacy frequency calculation
+                    const legacyMultiplier: Record<string, number> = {
+                      'weekly': 4,
+                      'biweekly': 2,
+                      'monthly': 1,
+                      'quarterly': 1/3,
+                      'yearly': 1/12
+                    };
+                    return sum + (amount * (legacyMultiplier[e.frequency || 'monthly'] || 1));
+                  }, 0)
+                  .toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Pendientes de Generar</p>
+              <p className="text-2xl font-bold text-amber-600">
+                {pendingGeneration?.pending_count || 0}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+              <Clock className="w-6 h-6 text-amber-600" />
+            </div>
+          </div>
+          {pendingGeneration && pendingGeneration.pending_count > 0 && (
+            <button
+              onClick={handleGenerateExpenses}
+              disabled={generatingExpenses}
+              className="mt-3 w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+            >
+              {generatingExpenses ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4" />
+              )}
+              Generar Gastos del Mes
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Actions Bar */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <select
+            value={fixedExpenseFilter}
+            onChange={(e) => setFixedExpenseFilter(e.target.value as 'all' | 'active' | 'inactive')}
+            className="px-3 py-2 border rounded-lg text-sm"
+          >
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+            <option value="all">Todos</option>
+          </select>
+        </div>
+        <button
+          onClick={() => {
+            setEditingFixedExpense(null);
+            setFixedExpenseForm({
+              name: '',
+              description: '',
+              category: 'other',
+              expense_type: 'exact',
+              amount: 0,
+              frequency: 'monthly',
+              day_of_month: 1,
+              auto_generate: true,
+              vendor: ''
+            });
+            setShowFixedExpenseModal(true);
+          }}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Nuevo Gasto Fijo
+        </button>
+      </div>
+
+      {/* Fixed Expenses Table */}
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monto</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Frecuencia</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Próx. Generación</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {fixedExpensesList.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                  No hay gastos fijos configurados
+                </td>
+              </tr>
+            ) : (
+              fixedExpensesList.map((item) => (
+                <tr key={item.id} className={!item.is_active ? 'bg-gray-50 opacity-60' : ''}>
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-gray-900">{item.name}</div>
+                    {item.vendor && <div className="text-sm text-gray-500">{item.vendor}</div>}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getExpenseCategoryColor(item.category)}`}>
+                      {getExpenseCategoryLabel(item.category)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getExpenseTypeColor(item.expense_type)}`}>
+                      {getExpenseTypeLabel(item.expense_type)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 font-medium">
+                    {item.expense_type === 'variable' ? (
+                      formatAmountRange(item.amount, item.min_amount, item.max_amount, item.expense_type)
+                    ) : (
+                      `$${item.amount.toLocaleString('es-CO')}`
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    {item.uses_new_recurrence || item.recurrence_frequency ? (
+                      <>
+                        {item.recurrence_frequency === 'daily' && `Diario`}
+                        {item.recurrence_frequency === 'weekly' && `Semanal`}
+                        {item.recurrence_frequency === 'monthly' && `Mensual`}
+                        {item.recurrence_frequency === 'yearly' && `Anual`}
+                        {(item.recurrence_interval && item.recurrence_interval > 1) && ` (cada ${item.recurrence_interval})`}
+                        {item.recurrence_weekdays && item.recurrence_weekdays.length > 0 && (
+                          <span className="text-xs text-blue-600 ml-1">
+                            ({item.recurrence_weekdays.length} días)
+                          </span>
+                        )}
+                        {item.recurrence_month_days && item.recurrence_month_days.length > 0 && (
+                          <span className="text-xs text-blue-600 ml-1">
+                            (días: {item.recurrence_month_days.join(', ')})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {getFrequencyLabel(item.frequency)}
+                        {item.day_of_month && ` (día ${item.day_of_month})`}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    {item.next_generation_date ? (
+                      (() => {
+                        const nextDate = new Date(item.next_generation_date + 'T00:00:00');
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const isPastDue = nextDate <= today;
+                        return (
+                          <span className={`inline-flex items-center gap-1 ${isPastDue ? 'text-amber-600 font-medium' : 'text-gray-600'}`}>
+                            {isPastDue && <Clock className="w-3 h-3" />}
+                            {nextDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${item.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {item.is_active ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEditFixedExpense(item)}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFixedExpense(item.id)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Fixed Expense Modal */}
+      {showFixedExpenseModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
+              <h3 className="text-lg font-semibold">
+                {editingFixedExpense ? 'Editar Gasto Fijo' : 'Nuevo Gasto Fijo'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowFixedExpenseModal(false);
+                  setEditingFixedExpense(null);
+                  setModalError(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {modalError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {modalError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={fixedExpenseForm.name || ''}
+                  onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Internet Claro"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                <input
+                  type="text"
+                  value={fixedExpenseForm.vendor || ''}
+                  onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, vendor: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Claro Colombia"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <select
+                    value={fixedExpenseForm.category || 'other'}
+                    onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, category: e.target.value as ExpenseCategory })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{getExpenseCategoryLabel(cat)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                  <select
+                    value={fixedExpenseForm.expense_type || 'exact'}
+                    onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, expense_type: e.target.value as FixedExpenseType })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="exact">Valor Exacto</option>
+                    <option value="variable">Valor Variable</option>
+                  </select>
+                </div>
+              </div>
+
+              {fixedExpenseForm.expense_type === 'exact' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                  <CurrencyInput
+                    value={fixedExpenseForm.amount || 0}
+                    onChange={(val) => setFixedExpenseForm({ ...fixedExpenseForm, amount: val })}
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Monto Base</label>
+                    <CurrencyInput
+                      value={fixedExpenseForm.amount || 0}
+                      onChange={(val) => setFixedExpenseForm({ ...fixedExpenseForm, amount: val })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mínimo</label>
+                    <CurrencyInput
+                      value={fixedExpenseForm.min_amount || 0}
+                      onChange={(val) => setFixedExpenseForm({ ...fixedExpenseForm, min_amount: val })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Máximo</label>
+                    <CurrencyInput
+                      value={fixedExpenseForm.max_amount || 0}
+                      onChange={(val) => setFixedExpenseForm({ ...fixedExpenseForm, max_amount: val })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Frequency Toggle */}
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="use_advanced_recurrence"
+                  checked={useAdvancedRecurrence}
+                  onChange={(e) => {
+                    setUseAdvancedRecurrence(e.target.checked);
+                    if (e.target.checked) {
+                      setFixedExpenseForm({
+                        ...fixedExpenseForm,
+                        frequency: undefined,
+                        recurrence_frequency: 'monthly',
+                        recurrence_interval: 1,
+                      });
+                    } else {
+                      setFixedExpenseForm({
+                        ...fixedExpenseForm,
+                        frequency: 'monthly',
+                        recurrence_frequency: undefined,
+                        recurrence_weekdays: [],
+                        recurrence_month_days: [],
+                      });
+                    }
+                  }}
+                  className="rounded border-gray-300"
+                />
+                <label htmlFor="use_advanced_recurrence" className="text-sm text-gray-600">
+                  Periodicidad avanzada (estilo calendario)
+                </label>
+              </div>
+
+              {!useAdvancedRecurrence ? (
+                /* Legacy simple frequency */
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Frecuencia</label>
+                    <select
+                      value={fixedExpenseForm.frequency || 'monthly'}
+                      onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, frequency: e.target.value as ExpenseFrequency })}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="weekly">Semanal</option>
+                      <option value="biweekly">Quincenal</option>
+                      <option value="monthly">Mensual</option>
+                      <option value="quarterly">Trimestral</option>
+                      <option value="yearly">Anual</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Día del Mes</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={fixedExpenseForm.day_of_month || 1}
+                      onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, day_of_month: parseInt(e.target.value) || 1 })}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Advanced recurrence system */
+                <div className="space-y-4 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Frecuencia Base</label>
+                      <select
+                        value={fixedExpenseForm.recurrence_frequency || 'monthly'}
+                        onChange={(e) => setFixedExpenseForm({
+                          ...fixedExpenseForm,
+                          recurrence_frequency: e.target.value as any,
+                          recurrence_weekdays: [],
+                          recurrence_month_days: [],
+                        })}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="daily">Diario</option>
+                        <option value="weekly">Semanal</option>
+                        <option value="monthly">Mensual</option>
+                        <option value="yearly">Anual</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cada</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={fixedExpenseForm.recurrence_interval || 1}
+                          onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, recurrence_interval: parseInt(e.target.value) || 1 })}
+                          className="w-20 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
+                        <span className="text-sm text-gray-600">
+                          {fixedExpenseForm.recurrence_frequency === 'daily' ? 'día(s)' :
+                           fixedExpenseForm.recurrence_frequency === 'weekly' ? 'semana(s)' :
+                           fixedExpenseForm.recurrence_frequency === 'monthly' ? 'mes(es)' : 'año(s)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Weekly: Day selection */}
+                  {fixedExpenseForm.recurrence_frequency === 'weekly' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Días de la Semana</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 'monday', label: 'Lun' },
+                          { value: 'tuesday', label: 'Mar' },
+                          { value: 'wednesday', label: 'Mié' },
+                          { value: 'thursday', label: 'Jue' },
+                          { value: 'friday', label: 'Vie' },
+                          { value: 'saturday', label: 'Sáb' },
+                          { value: 'sunday', label: 'Dom' },
+                        ].map(day => (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => {
+                              const current = fixedExpenseForm.recurrence_weekdays || [];
+                              const updated = current.includes(day.value as any)
+                                ? current.filter(d => d !== day.value)
+                                : [...current, day.value as any];
+                              setFixedExpenseForm({ ...fixedExpenseForm, recurrence_weekdays: updated });
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              (fixedExpenseForm.recurrence_weekdays || []).includes(day.value as any)
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {day.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Monthly: Day of month selection */}
+                  {fixedExpenseForm.recurrence_frequency === 'monthly' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Día</label>
+                        <select
+                          value={fixedExpenseForm.recurrence_month_day_type || 'specific'}
+                          onChange={(e) => setFixedExpenseForm({
+                            ...fixedExpenseForm,
+                            recurrence_month_day_type: e.target.value === 'specific' ? undefined : e.target.value as any,
+                            recurrence_month_days: e.target.value === 'specific' ? [1] : [],
+                          })}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="specific">Día específico</option>
+                          <option value="last_day">Último día del mes</option>
+                          <option value="first_weekday">Primer día hábil</option>
+                          <option value="last_weekday">Último día hábil</option>
+                        </select>
+                      </div>
+
+                      {(!fixedExpenseForm.recurrence_month_day_type || fixedExpenseForm.recurrence_month_day_type === 'specific') && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Días del Mes (click para seleccionar)</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => {
+                                  const current = fixedExpenseForm.recurrence_month_days || [];
+                                  const updated = current.includes(day)
+                                    ? current.filter(d => d !== day)
+                                    : [...current, day].sort((a, b) => a - b);
+                                  setFixedExpenseForm({ ...fixedExpenseForm, recurrence_month_days: updated });
+                                }}
+                                className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
+                                  (fixedExpenseForm.recurrence_month_days || []).includes(day)
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                {day}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Seleccionados: {(fixedExpenseForm.recurrence_month_days || []).join(', ') || 'Ninguno'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Preview */}
+                  <div className="bg-white p-3 rounded-lg border">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Resumen:</span>{' '}
+                      {fixedExpenseForm.recurrence_frequency === 'daily' && `Cada ${fixedExpenseForm.recurrence_interval || 1} día(s)`}
+                      {fixedExpenseForm.recurrence_frequency === 'weekly' &&
+                        `Cada ${fixedExpenseForm.recurrence_interval || 1} semana(s)${(fixedExpenseForm.recurrence_weekdays || []).length > 0
+                          ? ` los ${(fixedExpenseForm.recurrence_weekdays || []).map(d =>
+                              ({ monday: 'Lun', tuesday: 'Mar', wednesday: 'Mié', thursday: 'Jue', friday: 'Vie', saturday: 'Sáb', sunday: 'Dom' }[d])
+                            ).join(', ')}`
+                          : ''}`
+                      }
+                      {fixedExpenseForm.recurrence_frequency === 'monthly' &&
+                        `Cada ${fixedExpenseForm.recurrence_interval || 1} mes(es)${
+                          fixedExpenseForm.recurrence_month_day_type === 'last_day' ? ' el último día' :
+                          fixedExpenseForm.recurrence_month_day_type === 'first_weekday' ? ' el primer día hábil' :
+                          fixedExpenseForm.recurrence_month_day_type === 'last_weekday' ? ' el último día hábil' :
+                          (fixedExpenseForm.recurrence_month_days || []).length > 0
+                            ? ` el día ${(fixedExpenseForm.recurrence_month_days || []).join(', ')}`
+                            : ''
+                        }`
+                      }
+                      {fixedExpenseForm.recurrence_frequency === 'yearly' && `Cada ${fixedExpenseForm.recurrence_interval || 1} año(s)`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <textarea
+                  value={fixedExpenseForm.description || ''}
+                  onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, description: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows={2}
+                  placeholder="Descripción adicional..."
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="auto_generate"
+                  checked={fixedExpenseForm.auto_generate ?? true}
+                  onChange={(e) => setFixedExpenseForm({ ...fixedExpenseForm, auto_generate: e.target.checked })}
+                  className="rounded border-gray-300"
+                />
+                <label htmlFor="auto_generate" className="text-sm text-gray-700">
+                  Generar gastos automáticamente
+                </label>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowFixedExpenseModal(false);
+                  setEditingFixedExpense(null);
+                  setModalError(null);
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={editingFixedExpense ? handleUpdateFixedExpense : handleCreateFixedExpense}
+                disabled={submitting || !fixedExpenseForm.name || !fixedExpenseForm.amount}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {editingFixedExpense ? 'Guardar Cambios' : 'Crear Gasto Fijo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   // Render action button based on current tab
   const renderActionButton = () => {
     if (activeTab === 'dashboard') {
@@ -1640,6 +2545,7 @@ export default function Accounting() {
 
       {/* Tab Content */}
       {activeTab === 'dashboard' && renderDashboard()}
+      {activeTab === 'fixed_expenses' && renderFixedExpenses()}
       {activeTab === 'receivables' && renderReceivables()}
       {activeTab === 'payables' && renderPayables()}
       {activeTab === 'patrimony' && renderPatrimony()}
@@ -1850,12 +2756,18 @@ export default function Accounting() {
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as AccPaymentMethod)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    !paymentMethod ? 'border-red-300 text-gray-400' : 'border-gray-300'
+                  }`}
                 >
+                  <option value="" disabled>-- Seleccione método --</option>
                   {PAYMENT_METHODS.map((method) => (
                     <option key={method} value={method}>{getPaymentMethodLabel(method)}</option>
                   ))}
                 </select>
+                {!paymentMethod && (
+                  <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                )}
               </div>
               {/* Error Message */}
               {modalError && (
@@ -1875,7 +2787,7 @@ export default function Accounting() {
               </button>
               <button
                 onClick={() => handlePayExpense(false)}
-                disabled={submitting || paymentAmount <= 0 || paymentAmount > Number(selectedExpense.balance)}
+                disabled={submitting || paymentAmount <= 0 || paymentAmount > Number(selectedExpense.balance) || !paymentMethod}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -2054,13 +2966,14 @@ export default function Accounting() {
                   {getFilteredExpenses().map((expense) => (
                     <div
                       key={expense.id}
-                      className={`border rounded-lg p-4 ${
-                        expense.is_paid ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
+                      onClick={() => setSelectedExpenseDetail(expense)}
+                      className={`border rounded-lg p-4 cursor-pointer transition hover:shadow-md ${
+                        expense.is_paid ? 'bg-green-50 border-green-200 hover:bg-green-100' : 'bg-white border-gray-200 hover:bg-gray-50'
                       }`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span
                               className={`px-2 py-0.5 text-xs font-medium rounded ${getExpenseCategoryColor(expense.category)}`}
                             >
@@ -2073,6 +2986,17 @@ export default function Accounting() {
                             ) : (
                               <span className="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-700">
                                 Pendiente
+                              </span>
+                            )}
+                            {/* Payment info badges for paid expenses */}
+                            {expense.is_paid && expense.payment_account_name && (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">
+                                {expense.payment_account_name}
+                              </span>
+                            )}
+                            {expense.is_paid && expense.payment_method && (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">
+                                {getPaymentMethodLabel(expense.payment_method)}
                               </span>
                             )}
                           </div>
@@ -2098,7 +3022,8 @@ export default function Accounting() {
                           {/* Edit button for pending expenses */}
                           {!expense.is_paid && (
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setShowExpenseHistoryModal(false);
                                 handleOpenEditExpense(expense);
                               }}
@@ -2181,6 +3106,173 @@ export default function Accounting() {
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 Usar Caja Mayor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expense Detail Modal */}
+      {selectedExpenseDetail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-blue-600" />
+                Detalle del Gasto
+              </h3>
+              <button onClick={() => setSelectedExpenseDetail(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Category and description */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded ${getExpenseCategoryColor(selectedExpenseDetail.category)}`}>
+                    {getExpenseCategoryLabel(selectedExpenseDetail.category)}
+                  </span>
+                  {selectedExpenseDetail.is_paid ? (
+                    <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">
+                      Pagado
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-700">
+                      Pendiente
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-lg font-medium text-gray-900">{selectedExpenseDetail.description}</h4>
+              </div>
+
+              {/* Amount */}
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-600">Monto Total:</span>
+                <span className="text-xl font-bold text-gray-900">{formatCurrency(selectedExpenseDetail.amount)}</span>
+              </div>
+
+              {/* If partially paid */}
+              {!selectedExpenseDetail.is_paid && selectedExpenseDetail.amount_paid > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <span className="text-sm text-gray-600">Pagado:</span>
+                    <p className="font-medium text-blue-700">{formatCurrency(selectedExpenseDetail.amount_paid)}</p>
+                  </div>
+                  <div className="p-3 bg-red-50 rounded-lg">
+                    <span className="text-sm text-gray-600">Pendiente:</span>
+                    <p className="font-medium text-red-600">{formatCurrency(selectedExpenseDetail.balance)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Vendor and date info */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {selectedExpenseDetail.vendor && (
+                  <div>
+                    <span className="text-gray-500">Proveedor:</span>
+                    <p className="font-medium text-gray-900">{selectedExpenseDetail.vendor}</p>
+                  </div>
+                )}
+                <div>
+                  <span className="text-gray-500">Fecha del gasto:</span>
+                  <p className="font-medium text-gray-900">{formatDateSpanish(selectedExpenseDetail.expense_date)}</p>
+                </div>
+                {selectedExpenseDetail.due_date && (
+                  <div>
+                    <span className="text-gray-500">Fecha de vencimiento:</span>
+                    <p className="font-medium text-gray-900">{formatDateSpanish(selectedExpenseDetail.due_date)}</p>
+                  </div>
+                )}
+                {selectedExpenseDetail.is_recurring && (
+                  <div>
+                    <span className="text-gray-500">Tipo:</span>
+                    <p className="font-medium text-gray-900">Recurrente</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment info section (only for paid expenses) */}
+              {selectedExpenseDetail.is_paid && (
+                <div className="bg-green-50 rounded-lg p-4 space-y-3">
+                  <h5 className="font-medium text-green-800 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Información de Pago
+                  </h5>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-600">Cuenta:</span>
+                      <p className="font-medium text-gray-900">{selectedExpenseDetail.payment_account_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Método:</span>
+                      <p className="font-medium text-gray-900">
+                        {selectedExpenseDetail.payment_method
+                          ? getPaymentMethodLabel(selectedExpenseDetail.payment_method)
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    {selectedExpenseDetail.paid_at && (
+                      <div className="col-span-2">
+                        <span className="text-gray-600">Fecha de pago:</span>
+                        <p className="font-medium text-gray-900">{formatDateSpanish(selectedExpenseDetail.paid_at)}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedExpenseDetail.notes && (
+                <div>
+                  <span className="text-sm text-gray-500">Notas:</span>
+                  <p className="text-gray-700 mt-1">{selectedExpenseDetail.notes}</p>
+                </div>
+              )}
+
+              {/* Adjustment Actions (only for paid expenses) */}
+              {selectedExpenseDetail.is_paid && (
+                <div className="border-t pt-4 mt-4">
+                  <p className="text-sm font-medium text-gray-700 mb-3">Acciones de Ajuste</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => {
+                        openAdjustModal(selectedExpenseDetail);
+                        setSelectedExpenseDetail(null);
+                      }}
+                      className="flex items-center gap-1 px-3 py-2 text-sm bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Ajustar Monto/Cuenta
+                    </button>
+                    <button
+                      onClick={() => {
+                        openRevertModal(selectedExpenseDetail);
+                        setSelectedExpenseDetail(null);
+                      }}
+                      className="flex items-center gap-1 px-3 py-2 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Revertir Pago
+                    </button>
+                    <button
+                      onClick={() => loadAdjustmentHistory(selectedExpenseDetail.id)}
+                      className="flex items-center gap-1 px-3 py-2 text-sm bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition"
+                    >
+                      <History className="w-4 h-4" />
+                      Ver Historial
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setSelectedExpenseDetail(null)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              >
+                Cerrar
               </button>
             </div>
           </div>
@@ -2390,12 +3482,18 @@ export default function Accounting() {
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as AccPaymentMethod)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    !paymentMethod ? 'border-red-300 text-gray-400' : 'border-gray-300'
+                  }`}
                 >
+                  <option value="" disabled>-- Seleccione método --</option>
                   {PAYMENT_METHODS.map((method) => (
                     <option key={method} value={method}>{getPaymentMethodLabel(method)}</option>
                   ))}
                 </select>
+                {!paymentMethod && (
+                  <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
@@ -2404,7 +3502,7 @@ export default function Accounting() {
               </button>
               <button
                 onClick={handlePayReceivable}
-                disabled={submitting || paymentAmount <= 0 || paymentAmount > selectedReceivable.balance}
+                disabled={submitting || paymentAmount <= 0 || paymentAmount > selectedReceivable.balance || !paymentMethod}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -2555,12 +3653,18 @@ export default function Accounting() {
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as AccPaymentMethod)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    !paymentMethod ? 'border-red-300 text-gray-400' : 'border-gray-300'
+                  }`}
                 >
+                  <option value="" disabled>-- Seleccione método --</option>
                   {PAYMENT_METHODS.map((method) => (
                     <option key={method} value={method}>{getPaymentMethodLabel(method)}</option>
                   ))}
                 </select>
+                {!paymentMethod && (
+                  <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
@@ -2569,7 +3673,7 @@ export default function Accounting() {
               </button>
               <button
                 onClick={handlePayPayable}
-                disabled={submitting || paymentAmount <= 0 || paymentAmount > selectedPayable.balance}
+                disabled={submitting || paymentAmount <= 0 || paymentAmount > selectedPayable.balance || !paymentMethod}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -2860,6 +3964,270 @@ export default function Accounting() {
                   Cerrar
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expense Adjustment Modal */}
+      {showAdjustModal && adjustingExpense && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Settings className="w-5 h-5 text-amber-600" />
+                Ajustar Gasto
+              </h3>
+              <button onClick={() => { setShowAdjustModal(false); setAdjustingExpense(null); setModalError(null); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Current expense info */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-500 mb-1">Gasto actual:</p>
+                <p className="font-medium text-gray-900">{adjustingExpense.description}</p>
+                <div className="flex justify-between mt-2">
+                  <span className="text-sm text-gray-600">Monto pagado:</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(adjustingExpense.amount)}</span>
+                </div>
+                {adjustingExpense.payment_account_name && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Cuenta:</span>
+                    <span className="text-sm text-gray-900">{adjustingExpense.payment_account_name}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Adjustment form */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nuevo Monto (opcional)</label>
+                <CurrencyInput
+                  value={adjustmentForm.new_amount || 0}
+                  onChange={(value) => setAdjustmentForm({ ...adjustmentForm, new_amount: value })}
+                  placeholder="$0"
+                />
+                {adjustmentForm.new_amount !== adjustingExpense.amount && (
+                  <p className="text-sm text-amber-600 mt-1">
+                    Diferencia: {formatCurrency((adjustmentForm.new_amount || 0) - adjustingExpense.amount)}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Cuenta de Pago (opcional)</label>
+                <select
+                  value={adjustmentForm.new_payment_account_id || ''}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, new_payment_account_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Mantener cuenta actual</option>
+                  {cashBalances?.caja_menor && (
+                    <option value={cashBalances.caja_menor.id}>Caja Menor ({formatCurrency(cashBalances.caja_menor.balance)})</option>
+                  )}
+                  {cashBalances?.caja_mayor && (
+                    <option value={cashBalances.caja_mayor.id}>Caja Mayor ({formatCurrency(cashBalances.caja_mayor.balance)})</option>
+                  )}
+                  {cashBalances?.nequi && (
+                    <option value={cashBalances.nequi.id}>Nequi ({formatCurrency(cashBalances.nequi.balance)})</option>
+                  )}
+                  {cashBalances?.banco && (
+                    <option value={cashBalances.banco.id}>Banco ({formatCurrency(cashBalances.banco.balance)})</option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Razón del Ajuste *</label>
+                <select
+                  value={adjustmentForm.reason || 'amount_correction'}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value as AdjustmentReason })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="amount_correction">Corrección de Monto</option>
+                  <option value="account_correction">Cambio de Cuenta</option>
+                  <option value="both_correction">Corrección de Monto y Cuenta</option>
+                  <option value="error_reversal">Reversión por Error</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción del Ajuste * (mín. 10 caracteres)</label>
+                <textarea
+                  value={adjustmentForm.description || ''}
+                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, description: e.target.value })}
+                  placeholder="Describa la razón del ajuste..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              {modalError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                  <AlertCircle className="w-4 h-4 inline mr-1" />
+                  {modalError}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => { setShowAdjustModal(false); setAdjustingExpense(null); setModalError(null); }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAdjustExpense}
+                disabled={submitting || !adjustmentForm.description || (adjustmentForm.description || '').length < 10}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                Aplicar Ajuste
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Revert Payment Modal */}
+      {showRevertModal && adjustingExpense && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-red-600" />
+                Revertir Pago
+              </h3>
+              <button onClick={() => { setShowRevertModal(false); setAdjustingExpense(null); setModalError(null); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-red-800 mb-2">⚠️ Advertencia</p>
+                <p className="text-sm text-red-700">
+                  Esta acción revertirá completamente el pago y devolverá el dinero a la cuenta original.
+                  El gasto volverá a estado "pendiente".
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-500 mb-1">Gasto a revertir:</p>
+                <p className="font-medium text-gray-900">{adjustingExpense.description}</p>
+                <div className="flex justify-between mt-2">
+                  <span className="text-sm text-gray-600">Monto a devolver:</span>
+                  <span className="font-semibold text-red-600">{formatCurrency(adjustingExpense.amount_paid)}</span>
+                </div>
+                {adjustingExpense.payment_account_name && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Se devolverá a:</span>
+                    <span className="text-sm text-gray-900">{adjustingExpense.payment_account_name}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Razón de la Reversión * (mín. 10 caracteres)</label>
+                <textarea
+                  value={revertDescription}
+                  onChange={(e) => setRevertDescription(e.target.value)}
+                  placeholder="Describa por qué se revierte este pago..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              {modalError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                  <AlertCircle className="w-4 h-4 inline mr-1" />
+                  {modalError}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => { setShowRevertModal(false); setAdjustingExpense(null); setModalError(null); }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleRevertPayment}
+                disabled={submitting || revertDescription.length < 10}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                Confirmar Reversión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adjustment History Modal */}
+      {showAdjustmentHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <History className="w-5 h-5 text-blue-600" />
+                Historial de Ajustes
+              </h3>
+              <button onClick={() => { setShowAdjustmentHistoryModal(false); setAdjustmentHistory([]); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {adjustmentHistory.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No hay ajustes registrados para este gasto</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {adjustmentHistory.map((adj) => (
+                    <div key={adj.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-start justify-between mb-2">
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${globalAccountingService.getAdjustmentReasonColor(adj.reason)}`}>
+                          {globalAccountingService.getAdjustmentReasonLabel(adj.reason)}
+                        </span>
+                        <span className="text-sm text-gray-500">{formatDateSpanish(adj.adjusted_at)}</span>
+                      </div>
+                      <p className="text-gray-700 mb-3">{adj.description}</p>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-500">Monto anterior:</span>
+                          <p className="font-medium">{formatCurrency(adj.previous_amount)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Monto nuevo:</span>
+                          <p className="font-medium">{formatCurrency(adj.new_amount)}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Diferencia:</span>
+                          <span className={`ml-2 font-medium ${adj.adjustment_delta > 0 ? 'text-green-600' : adj.adjustment_delta < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                            {adj.adjustment_delta > 0 ? '+' : ''}{formatCurrency(adj.adjustment_delta)}
+                          </span>
+                        </div>
+                        {adj.adjusted_by_username && (
+                          <div className="col-span-2">
+                            <span className="text-gray-500">Realizado por:</span>
+                            <span className="ml-2">{adj.adjusted_by_username}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => { setShowAdjustmentHistoryModal(false); setAdjustmentHistory([]); }}
+                className="w-full px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
