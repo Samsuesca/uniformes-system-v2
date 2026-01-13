@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/lib/adminAuth';
 
@@ -12,18 +12,26 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const { isAuthenticated, checkAuth } = useAdminAuth();
   const [isChecking, setIsChecking] = useState(true);
+  const hasChecked = useRef(false);
 
   useEffect(() => {
+    // Only run once
+    if (hasChecked.current) return;
+    hasChecked.current = true;
+
     const verify = async () => {
+      console.log('[AuthGuard] Starting auth verification');
       const isValid = await checkAuth();
+      console.log('[AuthGuard] Auth verification result:', isValid);
       if (!isValid) {
+        console.log('[AuthGuard] Not authenticated, redirecting to /login');
         router.push('/login');
       }
       setIsChecking(false);
     };
 
     verify();
-  }, [checkAuth, router]);
+  }, []); // Empty deps - run only once on mount
 
   if (isChecking) {
     return (

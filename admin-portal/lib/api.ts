@@ -52,6 +52,59 @@ apiClient.interceptors.response.use(
 
 export default apiClient;
 
+// Helper function to extract error messages from API responses
+export function extractErrorMessage(err: unknown): string {
+  // Axios error with response
+  if (err && typeof err === 'object' && 'response' in err) {
+    const axiosError = err as AxiosError<{ detail?: unknown }>;
+    const detail = axiosError.response?.data?.detail;
+
+    // Pydantic validation errors (array of error objects)
+    if (Array.isArray(detail)) {
+      return detail
+        .map((e: { loc?: string[]; msg?: string }) => {
+          const field = e.loc?.[e.loc.length - 1] || 'Campo';
+          return `${field}: ${e.msg}`;
+        })
+        .join('\n');
+    }
+
+    // Simple string error
+    if (typeof detail === 'string') {
+      return detail;
+    }
+
+    // HTTP status error
+    if (axiosError.response?.status) {
+      const status = axiosError.response.status;
+      if (status === 400) return 'Datos invalidos. Revisa los campos.';
+      if (status === 401) return 'Sesion expirada. Inicia sesion nuevamente.';
+      if (status === 403) return 'No tienes permisos para esta accion.';
+      if (status === 404) return 'El recurso no fue encontrado.';
+      if (status === 409) return 'Ya existe un registro con estos datos.';
+      if (status === 422) return 'Error de validacion. Revisa los campos.';
+      if (status === 500) return 'Error del servidor. Intenta de nuevo.';
+      return `Error HTTP ${status}`;
+    }
+  }
+
+  // Standard Error object
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+
+  // Network error
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = (err as { message: string }).message;
+    if (msg.includes('Network') || msg.includes('network')) {
+      return 'Error de conexion. Verifica tu internet.';
+    }
+    return msg;
+  }
+
+  return 'Error desconocido. Intenta de nuevo.';
+}
+
 // Types
 export interface School {
   id: string;
@@ -124,23 +177,71 @@ export interface Product {
   code: string;
   name: string;
   size: string;
+  color?: string;
+  gender?: 'unisex' | 'male' | 'female';
   price: number;
+  cost?: number;
   stock: number;
-  garment_type_id?: string;
+  inventory_quantity?: number;
+  garment_type_id: string;
   garment_type_name?: string;
   image_url?: string;
-  school_id?: string;
+  description?: string;
+  school_id: string;
   is_global: boolean;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GlobalProduct {
+  id: string;
+  garment_type_id: string;
+  garment_type_name?: string;
+  code: string;
+  name: string;
+  size: string;
+  color?: string;
+  gender?: 'unisex' | 'male' | 'female';
+  price: number;
+  cost?: number;
+  inventory_quantity: number;
+  inventory_min_stock?: number;
+  image_url?: string;
+  description?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface GarmentType {
   id: string;
   name: string;
   description?: string;
+  category?: 'uniforme_diario' | 'uniforme_deportivo' | 'accesorios';
   image_url?: string;
-  school_id?: string;
+  school_id: string;
+  has_custom_measurements: boolean;
+  requires_embroidery: boolean;
+  base_price?: number;
+  is_active: boolean;
   is_global: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GlobalGarmentType {
+  id: string;
+  name: string;
+  description?: string;
+  category?: 'uniforme_diario' | 'uniforme_deportivo' | 'accesorios';
+  image_url?: string;
+  has_custom_measurements: boolean;
+  requires_embroidery: boolean;
+  base_price?: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -295,12 +396,49 @@ export interface OrderWithItems extends Order {
   payments?: OrderPayment[];
 }
 
-// Client Type
+// Client Type (Clients are GLOBAL, not tied to schools)
 export interface Client {
   id: string;
+  code: string;
   name: string;
   phone?: string;
   email?: string;
   address?: string;
-  school_id?: string;
+  notes?: string;
+  student_name?: string;
+  student_grade?: string;
+  is_active: boolean;
+  client_type?: 'regular' | 'web';
+  student_count?: number;
+}
+
+// Sale Create Types
+export interface SaleItemCreate {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  is_global: boolean;
+}
+
+export interface SalePaymentCreate {
+  amount: number;
+  payment_method: PaymentMethod;
+  reference?: string;
+}
+
+export interface SaleCreate {
+  school_id: string;
+  client_id?: string;
+  items: SaleItemCreate[];
+  payments: SalePaymentCreate[];
+  notes?: string;
+  is_historical?: boolean;
+  sale_date?: string;
+}
+
+export interface SaleCreateResponse {
+  id: string;
+  code: string;
+  total: number;
+  status: SaleStatus;
 }

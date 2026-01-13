@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAdminAuth } from '@/lib/adminAuth';
+import { SYSTEM_VERSION, APP_VERSION } from '@/lib/version';
 
 const menuItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -57,7 +58,7 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="font-bold text-white">Admin Panel</h1>
-            <p className="text-xs text-slate-400">Uniformes CR</p>
+            <p className="text-xs text-slate-400">v{SYSTEM_VERSION} | Admin v{APP_VERSION}</p>
           </div>
         </div>
       </div>

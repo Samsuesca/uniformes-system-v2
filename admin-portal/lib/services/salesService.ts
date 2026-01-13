@@ -17,12 +17,12 @@ export interface SaleListParams {
 }
 
 export interface CreateSaleItemData {
-  product_id?: string;
-  global_product_id?: string;
+  product_id: string;
   quantity: number;
-  unit_price: number;
   is_global?: boolean;
 }
+
+export type SaleSource = 'desktop_app' | 'web_portal' | 'api' | 'admin_portal';
 
 export interface CreateSaleData {
   client_id?: string;
@@ -32,6 +32,7 @@ export interface CreateSaleData {
   notes?: string;
   is_historical?: boolean;
   sale_date?: string;
+  source?: SaleSource;
 }
 
 export interface AddPaymentData {

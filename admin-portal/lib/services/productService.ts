@@ -1,35 +1,59 @@
 import apiClient, { Product, GarmentType, GlobalProduct, GlobalGarmentType } from '../api';
 
 export interface CreateProductData {
-  code: string;
-  name: string;
+  garment_type_id: string;
+  name?: string;
   size: string;
+  color?: string;
+  gender?: 'unisex' | 'male' | 'female';
   price: number;
-  stock?: number;
-  garment_type_id?: string;
+  cost?: number;
+  description?: string;
   image_url?: string;
+  stock?: number;
 }
 
 export interface UpdateProductData {
   code?: string;
   name?: string;
   size?: string;
+  color?: string;
+  gender?: 'unisex' | 'male' | 'female';
   price?: number;
+  cost?: number;
+  description?: string;
   garment_type_id?: string;
   image_url?: string;
   is_active?: boolean;
 }
 
 export interface InventoryAdjustment {
-  adjustment_type: 'add' | 'remove' | 'set';
-  quantity: number;
+  adjustment: number;  // Positive to add, negative to remove
   reason?: string;
 }
 
 export interface CreateGarmentTypeData {
   name: string;
   description?: string;
+  category?: 'uniforme_diario' | 'uniforme_deportivo' | 'accesorios';
+  requires_embroidery?: boolean;
+  has_custom_measurements?: boolean;
   image_url?: string;
+}
+
+export interface UpdateGarmentTypeData {
+  name?: string;
+  description?: string;
+  category?: 'uniforme_diario' | 'uniforme_deportivo' | 'accesorios';
+  requires_embroidery?: boolean;
+  has_custom_measurements?: boolean;
+  image_url?: string;
+  is_active?: boolean;
+}
+
+export interface GlobalInventoryAdjustment {
+  adjustment: number;
+  reason?: string;
 }
 
 const productService = {
@@ -67,7 +91,7 @@ const productService = {
 
   // Adjust inventory
   adjustInventory: async (schoolId: string, productId: string, data: InventoryAdjustment) => {
-    const response = await apiClient.post(`/schools/${schoolId}/products/${productId}/inventory`, data);
+    const response = await apiClient.post(`/schools/${schoolId}/inventory/product/${productId}/adjust`, data);
     return response.data;
   },
 
@@ -134,6 +158,30 @@ const productService = {
   // List global garment types
   listGlobalGarmentTypes: async () => {
     const response = await apiClient.get<GlobalGarmentType[]>('/global/garment-types');
+    return response.data;
+  },
+
+  // Create global garment type
+  createGlobalGarmentType: async (data: CreateGarmentTypeData) => {
+    const response = await apiClient.post<GlobalGarmentType>('/global/garment-types', data);
+    return response.data;
+  },
+
+  // Update global garment type
+  updateGlobalGarmentType: async (garmentTypeId: string, data: UpdateGarmentTypeData) => {
+    const response = await apiClient.put<GlobalGarmentType>(`/global/garment-types/${garmentTypeId}`, data);
+    return response.data;
+  },
+
+  // Delete global garment type
+  deleteGlobalGarmentType: async (garmentTypeId: string) => {
+    const response = await apiClient.delete(`/global/garment-types/${garmentTypeId}`);
+    return response.data;
+  },
+
+  // Adjust global inventory
+  adjustGlobalInventory: async (productId: string, data: GlobalInventoryAdjustment) => {
+    const response = await apiClient.post(`/global/products/${productId}/inventory/adjust`, data);
     return response.data;
   },
 
