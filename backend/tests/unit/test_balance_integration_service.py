@@ -564,13 +564,35 @@ class TestInitializeGlobalAccounts:
     async def test_updates_existing_account_balances(
         self,
         balance_service,
-        mock_db,
-        mock_caja_menor_account
+        mock_db
     ):
         """Should update balance if account already exists."""
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_caja_menor_account
-        mock_db.execute.return_value = mock_result
+        # Create mock accounts for each of the 4 default accounts
+        accounts = {}
+        for key, config in DEFAULT_ACCOUNTS.items():
+            mock_acct = MagicMock()
+            mock_acct.id = uuid4()
+            mock_acct.school_id = None
+            mock_acct.account_type = config["account_type"]
+            mock_acct.name = config["name"]
+            mock_acct.code = config["code"]
+            mock_acct.balance = Decimal("500000")
+            mock_acct.is_active = True
+            accounts[config["code"]] = mock_acct
+
+        # Track which account should be returned
+        call_index = [0]
+        account_codes = list(DEFAULT_ACCOUNTS.values())
+
+        async def mock_execute(query):
+            idx = call_index[0]
+            call_index[0] += 1
+            code = account_codes[idx % len(account_codes)]["code"]
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = accounts[code]
+            return mock_result
+
+        mock_db.execute = mock_execute
 
         new_balance = Decimal("999999")
 
@@ -578,8 +600,8 @@ class TestInitializeGlobalAccounts:
             caja_menor_initial_balance=new_balance
         )
 
-        # Should update existing account balance
-        assert mock_caja_menor_account.balance == new_balance
+        # Should update existing caja_menor account balance
+        assert accounts["1101"].balance == new_balance
 
 
 # ============================================================================

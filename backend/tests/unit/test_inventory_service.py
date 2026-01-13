@@ -130,35 +130,23 @@ class TestAddStock:
     async def test_add_stock_success(self, mock_db_session, inventory_factory):
         """Should increase stock by specified quantity"""
         inventory = inventory_factory(quantity=50)
-        updated_inventory = inventory_factory(
-            id=inventory.id,
-            product_id=inventory.product_id,
-            school_id=inventory.school_id,
-            quantity=60
-        )
-
-        # Mock get_by_product
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        # Mock the update method
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.add_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=10,
+            reason="Stock receipt"
+        )
 
-            result = await service.add_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=10,
-                reason="Stock receipt"
-            )
-
-            # Verify update was called with correct quantity
-            mock_update.assert_called_once()
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 60  # 50 + 10
+        # Verify quantity was updated
+        assert inventory.quantity == 60  # 50 + 10
 
     @pytest.mark.asyncio
     async def test_add_stock_zero_quantity_raises_error(self, mock_db_session):
@@ -214,32 +202,23 @@ class TestRemoveStock:
     async def test_remove_stock_success(self, mock_db_session, inventory_factory):
         """Should decrease stock by specified quantity"""
         inventory = inventory_factory(quantity=50)
-        updated_inventory = inventory_factory(
-            id=inventory.id,
-            product_id=inventory.product_id,
-            school_id=inventory.school_id,
-            quantity=40
-        )
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.remove_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=10,
+            reason="Sale"
+        )
 
-            result = await service.remove_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=10,
-                reason="Sale"
-            )
-
-            mock_update.assert_called_once()
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 40  # 50 - 10
+        # Verify quantity was updated
+        assert inventory.quantity == 40  # 50 - 10
 
     @pytest.mark.asyncio
     async def test_remove_stock_insufficient_raises_error(
@@ -268,31 +247,23 @@ class TestRemoveStock:
     ):
         """Should allow removing exact available quantity"""
         inventory = inventory_factory(quantity=10)
-        updated_inventory = inventory_factory(
-            id=inventory.id,
-            product_id=inventory.product_id,
-            school_id=inventory.school_id,
-            quantity=0
-        )
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.remove_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=10,
+            reason="Sale"
+        )
 
-            result = await service.remove_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=10,
-                reason="Sale"
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 0
+        # Verify quantity is now 0
+        assert inventory.quantity == 0
 
     @pytest.mark.asyncio
     async def test_remove_stock_zero_quantity_raises_error(self, mock_db_session):
@@ -319,29 +290,22 @@ class TestReserveStock:
     async def test_reserve_stock_success(self, mock_db_session, inventory_factory):
         """Should reserve stock for sale/order"""
         inventory = inventory_factory(quantity=50)
-        updated_inventory = inventory_factory(
-            id=inventory.id,
-            quantity=45
-        )
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.reserve_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=5
+        )
 
-            result = await service.reserve_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=5
-            )
-
-            # Verify it's using remove_stock with proper reason
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 45
+        # Verify quantity was reduced
+        assert inventory.quantity == 45  # 50 - 5
 
     @pytest.mark.asyncio
     async def test_reserve_stock_insufficient_raises_error(
@@ -375,28 +339,22 @@ class TestReleaseStock:
     async def test_release_stock_success(self, mock_db_session, inventory_factory):
         """Should release reserved stock (add back to inventory)"""
         inventory = inventory_factory(quantity=45)
-        updated_inventory = inventory_factory(
-            id=inventory.id,
-            quantity=50
-        )
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.release_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=5
+        )
 
-            result = await service.release_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=5
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 50
+        # Verify quantity was increased
+        assert inventory.quantity == 50  # 45 + 5
 
 
 # ============================================================================
@@ -410,49 +368,43 @@ class TestAdjustQuantity:
     async def test_adjust_positive(self, mock_db_session, inventory_factory):
         """Should handle positive adjustment"""
         inventory = inventory_factory(quantity=50)
-        updated_inventory = inventory_factory(quantity=60)
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.adjust_quantity(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            adjust_data=InventoryAdjust(adjustment=10, reason="Adjustment")
+        )
 
-            result = await service.adjust_quantity(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                adjust_data=InventoryAdjust(adjustment=10, reason="Adjustment")
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 60
+        # Verify quantity was updated
+        assert inventory.quantity == 60  # 50 + 10
 
     @pytest.mark.asyncio
     async def test_adjust_negative(self, mock_db_session, inventory_factory):
         """Should handle negative adjustment"""
         inventory = inventory_factory(quantity=50)
-        updated_inventory = inventory_factory(quantity=40)
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.adjust_quantity(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            adjust_data=InventoryAdjust(adjustment=-10, reason="Adjustment")
+        )
 
-            result = await service.adjust_quantity(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                adjust_data=InventoryAdjust(adjustment=-10, reason="Adjustment")
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 40
+        # Verify quantity was updated
+        assert inventory.quantity == 40  # 50 - 10
 
     @pytest.mark.asyncio
     async def test_adjust_would_go_negative_raises_error(
@@ -494,6 +446,8 @@ class TestBusinessScenarios:
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
@@ -505,20 +459,17 @@ class TestBusinessScenarios:
         )
         assert available is True
 
+        # Reset quantity for reserve test (since check doesn't modify)
+        inventory.quantity = initial_qty
+
         # Step 2: Reserve stock
-        updated_inventory = inventory_factory(quantity=initial_qty - sale_qty)
+        result = await service.reserve_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=sale_qty
+        )
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
-
-            result = await service.reserve_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=sale_qty
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == initial_qty - sale_qty
+        assert inventory.quantity == initial_qty - sale_qty
 
     @pytest.mark.asyncio
     async def test_cancelled_sale_release_stock(
@@ -534,22 +485,19 @@ class TestBusinessScenarios:
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        updated_inventory = inventory_factory(quantity=current_qty + released_qty)
+        result = await service.release_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=released_qty
+        )
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
-
-            result = await service.release_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=released_qty
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 50  # Back to original
+        # Back to original quantity
+        assert inventory.quantity == 50
 
     @pytest.mark.asyncio
     async def test_return_flow_add_stock_back(self, mock_db_session, inventory_factory):
@@ -563,23 +511,19 @@ class TestBusinessScenarios:
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        updated_inventory = inventory_factory(quantity=current_qty + returned_qty)
+        result = await service.add_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=returned_qty,
+            reason="Customer return"
+        )
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
-
-            result = await service.add_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=returned_qty,
-                reason="Customer return"
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 48
+        assert inventory.quantity == 48
 
 
 # ============================================================================
@@ -595,26 +539,22 @@ class TestEdgeCases:
     ):
         """Should handle large quantity adjustments"""
         inventory = inventory_factory(quantity=1000000)
-        updated_inventory = inventory_factory(quantity=1000100)
-
         mock_db_session.execute = AsyncMock(
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=inventory))
         )
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
 
         service = InventoryService(mock_db_session)
 
-        with patch.object(service, 'update', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = updated_inventory
+        result = await service.add_stock(
+            product_id=inventory.product_id,
+            school_id=inventory.school_id,
+            quantity=100,
+            reason="Large batch receipt"
+        )
 
-            result = await service.add_stock(
-                product_id=inventory.product_id,
-                school_id=inventory.school_id,
-                quantity=100,
-                reason="Large batch receipt"
-            )
-
-            call_args = mock_update.call_args
-            assert call_args[0][2]["quantity"] == 1000100
+        assert inventory.quantity == 1000100
 
     @pytest.mark.asyncio
     async def test_single_unit_operations(self, mock_db_session, inventory_factory):

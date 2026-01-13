@@ -31,13 +31,14 @@ from app.core.config import settings
 # DATABASE FIXTURES (for integration tests)
 # ============================================================================
 
-# Test database URL - uses local PostgreSQL with test database
+# Test database URL - uses dedicated PostgreSQL container for tests
 # Set TEST_DATABASE_URL env var to override
 import os
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://uniformes_user:dev_password@localhost:5432/uniformes_test"
+    # Default: dedicated test container (postgres-test service on port 5433)
+    "postgresql+asyncpg://uniformes_test:test_password@localhost:5433/uniformes_test"
 )
 
 
@@ -104,6 +105,7 @@ def mock_db_session():
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     session.refresh = AsyncMock()
+    session.flush = AsyncMock()
     session.add = MagicMock()
     session.delete = AsyncMock()
     session.execute = AsyncMock()
@@ -870,3 +872,264 @@ async def complete_test_setup(
         "inventory": test_inventory,
         "client": test_client,
     }
+
+
+# ============================================================================
+# NEW FEATURE FIXTURES - Alterations, Employees, Payroll, Fixed Expenses, Notifications
+# ============================================================================
+
+@pytest.fixture
+async def test_employee(db_session) -> "Employee":
+    """Create a test employee for payroll tests."""
+    from app.models.payroll import Employee, PaymentFrequency
+
+    unique_id = uuid4().hex[:8]
+    employee = Employee(
+        id=uuid4(),
+        full_name=f"María García {unique_id}",
+        document_type="CC",
+        document_id=f"1234{unique_id}",
+        phone="3001234567",
+        email=f"maria_{unique_id}@test.com",
+        address="Calle 123 #45-67",
+        position="Costurera",
+        hire_date=date.today(),
+        base_salary=Decimal("1500000"),
+        payment_frequency=PaymentFrequency.BIWEEKLY,
+        is_active=True,
+        health_deduction=Decimal("60000"),
+        pension_deduction=Decimal("60000"),
+        other_deductions=Decimal("0")
+    )
+    db_session.add(employee)
+    await db_session.flush()
+    return employee
+
+
+@pytest.fixture
+async def test_alteration(db_session, test_user) -> "Alteration":
+    """Create a test alteration."""
+    from app.models.alteration import Alteration, AlterationStatus, AlterationType
+
+    unique_id = uuid4().hex[:8]
+    alteration = Alteration(
+        id=uuid4(),
+        code=f"ARR-2026-{unique_id}",
+        external_client_name=f"Cliente Prueba {unique_id}",
+        external_client_phone="3001234567",
+        garment_name="Pantalón azul talla 12",
+        alteration_type=AlterationType.HEM,
+        description="Subir bota 3cm",
+        cost=Decimal("15000"),
+        amount_paid=Decimal("5000"),
+        status=AlterationStatus.PENDING,
+        received_date=date.today(),
+        created_by=test_user.id
+    )
+    db_session.add(alteration)
+    await db_session.flush()
+    return alteration
+
+
+@pytest.fixture
+async def test_fixed_expense(db_session) -> "FixedExpense":
+    """Create a test fixed expense."""
+    from app.models.fixed_expense import FixedExpense, FixedExpenseType, RecurrenceFrequency
+    from app.models.accounting import ExpenseCategory
+
+    unique_id = uuid4().hex[:8]
+    fixed_expense = FixedExpense(
+        id=uuid4(),
+        name=f"Arriendo Local {unique_id}",
+        category=ExpenseCategory.RENT,
+        description="Arriendo mensual del local",
+        expense_type=FixedExpenseType.EXACT,
+        amount=Decimal("2000000"),
+        recurrence_frequency=RecurrenceFrequency.MONTHLY,
+        day_of_month=5,
+        is_active=True
+    )
+    db_session.add(fixed_expense)
+    await db_session.flush()
+    return fixed_expense
+
+
+@pytest.fixture
+async def test_notification(db_session, test_user, test_school) -> "Notification":
+    """Create a test notification."""
+    from app.models.notification import Notification, NotificationType, ReferenceType
+
+    notification = Notification(
+        id=uuid4(),
+        user_id=test_user.id,
+        school_id=test_school.id,
+        type=NotificationType.NEW_WEB_ORDER,
+        title="Nuevo Pedido Web",
+        message="Se ha recibido un nuevo pedido desde el portal web",
+        reference_type=ReferenceType.ORDER,
+        reference_id=uuid4(),
+        is_read=False
+    )
+    db_session.add(notification)
+    await db_session.flush()
+    return notification
+
+
+@pytest.fixture
+async def test_payroll_run(db_session, test_employee, test_user) -> "PayrollRun":
+    """Create a test payroll run with items."""
+    from app.models.payroll import PayrollRun, PayrollItem, PayrollStatus
+    from datetime import timedelta
+
+    payroll_run = PayrollRun(
+        id=uuid4(),
+        period_start=date.today() - timedelta(days=15),
+        period_end=date.today(),
+        status=PayrollStatus.DRAFT,
+        total_base_salary=Decimal("1500000"),
+        total_bonuses=Decimal("100000"),
+        total_deductions=Decimal("120000"),
+        total_net=Decimal("1480000"),
+        employee_count=1,
+        created_by=test_user.id
+    )
+    db_session.add(payroll_run)
+    await db_session.flush()
+
+    # Create payroll item for the employee
+    payroll_item = PayrollItem(
+        id=uuid4(),
+        payroll_run_id=payroll_run.id,
+        employee_id=test_employee.id,
+        base_salary=Decimal("1500000"),
+        total_bonuses=Decimal("100000"),
+        total_deductions=Decimal("120000"),
+        net_amount=Decimal("1480000"),
+        is_paid=False
+    )
+    db_session.add(payroll_item)
+    await db_session.flush()
+
+    return payroll_run
+
+
+@pytest.fixture
+def alteration_factory():
+    """Factory for creating Alteration instances."""
+    def _create(
+        id: UUID = None,
+        external_client_name: str = None,
+        external_client_phone: str = "3001234567",
+        garment_name: str = "Pantalón azul",
+        alteration_type = None,
+        description: str = "Arreglo de dobladillo",
+        cost: Decimal = Decimal("15000"),
+        amount_paid: Decimal = Decimal("0"),
+        status = None,
+        **kwargs
+    ):
+        from app.models.alteration import Alteration, AlterationStatus, AlterationType
+
+        unique_id = uuid4().hex[:6]
+        return Alteration(
+            id=id or uuid4(),
+            code=f"ARR-2026-{unique_id}",
+            external_client_name=external_client_name or f"Cliente {unique_id}",
+            external_client_phone=external_client_phone,
+            garment_name=garment_name,
+            description=description,
+            alteration_type=alteration_type or AlterationType.HEM,
+            cost=cost,
+            amount_paid=amount_paid,
+            status=status or AlterationStatus.PENDING,
+            received_date=date.today(),
+            **kwargs
+        )
+    return _create
+
+
+@pytest.fixture
+def employee_factory():
+    """Factory for creating Employee instances."""
+    def _create(
+        id: UUID = None,
+        full_name: str = None,
+        document_id: str = None,
+        position: str = "Vendedora",
+        base_salary: Decimal = Decimal("1300000"),
+        **kwargs
+    ):
+        from app.models.payroll import Employee, PaymentFrequency
+
+        unique_id = uuid4().hex[:6]
+        return Employee(
+            id=id or uuid4(),
+            full_name=full_name or f"Empleado Test {unique_id}",
+            document_type="CC",
+            document_id=document_id or f"123456{unique_id}",
+            position=position,
+            hire_date=date.today(),
+            base_salary=base_salary,
+            payment_frequency=PaymentFrequency.BIWEEKLY,
+            is_active=True,
+            health_deduction=Decimal("0"),
+            pension_deduction=Decimal("0"),
+            other_deductions=Decimal("0"),
+            **kwargs
+        )
+    return _create
+
+
+@pytest.fixture
+def fixed_expense_factory():
+    """Factory for creating FixedExpense instances."""
+    def _create(
+        id: UUID = None,
+        name: str = None,
+        category = None,
+        amount: Decimal = Decimal("1000000"),
+        **kwargs
+    ):
+        from app.models.fixed_expense import FixedExpense, FixedExpenseType, RecurrenceFrequency
+        from app.models.accounting import ExpenseCategory
+
+        unique_id = uuid4().hex[:6]
+        return FixedExpense(
+            id=id or uuid4(),
+            name=name or f"Gasto Fijo {unique_id}",
+            category=category or ExpenseCategory.RENT,
+            expense_type=FixedExpenseType.EXACT,
+            amount=amount,
+            recurrence_frequency=RecurrenceFrequency.MONTHLY,
+            day_of_month=1,
+            is_active=True,
+            **kwargs
+        )
+    return _create
+
+
+@pytest.fixture
+def notification_factory():
+    """Factory for creating Notification instances."""
+    def _create(
+        id: UUID = None,
+        user_id: UUID = None,
+        school_id: UUID = None,
+        title: str = None,
+        message: str = "Test notification message",
+        **kwargs
+    ):
+        from app.models.notification import Notification, NotificationType, ReferenceType
+
+        unique_id = uuid4().hex[:6]
+        return Notification(
+            id=id or uuid4(),
+            user_id=user_id,
+            school_id=school_id,
+            type=NotificationType.NEW_WEB_ORDER,
+            title=title or f"Notification {unique_id}",
+            message=message,
+            is_read=False,
+            **kwargs
+        )
+    return _create
