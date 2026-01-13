@@ -184,6 +184,11 @@ class ClientListResponse(BaseSchema):
     # Number of students (across all schools)
     student_count: int = 0
 
+    # Portal activation status
+    is_verified: bool = False
+    welcome_email_sent: bool = False
+    has_password: bool = False
+
 
 class ClientSummary(BaseSchema):
     """Client with transaction summary"""

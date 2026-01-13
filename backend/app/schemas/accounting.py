@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime, date
 from pydantic import Field, field_validator, model_validator
 from app.schemas.base import BaseSchema, IDModelSchema, TimestampSchema, SchoolIsolatedSchema
-from app.models.accounting import TransactionType, AccPaymentMethod, ExpenseCategory, AccountType
+from app.models.accounting import TransactionType, AccPaymentMethod, ExpenseCategory, AccountType, AdjustmentReason
 
 
 # ============================================
@@ -130,6 +130,9 @@ class GlobalExpenseInDB(ExpenseBase, IDModelSchema):
 class GlobalExpenseResponse(GlobalExpenseInDB):
     """Global expense for API responses"""
     balance: Decimal = Field(..., description="Remaining balance to pay")
+    payment_method: str | None = None
+    payment_account_name: str | None = None
+    paid_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -195,6 +198,9 @@ class ExpenseListResponse(BaseSchema):
     vendor: str | None
     is_recurring: bool
     balance: Decimal
+    payment_method: str | None = None
+    payment_account_name: str | None = None
+    paid_at: datetime | None = None
 
 
 # ============================================
@@ -800,3 +806,140 @@ class FinancialSummaryResponse(BaseSchema):
 
     # Recent transactions
     recent_transactions: list[TransactionListItemResponse]
+
+
+# ============================================
+# Expense Adjustment Schemas
+# ============================================
+
+class ExpenseAdjustmentRequest(BaseSchema):
+    """Request schema for adjusting an expense"""
+    new_amount: Decimal | None = Field(
+        None,
+        gt=0,
+        description="New expense amount (optional, only if changing)"
+    )
+    new_payment_account_id: UUID | None = Field(
+        None,
+        description="New payment account ID (optional, for account corrections)"
+    )
+    new_payment_method: str | None = Field(
+        None,
+        max_length=20,
+        description="New payment method string (optional)"
+    )
+    reason: AdjustmentReason = Field(
+        default=AdjustmentReason.AMOUNT_CORRECTION,
+        description="Reason for the adjustment"
+    )
+    description: str | None = Field(
+        None,
+        max_length=500,
+        description="Description of why the adjustment is being made"
+    )
+
+    @model_validator(mode='after')
+    def validate_at_least_one_change(self):
+        """Validate that at least one change is specified"""
+        if self.new_amount is None and self.new_payment_account_id is None:
+            raise ValueError(
+                "Debe especificar al menos un cambio: new_amount o new_payment_account_id"
+            )
+        return self
+
+
+class ExpenseRevertRequest(BaseSchema):
+    """Request schema for reverting an expense payment"""
+    description: str | None = Field(
+        None,
+        max_length=500,
+        description="Description of why the payment is being reverted"
+    )
+
+
+class PartialRefundRequest(BaseSchema):
+    """Request schema for issuing a partial refund"""
+    refund_amount: Decimal = Field(
+        ...,
+        gt=0,
+        description="Amount to refund (must be <= amount_paid)"
+    )
+    description: str | None = Field(
+        None,
+        max_length=500,
+        description="Description of the refund reason"
+    )
+
+
+class ExpenseAdjustmentResponse(BaseSchema):
+    """Response schema for expense adjustment"""
+    id: UUID
+    expense_id: UUID
+    reason: AdjustmentReason
+    description: str
+
+    # Previous values
+    previous_amount: Decimal
+    previous_amount_paid: Decimal
+    previous_payment_method: str | None
+    previous_payment_account_id: UUID | None
+    previous_payment_account_name: str | None = None
+
+    # New values
+    new_amount: Decimal
+    new_amount_paid: Decimal
+    new_payment_method: str | None
+    new_payment_account_id: UUID | None
+    new_payment_account_name: str | None = None
+
+    # Delta
+    adjustment_delta: Decimal = Field(
+        ...,
+        description="Net change (positive = refund to account)"
+    )
+
+    # Balance entry references
+    refund_entry_id: UUID | None
+    new_payment_entry_id: UUID | None
+
+    # Audit
+    adjusted_by: UUID | None
+    adjusted_by_username: str | None = None
+    adjusted_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ExpenseAdjustmentListResponse(BaseSchema):
+    """Simplified adjustment for list views"""
+    id: UUID
+    expense_id: UUID
+    expense_description: str | None = None
+    reason: AdjustmentReason
+    description: str
+    previous_amount_paid: Decimal
+    new_amount_paid: Decimal
+    adjustment_delta: Decimal
+    adjusted_by_username: str | None = None
+    adjusted_at: datetime
+
+
+class ExpenseAdjustmentHistoryResponse(BaseSchema):
+    """Response for adjustment history with expense details"""
+    expense_id: UUID
+    expense_description: str
+    expense_category: ExpenseCategory
+    expense_vendor: str | None
+    current_amount: Decimal
+    current_amount_paid: Decimal
+    current_is_paid: bool
+    adjustments: list[ExpenseAdjustmentResponse]
+    total_adjustments: int
+
+
+class AdjustmentListPaginatedResponse(BaseSchema):
+    """Paginated list of adjustments"""
+    items: list[ExpenseAdjustmentListResponse]
+    total: int
+    limit: int
+    offset: int

@@ -16,7 +16,7 @@ from app.models.sale import SaleSource
 
 class OrderItemBase(BaseSchema):
     """Base order item schema"""
-    garment_type_id: UUID
+    garment_type_id: UUID | None = None  # Nullable for global products (use global_garment_type_id)
     quantity: int = Field(..., gt=0)
     unit_price: Decimal = Field(..., ge=0)
     subtotal: Decimal = Field(..., ge=0)
@@ -63,8 +63,12 @@ class OrderItemCreate(BaseSchema):
     # Order type: "catalog" | "yomber" | "custom" | "web_custom"
     order_type: str = Field(default="custom")
 
-    # For catalog/yomber orders - select specific product for price
+    # For catalog/yomber orders - select specific product for price (school products)
     product_id: UUID | None = None
+
+    # For global products (shared inventory)
+    global_product_id: UUID | None = None
+    is_global_product: bool = False
 
     # For custom orders - manual price
     unit_price: Decimal | None = Field(None, ge=0)
@@ -115,6 +119,10 @@ class OrderItemStatusUpdate(BaseSchema):
 class OrderItemInDB(OrderItemBase, SchoolIsolatedSchema, IDModelSchema):
     """OrderItem as stored in database"""
     order_id: UUID
+    product_id: UUID | None = None
+    global_product_id: UUID | None = None
+    global_garment_type_id: UUID | None = None  # For global products
+    is_global_product: bool = False
     item_status: OrderItemStatus = OrderItemStatus.PENDING
     status_updated_at: datetime | None = None
     # Stock reservation tracking
@@ -220,6 +228,7 @@ class OrderWithItems(OrderResponse):
     client_phone: str | None
     client_email: str | None
     student_name: str | None
+    school_name: str | None = None
 
 
 class OrderListResponse(BaseSchema):

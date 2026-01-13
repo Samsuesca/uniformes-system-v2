@@ -60,13 +60,32 @@ class ClientService(BaseService[Client]):
         Create a new regular client (by staff).
         If email provided, sends activation link.
 
+        If a client with the same email exists but is inactive (soft deleted),
+        the existing client will be reactivated with the new data.
+
         Args:
             client_data: Client creation data
             created_by_user_id: ID of the user creating the client (optional)
 
         Returns:
-            Created client
+            Created or reactivated client
         """
+        # Check if there's an inactive client with the same email
+        if client_data.email:
+            existing = await self.get_by_email(client_data.email)
+            if existing:
+                if existing.is_active:
+                    raise ValueError("Ya existe un cliente activo con este email")
+                # Reactivate the existing client with new data
+                return await self._reactivate_client(existing, client_data)
+
+        # Check if there's an inactive client with the same phone
+        if client_data.phone:
+            existing_by_phone = await self.get_by_phone(client_data.phone)
+            if existing_by_phone and not existing_by_phone.is_active:
+                # Reactivate the existing client with new data
+                return await self._reactivate_client(existing_by_phone, client_data)
+
         # Generate global client code
         code = await self._generate_client_code()
 
@@ -92,12 +111,64 @@ class ClientService(BaseService[Client]):
         # Refresh to load relationships
         await self.db.refresh(client, ['students'])
 
-        # Send activation email (async, don't block on failure)
-        if client.email and activation_token:
-            from app.services.email import send_activation_email
-            send_activation_email(client.email, activation_token, client.name)
+        # NOTE: Welcome email with activation link is now sent on first transaction
+        # (order or sale), not on client creation. See order.py and sale.py routes.
 
         return client
+
+    async def _reactivate_client(
+        self,
+        existing_client: Client,
+        client_data: ClientCreate
+    ) -> Client:
+        """
+        Reactivate an inactive (soft deleted) client with new data.
+
+        This preserves the client's purchase history while updating their info.
+
+        Args:
+            existing_client: The inactive client to reactivate
+            client_data: New client data
+
+        Returns:
+            Reactivated client
+        """
+        # Update client with new data
+        update_dict = client_data.model_dump(exclude={'students'}, exclude_unset=True)
+
+        for key, value in update_dict.items():
+            if value is not None:
+                setattr(existing_client, key, value)
+
+        # Reactivate
+        existing_client.is_active = True
+
+        # Reset welcome email flag so they get a new activation email on first transaction
+        existing_client.welcome_email_sent = False
+        existing_client.welcome_email_sent_at = None
+
+        # Generate new activation token if email provided
+        if client_data.email:
+            existing_client.verification_token = secrets.token_urlsafe(32)
+            existing_client.verification_token_expires = datetime.utcnow() + timedelta(days=7)
+            existing_client.is_verified = False
+
+        await self.db.flush()
+
+        # Handle students - deactivate old ones and create new ones if provided
+        if client_data.students:
+            # Deactivate existing students
+            for student in existing_client.students:
+                student.is_active = False
+
+            # Add new students
+            for student_data in client_data.students:
+                await self.add_student(existing_client.id, student_data)
+
+        await self.db.refresh(existing_client, ['students'])
+
+        print(f"✅ [CLIENT] Reactivated client {existing_client.code} ({existing_client.name})")
+        return existing_client
 
     async def register_web_client(
         self,

@@ -101,8 +101,10 @@ class SaleBase(BaseSchema):
     notes: str | None = None
 
 
-class SaleCreate(SaleBase, SchoolIsolatedSchema):
+class SaleCreate(SaleBase):
     """Schema for creating sale"""
+    # school_id is optional here because it's injected from URL path
+    school_id: UUID | None = None
     items: list[SaleItemCreate] = Field(..., min_length=1)
     source: SaleSource = SaleSource.DESKTOP_APP  # Default to desktop app
     # Historical sales (migration) - don't affect inventory
@@ -156,6 +158,7 @@ class SaleWithItems(SaleResponse):
     payments: list[SalePaymentResponse] = []
     client_name: str | None = None
     user_name: str | None = None
+    school_name: str | None = None
 
 
 class SaleListResponse(BaseSchema):

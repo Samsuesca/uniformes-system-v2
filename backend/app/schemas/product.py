@@ -21,9 +21,11 @@ class GarmentTypeBase(BaseSchema):
     has_custom_measurements: bool = False
 
 
-class GarmentTypeCreate(GarmentTypeBase, SchoolIsolatedSchema):
-    """Schema for creating garment type"""
-    pass
+class GarmentTypeCreate(GarmentTypeBase):
+    """Schema for creating garment type
+    Note: school_id is optional because it's taken from the URL path parameter
+    """
+    school_id: UUID | None = None
 
 
 class GarmentTypeUpdate(BaseSchema):
