@@ -113,6 +113,14 @@ export const clientService = {
     return response.data;
   },
 
+  /**
+   * Resend activation email to a client
+   */
+  async resendActivationEmail(clientId: string): Promise<{ message: string; email: string }> {
+    const response = await apiClient.post<{ message: string; email: string }>(`/clients/${clientId}/resend-activation`);
+    return response.data;
+  },
+
   // ======================
   // Student Management
   // ======================

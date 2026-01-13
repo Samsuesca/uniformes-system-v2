@@ -64,6 +64,8 @@ export const canCreateSales = (role?: UserRole): boolean =>
   role ? ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.seller : false;
 export const canDeleteRecords = (role?: UserRole): boolean =>
   role ? ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.admin : false;
+export const canAccessAlterations = (role?: UserRole): boolean =>
+  role ? ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.admin : false;
 
 // ============================================
 // School Types
@@ -183,6 +185,10 @@ export interface Client {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Portal activation status
+  is_verified?: boolean;
+  welcome_email_sent?: boolean;
+  has_password?: boolean;
 }
 
 // ============================================
@@ -276,6 +282,8 @@ export interface SaleWithItems extends Sale {
   payments?: SalePayment[];
   // Calculated fields
   balance?: number;  // Saldo pendiente (total - paid_amount)
+  // Multi-school support
+  school_name?: string | null;
 }
 
 export interface SaleListItem {
@@ -407,8 +415,11 @@ export interface OrderItemCreate {
   quantity: number;
   // Order type
   order_type?: OrderType;
-  // For catalog/yomber orders - product for price
+  // For catalog/yomber orders - product for price (school products)
   product_id?: string;
+  // For global products (shared inventory)
+  global_product_id?: string;
+  is_global_product?: boolean;
   // For custom orders - manual price
   unit_price?: number;
   // Additional services price
@@ -455,6 +466,8 @@ export interface OrderWithItems extends Order {
   delivery_references?: string | null;
   delivery_zone_id?: string | null;
   delivery_fee?: number;
+  // Multi-school support
+  school_name?: string | null;
 }
 
 export interface OrderListItem {
@@ -598,6 +611,9 @@ export interface ExpenseListItem {
   notes: string | null;
   is_recurring: boolean;
   balance: number;
+  payment_method?: string | null;
+  payment_account_name?: string | null;
+  paid_at?: string | null;
 }
 
 export interface ExpenseCreate {
@@ -1068,4 +1084,178 @@ export interface CashBalances {
   } | null;
   total_liquid: number;
   total_cash: number;
+}
+
+// ============================================
+// Alteration Types (Arreglos)
+// ============================================
+
+export type AlterationType = 'hem' | 'length' | 'width' | 'seam' | 'buttons' | 'zipper' | 'patch' | 'darts' | 'other';
+export type AlterationStatus = 'pending' | 'in_progress' | 'ready' | 'delivered' | 'cancelled';
+
+export const ALTERATION_TYPE_LABELS: Record<AlterationType, string> = {
+  hem: 'Dobladillo',
+  length: 'Largo',
+  width: 'Ancho',
+  seam: 'Costura',
+  buttons: 'Botones',
+  zipper: 'Cremallera',
+  patch: 'Parche',
+  darts: 'Pinzas',
+  other: 'Otro'
+};
+
+export const ALTERATION_STATUS_LABELS: Record<AlterationStatus, string> = {
+  pending: 'Pendiente',
+  in_progress: 'En Proceso',
+  ready: 'Listo',
+  delivered: 'Entregado',
+  cancelled: 'Cancelado'
+};
+
+export const ALTERATION_STATUS_COLORS: Record<AlterationStatus, string> = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  in_progress: 'bg-blue-100 text-blue-800',
+  ready: 'bg-green-100 text-green-800',
+  delivered: 'bg-emerald-600 text-white',
+  cancelled: 'bg-red-100 text-red-800'
+};
+
+export interface Alteration {
+  id: string;
+  code: string;
+  client_id: string | null;
+  external_client_name: string | null;
+  external_client_phone: string | null;
+  alteration_type: AlterationType;
+  garment_name: string;
+  description: string;
+  cost: number;
+  amount_paid: number;
+  balance: number;
+  is_paid: boolean;
+  status: AlterationStatus;
+  received_date: string;
+  estimated_delivery_date: string | null;
+  delivered_date: string | null;
+  notes: string | null;
+  client_display_name: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlterationListItem {
+  id: string;
+  code: string;
+  client_display_name: string;
+  alteration_type: AlterationType;
+  garment_name: string;
+  cost: number;
+  amount_paid: number;
+  balance: number;
+  status: AlterationStatus;
+  received_date: string;
+  estimated_delivery_date: string | null;
+  is_paid: boolean;
+}
+
+export interface AlterationPayment {
+  id: string;
+  alteration_id: string;
+  amount: number;
+  payment_method: string;
+  notes: string | null;
+  transaction_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  created_by_username: string | null;
+}
+
+export interface AlterationWithPayments extends Alteration {
+  payments: AlterationPayment[];
+}
+
+export interface AlterationCreate {
+  client_id?: string;
+  external_client_name?: string;
+  external_client_phone?: string;
+  alteration_type: AlterationType;
+  garment_name: string;
+  description: string;
+  cost: number;
+  received_date: string;
+  estimated_delivery_date?: string;
+  notes?: string;
+  initial_payment?: number;
+  initial_payment_method?: string;
+}
+
+export interface AlterationUpdate {
+  alteration_type?: AlterationType;
+  garment_name?: string;
+  description?: string;
+  cost?: number;
+  status?: AlterationStatus;
+  estimated_delivery_date?: string;
+  delivered_date?: string;
+  notes?: string;
+}
+
+export interface AlterationPaymentCreate {
+  amount: number;
+  payment_method: 'cash' | 'nequi' | 'transfer' | 'card';
+  notes?: string;
+  apply_accounting?: boolean;
+}
+
+export interface AlterationsSummary {
+  total_count: number;
+  pending_count: number;
+  in_progress_count: number;
+  ready_count: number;
+  delivered_count: number;
+  cancelled_count: number;
+  total_revenue: number;
+  total_pending_payment: number;
+  today_received: number;
+  today_delivered: number;
+}
+
+// ============================================
+// Notification Types
+// ============================================
+
+export type NotificationType =
+  | 'new_web_order'
+  | 'new_web_sale'
+  | 'order_status_changed'
+  | 'pqrs_received'
+  | 'low_stock_alert';
+
+export type ReferenceType = 'order' | 'sale' | 'contact' | 'product';
+
+export interface Notification {
+  id: string;
+  user_id: string | null;
+  type: NotificationType;
+  title: string;
+  message: string;
+  reference_type: ReferenceType | null;
+  reference_id: string | null;
+  school_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  total: number;
+  unread_count: number;
+}
+
+export interface UnreadCountResponse {
+  unread_count: number;
+  last_notification_at: string | null;
 }

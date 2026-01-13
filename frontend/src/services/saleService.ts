@@ -94,10 +94,19 @@ export const saleService = {
   },
 
   /**
-   * Get a sale with its items (school-specific)
+   * Get a sale with its items (school-specific) - DEPRECATED: Use getSaleDetails instead
    */
   async getSaleWithItems(schoolId: string, saleId: string): Promise<SaleWithItems> {
     const response = await apiClient.get<SaleWithItems>(`/schools/${schoolId}/sales/${saleId}/items`);
+    return response.data;
+  },
+
+  /**
+   * Get a sale with full details (does not require school_id)
+   * Validates access based on user's accessible schools
+   */
+  async getSaleDetails(saleId: string): Promise<SaleWithItems> {
+    const response = await apiClient.get<SaleWithItems>(`/sales/${saleId}/details`);
     return response.data;
   },
 
@@ -127,6 +136,20 @@ export const saleService = {
     const response = await apiClient.post<SalePayment>(
       `/schools/${schoolId}/sales/${saleId}/payments`,
       paymentData
+    );
+    return response.data;
+  },
+
+  /**
+   * Send sale receipt by email to client
+   * Requires the client to have a valid email address
+   */
+  async sendReceiptEmail(
+    schoolId: string,
+    saleId: string
+  ): Promise<{ message: string; success: boolean }> {
+    const response = await apiClient.post<{ message: string; success: boolean }>(
+      `/schools/${schoolId}/sales/${saleId}/send-receipt`
     );
     return response.data;
   },

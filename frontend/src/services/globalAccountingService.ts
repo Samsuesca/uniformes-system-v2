@@ -714,6 +714,167 @@ export const getExpensesSummaryByCategory = async (
 };
 
 // ============================================
+// Expense Adjustments (Rollbacks/Corrections)
+// ============================================
+
+export type AdjustmentReason =
+  | 'amount_correction'
+  | 'account_correction'
+  | 'both_correction'
+  | 'error_reversal'
+  | 'partial_refund';
+
+export interface ExpenseAdjustmentRequest {
+  new_amount?: number;
+  new_payment_account_id?: string;
+  new_payment_method?: string;
+  reason?: AdjustmentReason;
+  description: string;
+}
+
+export interface ExpenseAdjustmentResponse {
+  id: string;
+  expense_id: string;
+  reason: AdjustmentReason;
+  description: string;
+  previous_amount: number;
+  previous_amount_paid: number;
+  previous_payment_method: string | null;
+  previous_payment_account_id: string | null;
+  new_amount: number;
+  new_amount_paid: number;
+  new_payment_method: string | null;
+  new_payment_account_id: string | null;
+  adjustment_delta: number;
+  refund_entry_id: string | null;
+  new_payment_entry_id: string | null;
+  adjusted_by: string | null;
+  adjusted_by_username?: string;
+  adjusted_at: string;
+}
+
+export interface RevertExpenseRequest {
+  description: string;
+}
+
+export interface PartialRefundRequest {
+  refund_amount: number;
+  description: string;
+}
+
+export interface AdjustmentListParams {
+  start_date?: string;
+  end_date?: string;
+  reason?: AdjustmentReason;
+  skip?: number;
+  limit?: number;
+}
+
+/**
+ * Adjust an expense (change amount and/or payment account)
+ */
+export const adjustExpense = async (
+  expenseId: string,
+  data: ExpenseAdjustmentRequest
+): Promise<ExpenseAdjustmentResponse> => {
+  const response = await apiClient.post<ExpenseAdjustmentResponse>(
+    `${BASE_URL}/expenses/${expenseId}/adjust`,
+    data
+  );
+  return response.data;
+};
+
+/**
+ * Revert an expense payment completely
+ */
+export const revertExpensePayment = async (
+  expenseId: string,
+  description: string
+): Promise<ExpenseAdjustmentResponse> => {
+  const response = await apiClient.post<ExpenseAdjustmentResponse>(
+    `${BASE_URL}/expenses/${expenseId}/revert`,
+    { description }
+  );
+  return response.data;
+};
+
+/**
+ * Partial refund on an expense
+ */
+export const partialRefundExpense = async (
+  expenseId: string,
+  refundAmount: number,
+  description: string
+): Promise<ExpenseAdjustmentResponse> => {
+  const response = await apiClient.post<ExpenseAdjustmentResponse>(
+    `${BASE_URL}/expenses/${expenseId}/partial-refund`,
+    { refund_amount: refundAmount, description }
+  );
+  return response.data;
+};
+
+/**
+ * Get adjustment history for a specific expense
+ */
+export const getExpenseAdjustments = async (
+  expenseId: string
+): Promise<ExpenseAdjustmentResponse[]> => {
+  const response = await apiClient.get<ExpenseAdjustmentResponse[]>(
+    `${BASE_URL}/expenses/${expenseId}/adjustments`
+  );
+  return response.data;
+};
+
+/**
+ * List all adjustments with optional filters
+ */
+export const listAdjustments = async (
+  params?: AdjustmentListParams
+): Promise<ExpenseAdjustmentResponse[]> => {
+  const response = await apiClient.get<ExpenseAdjustmentResponse[]>(
+    `${BASE_URL}/adjustments`,
+    {
+      params: {
+        start_date: params?.start_date,
+        end_date: params?.end_date,
+        reason: params?.reason,
+        skip: params?.skip || 0,
+        limit: params?.limit || 50
+      }
+    }
+  );
+  return response.data;
+};
+
+/**
+ * Get human-readable label for adjustment reason
+ */
+export const getAdjustmentReasonLabel = (reason: AdjustmentReason): string => {
+  const labels: Record<AdjustmentReason, string> = {
+    amount_correction: 'Corrección de Monto',
+    account_correction: 'Cambio de Cuenta',
+    both_correction: 'Corrección de Monto y Cuenta',
+    error_reversal: 'Reversión por Error',
+    partial_refund: 'Reembolso Parcial'
+  };
+  return labels[reason] || reason;
+};
+
+/**
+ * Get color class for adjustment reason
+ */
+export const getAdjustmentReasonColor = (reason: AdjustmentReason): string => {
+  const colors: Record<AdjustmentReason, string> = {
+    amount_correction: 'bg-blue-100 text-blue-800',
+    account_correction: 'bg-purple-100 text-purple-800',
+    both_correction: 'bg-indigo-100 text-indigo-800',
+    error_reversal: 'bg-red-100 text-red-800',
+    partial_refund: 'bg-amber-100 text-amber-800'
+  };
+  return colors[reason] || 'bg-gray-100 text-gray-800';
+};
+
+// ============================================
 // Cash Flow Report
 // ============================================
 
@@ -784,6 +945,14 @@ export const globalAccountingService = {
   updateGlobalExpense,
   payGlobalExpense,
   checkExpenseBalance,
+  // Expense Adjustments
+  adjustExpense,
+  revertExpensePayment,
+  partialRefundExpense,
+  getExpenseAdjustments,
+  listAdjustments,
+  getAdjustmentReasonLabel,
+  getAdjustmentReasonColor,
   // Payables
   getGlobalPayables,
   getPendingGlobalPayables,

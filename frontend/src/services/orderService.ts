@@ -54,10 +54,19 @@ export const orderService = {
   },
 
   /**
-   * Get a single order with items (school-specific)
+   * Get a single order with items (school-specific) - DEPRECATED: Use getOrderDetails instead
    */
   async getOrder(schoolId: string, orderId: string): Promise<OrderWithItems> {
     const response = await apiClient.get<OrderWithItems>(`/schools/${schoolId}/orders/${orderId}`);
+    return response.data;
+  },
+
+  /**
+   * Get an order with full details (does not require school_id)
+   * Validates access based on user's accessible schools
+   */
+  async getOrderDetails(orderId: string): Promise<OrderWithItems> {
+    const response = await apiClient.get<OrderWithItems>(`/orders/${orderId}/details`);
     return response.data;
   },
 

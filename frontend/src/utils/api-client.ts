@@ -128,7 +128,25 @@ export const apiClient = {
       // Handle other errors
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        let errorMessage: string;
+
+        if (Array.isArray(errorData.detail)) {
+          // Pydantic validation errors - format them nicely
+          errorMessage = errorData.detail
+            .map((e: { loc?: string[]; msg?: string }) => {
+              const field = e.loc?.[e.loc.length - 1] || 'Campo';
+              return `${field}: ${e.msg}`;
+            })
+            .join('\n');
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (errorData.detail && typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail);
+        } else {
+          errorMessage = `HTTP ${response.status}`;
+        }
+
+        throw new Error(errorMessage);
       }
 
       // Handle 204 No Content (DELETE responses)
@@ -230,7 +248,25 @@ export const apiClient = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        let errorMessage: string;
+
+        if (Array.isArray(errorData.detail)) {
+          // Pydantic validation errors - format them nicely
+          errorMessage = errorData.detail
+            .map((e: { loc?: string[]; msg?: string }) => {
+              const field = e.loc?.[e.loc.length - 1] || 'Campo';
+              return `${field}: ${e.msg}`;
+            })
+            .join('\n');
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (errorData.detail && typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail);
+        } else {
+          errorMessage = `HTTP ${response.status}`;
+        }
+
+        throw new Error(errorMessage);
       }
 
       const responseData = await response.json();
