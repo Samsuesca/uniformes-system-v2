@@ -17,7 +17,7 @@ import type { Product, GlobalProduct, GarmentType } from '../types/api';
 interface PaymentLine {
   id: string;
   amount: number;
-  payment_method: 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
+  payment_method: '' | 'cash' | 'nequi' | 'transfer' | 'card' | 'credit';
 }
 
 interface SaleModalProps {
@@ -102,7 +102,7 @@ export default function SaleModal({
 
   // Multiple payments support
   const [payments, setPayments] = useState<PaymentLine[]>([
-    { id: '1', amount: 0, payment_method: 'cash' }
+    { id: '1', amount: 0, payment_method: '' }
   ]);
 
   const [items, setItems] = useState<SaleItemCreateExtended[]>([]);
@@ -150,7 +150,7 @@ export default function SaleModal({
             amount: p.amount,
             payment_method: p.paymentMethod as PaymentLine['payment_method'],
           }));
-          setPayments(restoredPayments.length > 0 ? restoredPayments : [{ id: '1', amount: 0, payment_method: 'cash' }]);
+          setPayments(restoredPayments.length > 0 ? restoredPayments : [{ id: '1', amount: 0, payment_method: '' }]);
           setActiveDraft(draftId);
           return;
         }
@@ -222,7 +222,7 @@ export default function SaleModal({
       sale_month: '',
       sale_year: '',
     });
-    setPayments([{ id: '1', amount: 0, payment_method: 'cash' }]);
+    setPayments([{ id: '1', amount: 0, payment_method: '' }]);
     setItems([]);
     setCurrentItem({
       product_id: '',
@@ -245,7 +245,7 @@ export default function SaleModal({
   const addPaymentLine = () => {
     setPayments([
       ...payments,
-      { id: Date.now().toString(), amount: 0, payment_method: 'cash' }
+      { id: Date.now().toString(), amount: 0, payment_method: '' }
     ]);
   };
 
@@ -309,10 +309,28 @@ export default function SaleModal({
     const isGlobal = isGlobalParam ?? ('inventory_quantity' in product && !('school_id' in product));
     const schoolId = isGlobal ? selectedSchoolId : (product as Product).school_id;
     const schoolName = getSchoolName(schoolId);
+    const requestedQty = quantity || 1;
+
+    // Get available stock
+    const availableStock = isGlobal
+      ? (product as GlobalProduct).inventory_quantity ?? 0
+      : (product as Product).inventory_quantity ?? (product as Product).stock ?? 0;
+
+    // Check if item already exists to calculate total quantity
+    const existingItem = items.find(
+      item => item.product_id === product.id && item.is_global === isGlobal
+    );
+    const totalQuantity = (existingItem?.quantity || 0) + requestedQty;
+
+    // Validate stock (skip for historical sales)
+    if (!formData.is_historical && totalQuantity > availableStock) {
+      setError(`Stock insuficiente para ${product.name || product.code}. Disponible: ${availableStock}, solicitado: ${totalQuantity}`);
+      return;
+    }
 
     const newItem: SaleItemCreateExtended = {
       product_id: product.id,
-      quantity: quantity || 1,
+      quantity: requestedQty,
       unit_price: Number(product.price),
       is_global: isGlobal,
       display_name: product.name || '',
@@ -330,7 +348,7 @@ export default function SaleModal({
       const updatedItems = [...items];
       updatedItems[existingIndex] = {
         ...updatedItems[existingIndex],
-        quantity: updatedItems[existingIndex].quantity + (quantity || 1),
+        quantity: updatedItems[existingIndex].quantity + requestedQty,
       };
       setItems(updatedItems);
     } else {
@@ -494,12 +512,12 @@ export default function SaleModal({
         saleDateStr = `${year}-${month}-${day}T12:00:00`;
       }
 
-      // Build payments array (filter out zero amounts)
+      // Build payments array (filter out zero amounts and empty payment methods)
       const paymentsData: SalePaymentCreate[] = payments
-        .filter(p => p.amount > 0)
+        .filter(p => p.amount > 0 && p.payment_method)
         .map(p => ({
           amount: p.amount,
-          payment_method: p.payment_method,
+          payment_method: p.payment_method as SalePaymentCreate['payment_method'],
         }));
 
       // Double-check we have valid payments after filtering
@@ -772,87 +790,6 @@ export default function SaleModal({
                 )}
               </div>
 
-            </div>
-
-            {/* Multiple Payments Section */}
-            <div className="border border-gray-200 rounded-lg p-4 mb-6 bg-gray-50">
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-sm font-semibold text-gray-800 flex items-center">
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Métodos de Pago
-                </label>
-                <button
-                  type="button"
-                  onClick={addPaymentLine}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Agregar método
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {payments.map((payment, _index) => (
-                  <div key={payment.id} className="flex items-center gap-3">
-                    {/* Amount */}
-                    <div className="relative flex-1">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="number"
-                        value={payment.amount || ''}
-                        onChange={(e) => updatePaymentAmount(payment.id, Number(e.target.value) || 0)}
-                        placeholder="Monto"
-                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-
-                    {/* Payment Method */}
-                    <select
-                      value={payment.payment_method}
-                      onChange={(e) => updatePaymentMethod(payment.id, e.target.value as any)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    >
-                      <option value="cash">Efectivo</option>
-                      <option value="nequi">Nequi</option>
-                      <option value="transfer">Transferencia</option>
-                      <option value="card">Tarjeta</option>
-                      <option value="credit">Crédito</option>
-                    </select>
-
-                    {/* Remove button */}
-                    {payments.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removePaymentLine(payment.id)}
-                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Validation message */}
-              {items.length > 0 && totalPayments !== calculateTotal() && (
-                <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-700">
-                    La suma de pagos (${totalPayments.toLocaleString()}) no coincide con el total (${calculateTotal().toLocaleString()})
-                  </p>
-                </div>
-              )}
-
-              {/* Summary */}
-              {payments.length > 1 && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Suma de pagos:</span>
-                    <span className={`font-medium ${totalPayments === calculateTotal() ? 'text-green-600' : 'text-orange-600'}`}>
-                      ${totalPayments.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Historical Sale Section */}
@@ -1154,6 +1091,101 @@ export default function SaleModal({
                     </p>
                   )}
                 </div>
+
+                {/* Multiple Payments Section - Only show when there are items */}
+                <div className="mt-6 border border-green-200 rounded-lg p-4 bg-green-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm font-semibold text-gray-800 flex items-center">
+                      <CreditCard className="w-4 h-4 mr-2 text-green-600" />
+                      Método de Pago
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addPaymentLine}
+                      className="text-sm text-green-600 hover:text-green-700 font-medium flex items-center"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Dividir pago
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {payments.map((payment) => (
+                      <div key={payment.id} className="flex items-center gap-3">
+                        {/* Payment Method */}
+                        <select
+                          value={payment.payment_method}
+                          onChange={(e) => updatePaymentMethod(payment.id, e.target.value as any)}
+                          className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-white ${
+                            !payment.payment_method ? 'border-red-300 text-gray-400' : 'border-gray-300'
+                          }`}
+                        >
+                          <option value="" disabled>-- Seleccione método --</option>
+                          <option value="cash">Efectivo</option>
+                          <option value="nequi">Nequi</option>
+                          <option value="transfer">Transferencia</option>
+                          <option value="card">Tarjeta</option>
+                          <option value="credit">Crédito</option>
+                        </select>
+
+                        {/* Amount - Only editable when multiple payments */}
+                        {payments.length > 1 && (
+                          <div className="relative w-32">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                              type="number"
+                              value={payment.amount || ''}
+                              onChange={(e) => updatePaymentAmount(payment.id, Number(e.target.value) || 0)}
+                              placeholder="Monto"
+                              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {/* Remove button */}
+                        {payments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removePaymentLine(payment.id)}
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Validation message for missing payment method */}
+                  {payments.some(p => !p.payment_method) && (
+                    <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-700">
+                        Debe seleccionar un método de pago
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Validation message for split payments */}
+                  {payments.length > 1 && totalPayments !== calculateTotal() && (
+                    <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-700">
+                        La suma de pagos (${totalPayments.toLocaleString()}) no coincide con el total (${calculateTotal().toLocaleString()})
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Summary for split payments */}
+                  {payments.length > 1 && (
+                    <div className="mt-3 pt-3 border-t border-green-200">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Suma de pagos:</span>
+                        <span className={`font-medium ${totalPayments === calculateTotal() ? 'text-green-600' : 'text-orange-600'}`}>
+                          ${totalPayments.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1183,7 +1215,7 @@ export default function SaleModal({
               </button>
               <button
                 type="submit"
-                disabled={loading || items.length === 0}
+                disabled={loading || items.length === 0 || payments.some(p => !p.payment_method)}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center"
               >
                 {loading ? (
@@ -1282,6 +1314,7 @@ export default function SaleModal({
         initialProductSource={productSource}
         title="Seleccionar Producto"
         emptyMessage="No se encontraron productos disponibles"
+        enforceStockLimit={!formData.is_historical}
       />
     </div>
   );

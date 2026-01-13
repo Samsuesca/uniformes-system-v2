@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Loader2, Upload, Trash2, Star, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { productService } from '../services/productService';
+import { extractErrorMessage } from '../utils/api-client';
 import { useConfigStore } from '../stores/configStore';
 import type { GarmentType, GlobalGarmentType } from '../types/api';
 
@@ -254,9 +255,9 @@ export default function GarmentTypeModal({
 
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving garment type:', err);
-      setError(err.response?.data?.detail || 'Error al guardar tipo de prenda');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }

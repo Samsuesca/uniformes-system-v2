@@ -84,7 +84,7 @@ export default function OrderModal({
   const [deliveryDate, setDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [advancePayment, setAdvancePayment] = useState<number>(0);
-  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'cash' | 'nequi' | 'transfer' | 'card'>('cash');
+  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'' | 'cash' | 'nequi' | 'transfer' | 'card'>('');
   const [items, setItems] = useState<OrderItemForm[]>([]);
 
   // Tab state
@@ -251,7 +251,7 @@ export default function OrderModal({
     setDeliveryDate('');
     setNotes('');
     setAdvancePayment(0);
-    setAdvancePaymentMethod('cash');
+    setAdvancePaymentMethod('');
     setItems([]);
     setError(null);
     setActiveTab('catalog');
@@ -289,13 +289,20 @@ export default function OrderModal({
   const handleCatalogProductSelect = (product: Product | GlobalProduct, quantity?: number) => {
     const garmentType = garmentTypes.find(gt => gt.id === product.garment_type_id);
     // Get stock available for "pisar" (reserve) functionality
-    const stockAvailable = (product as Product).inventory_quantity || 0;
+    // Support both inventory_quantity and stock properties
+    const stockAvailable = product.inventory_quantity ?? (product as any).stock ?? 0;
+
+    // Detect if it's a global product (global products don't have school_id)
+    const isGlobalProduct = !('school_id' in product) || !(product as Product).school_id;
 
     const item: OrderItemForm = {
       tempId: Date.now().toString(),
       order_type: 'catalog',
       garment_type_id: product.garment_type_id,
-      product_id: product.id,
+      // For global products, use global_product_id; for school products, use product_id
+      product_id: isGlobalProduct ? undefined : product.id,
+      global_product_id: isGlobalProduct ? product.id : undefined,
+      is_global_product: isGlobalProduct,
       quantity: quantity || 1,
       size: product.size,
       color: product.color || undefined,
@@ -309,7 +316,7 @@ export default function OrderModal({
     };
 
     setItems([...items, item]);
-    setCatalogProductSelectorOpen(false);
+    // NOTE: Selector stays open for multi-select. User clicks "Listo" to close.
     setError(null);
   };
 
@@ -320,7 +327,7 @@ export default function OrderModal({
     // Set the selected yomber product - measurements will be filled afterwards
     setYomberProductId(product.id);
     setYomberQuantity(quantity || 1);
-    setYomberProductSelectorOpen(false);
+    // NOTE: Selector stays open for multi-select. User clicks "Listo" to close.
     setError(null);
   };
 
@@ -447,6 +454,8 @@ export default function OrderModal({
           quantity: item.quantity,
           order_type: item.order_type,
           product_id: item.product_id,
+          global_product_id: item.global_product_id,
+          is_global_product: item.is_global_product,
           unit_price: item.unit_price,
           additional_price: item.additional_price,
           size: item.size,
@@ -455,6 +464,7 @@ export default function OrderModal({
           custom_measurements: item.custom_measurements,
           embroidery_text: item.embroidery_text,
           notes: item.notes,
+          reserve_stock: item.reserve_stock,
         }));
 
         console.log(`Creating order for school ${schoolId}:`, {
@@ -470,7 +480,7 @@ export default function OrderModal({
           notes: notes || undefined,
           items: orderItems,
           advance_payment: schoolAdvance > 0 ? schoolAdvance : undefined,
-          advance_payment_method: schoolAdvance > 0 ? advancePaymentMethod : undefined,
+          advance_payment_method: schoolAdvance > 0 && advancePaymentMethod ? advancePaymentMethod : undefined,
         });
 
         results.push({
@@ -1213,13 +1223,19 @@ export default function OrderModal({
                         <select
                           value={advancePaymentMethod}
                           onChange={(e) => setAdvancePaymentMethod(e.target.value as any)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                            !advancePaymentMethod ? 'border-red-300 text-gray-400' : 'border-gray-300'
+                          }`}
                         >
+                          <option value="" disabled>-- Seleccione método --</option>
                           <option value="cash">Efectivo</option>
                           <option value="nequi">Nequi</option>
                           <option value="transfer">Transferencia</option>
                           <option value="card">Tarjeta</option>
                         </select>
+                        {!advancePaymentMethod && (
+                          <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1259,7 +1275,7 @@ export default function OrderModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || items.length === 0}
+                  disabled={loading || items.length === 0 || (advancePayment > 0 && !advancePaymentMethod)}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center"
                 >
                   {loading ? (

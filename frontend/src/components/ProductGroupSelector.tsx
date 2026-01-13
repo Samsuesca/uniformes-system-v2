@@ -26,6 +26,11 @@ interface ProductGroupSelectorProps {
   excludeGarmentTypeIds?: string[];
   includeGarmentTypeIds?: string[]; // Only show these garment types (for Yomber filtering)
 
+  // Stock validation - map of productId -> quantity already selected in sale
+  selectedQuantities?: Map<string, number>;
+  isHistoricalSale?: boolean; // Skip stock validation for historical sales
+  enforceStockLimit?: boolean; // Block quantity from exceeding available stock in ProductGroupCard
+
   // UI customization
   title?: string;
   emptyMessage?: string;
@@ -42,6 +47,7 @@ export default function ProductGroupSelector({
   excludeProductIds = [],
   excludeGarmentTypeIds = [],
   includeGarmentTypeIds,
+  enforceStockLimit = false,
   title = 'Seleccionar Producto',
   emptyMessage = 'No se encontraron productos',
 }: ProductGroupSelectorProps) {
@@ -383,6 +389,7 @@ export default function ProductGroupSelector({
                     excludeProductIds={excludeProductIds}
                     filterByStock={filterByStock}
                     addedQuantity={getGroupAddedQuantity(group)}
+                    enforceStockLimit={enforceStockLimit}
                   />
                 ))}
               </div>

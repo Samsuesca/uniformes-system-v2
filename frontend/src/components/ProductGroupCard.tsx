@@ -16,6 +16,7 @@ interface ProductGroupCardProps {
   excludeProductIds?: string[];
   filterByStock?: 'with_stock' | 'without_stock' | 'all';
   addedQuantity?: number; // Total quantity added in this session (for visual feedback)
+  enforceStockLimit?: boolean; // Block quantity from exceeding available stock
 }
 
 export default function ProductGroupCard({
@@ -24,6 +25,7 @@ export default function ProductGroupCard({
   excludeProductIds = [],
   filterByStock = 'all',
   addedQuantity = 0,
+  enforceStockLimit = false,
 }: ProductGroupCardProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
@@ -307,13 +309,25 @@ export default function ProductGroupCard({
             <input
               type="number"
               min="1"
+              max={enforceStockLimit && selectedVariant.stock > 0 ? selectedVariant.stock : undefined}
               value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={(e) => {
+                const val = Math.max(1, parseInt(e.target.value) || 1);
+                const maxVal = enforceStockLimit && selectedVariant.stock > 0
+                  ? Math.min(val, selectedVariant.stock)
+                  : val;
+                setQuantity(maxVal);
+              }}
               className="w-12 text-center border-x border-gray-300 py-1.5 focus:outline-none"
             />
             <button
               onClick={() => setQuantity(quantity + 1)}
-              className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-r-lg transition"
+              disabled={enforceStockLimit && selectedVariant.stock > 0 && quantity >= selectedVariant.stock}
+              className={`px-3 py-1.5 rounded-r-lg transition ${
+                enforceStockLimit && selectedVariant.stock > 0 && quantity >= selectedVariant.stock
+                  ? 'text-gray-300 cursor-not-allowed bg-gray-50'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
             >
               +
             </button>

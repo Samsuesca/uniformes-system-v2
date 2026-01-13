@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import Layout from '../components/Layout';
-import { Users, Plus, Search, AlertCircle, Loader2, Mail, Phone, User, Edit2, Trash2, X, Save } from 'lucide-react';
+import { Users, Plus, Search, AlertCircle, Loader2, Mail, Phone, User, Edit2, Trash2, X, Save, CheckCircle, Clock, Send } from 'lucide-react';
 import { clientService } from '../services/clientService';
 import { useSchoolStore } from '../stores/schoolStore';
 import type { Client } from '../types/api';
@@ -47,6 +47,9 @@ export default function Clients() {
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Resend activation email
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
 
   const schoolId = currentSchool?.id || '';
 
@@ -197,6 +200,39 @@ export default function Clients() {
     }
   };
 
+  // Handle resend activation email
+  const handleResendActivation = async (client: Client) => {
+    if (!client.email) {
+      toast.error('El cliente no tiene email registrado');
+      return;
+    }
+    setResendingEmail(client.id);
+    try {
+      const result = await clientService.resendActivationEmail(client.id);
+      toast.success(result.message);
+      await loadClients();
+    } catch (err: any) {
+      console.error('Error resending activation:', err);
+      toast.error(err.response?.data?.detail || 'Error al enviar el correo');
+    } finally {
+      setResendingEmail(null);
+    }
+  };
+
+  // Get activation status for a client
+  const getActivationStatus = (client: Client): { label: string; color: string; icon: typeof CheckCircle } => {
+    if (client.is_verified && client.has_password) {
+      return { label: 'Activado', color: 'text-green-600 bg-green-50', icon: CheckCircle };
+    }
+    if (client.welcome_email_sent) {
+      return { label: 'Pendiente', color: 'text-yellow-600 bg-yellow-50', icon: Clock };
+    }
+    if (client.email) {
+      return { label: 'Sin enviar', color: 'text-gray-500 bg-gray-50', icon: Mail };
+    }
+    return { label: 'Sin email', color: 'text-gray-400 bg-gray-50', icon: Mail };
+  };
+
   return (
     <Layout>
       <Toaster position="top-right" />
@@ -318,17 +354,50 @@ export default function Clients() {
                 )}
               </div>
 
-              {/* Status Badge */}
-              <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
-                <span className={`px-2 py-1 text-xs leading-5 font-semibold rounded-full ${
-                  client.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {client.is_active ? 'Activo' : 'Inactivo'}
-                </span>
+              {/* Status Badges */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex flex-wrap gap-2 items-center justify-between">
+                  <div className="flex gap-2">
+                    <span className={`px-2 py-1 text-xs leading-5 font-semibold rounded-full ${
+                      client.is_active
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {client.is_active ? 'Activo' : 'Inactivo'}
+                    </span>
+
+                    {/* Portal Activation Status */}
+                    {client.email && (() => {
+                      const status = getActivationStatus(client);
+                      const StatusIcon = status.icon;
+                      return (
+                        <span className={`px-2 py-1 text-xs leading-5 font-semibold rounded-full flex items-center gap-1 ${status.color}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {status.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Resend Button - only show if email exists and not activated */}
+                  {client.email && !(client.is_verified && client.has_password) && (
+                    <button
+                      onClick={() => handleResendActivation(client)}
+                      disabled={resendingEmail === client.id}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition disabled:opacity-50"
+                      title="Reenviar correo de activación"
+                    >
+                      {resendingEmail === client.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Send className="w-3 h-3" />
+                      )}
+                      <span>Reenviar</span>
+                    </button>
+                  )}
+                </div>
                 {client.notes && (
-                  <span className="text-xs text-gray-400 truncate max-w-[150px]" title={client.notes}>
+                  <span className="text-xs text-gray-400 truncate block mt-2" title={client.notes}>
                     {client.notes}
                   </span>
                 )}

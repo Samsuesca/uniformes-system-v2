@@ -21,6 +21,9 @@ import Admin from './pages/Admin';
 import ContactsManagement from './pages/ContactsManagement';
 import PaymentAccounts from './pages/PaymentAccounts';
 import Documents from './pages/Documents';
+import Payroll from './pages/Payroll';
+import Alterations from './pages/Alterations';
+import AlterationDetail from './pages/AlterationDetail';
 
 // Protected Route component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -202,6 +205,30 @@ function App() {
           element={
             <ProtectedRoute>
               <Documents />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payroll"
+          element={
+            <ProtectedRoute>
+              <Payroll />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alterations"
+          element={
+            <ProtectedRoute>
+              <Alterations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alterations/:alterationId"
+          element={
+            <ProtectedRoute>
+              <AlterationDetail />
             </ProtectedRoute>
           }
         />

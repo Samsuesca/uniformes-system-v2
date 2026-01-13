@@ -9,12 +9,10 @@ import { RefreshCw, CheckCircle, XCircle, Clock, AlertCircle, Loader2, Eye, Sear
 import { formatDateTimeSpanish } from '../components/DatePicker';
 import { saleChangeService } from '../services/saleChangeService';
 import { saleService } from '../services/saleService';
-import { useSchoolStore } from '../stores/schoolStore';
 import type { SaleChangeListItem, SaleListItem, SaleWithItems } from '../types/api';
 
 export default function SaleChanges() {
   const navigate = useNavigate();
-  const { currentSchool } = useSchoolStore();
   const [changes, setChanges] = useState<SaleChangeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,44 +36,54 @@ export default function SaleChanges() {
   const [approveChangeData, setApproveChangeData] = useState<{ saleId: string; changeId: string; priceAdjustment: number } | null>(null);
   const [approvePaymentMethod, setApprovePaymentMethod] = useState<'cash' | 'nequi' | 'transfer' | 'card'>('cash');
 
-  const schoolId = currentSchool?.id || '';
+  // Mapeo sale_id -> school_id para operaciones que requieren school_id
+  const [saleSchoolMap, setSaleSchoolMap] = useState<Record<string, string>>({});
 
-  // Recargar datos cuando cambia el colegio seleccionado
+  // Cargar datos al montar (sin dependencia de colegio seleccionado)
   useEffect(() => {
-    if (schoolId) {
-      loadAllChanges();
-      loadAllSales();
-    }
-  }, [schoolId]);
+    loadAllChanges();
+    loadAllSales();
+  }, []);
 
   const loadAllSales = async () => {
     try {
-      const sales = await saleService.getSales(schoolId);
-      // Only completed sales can have changes
-      setAllSales(sales.filter(s => s.status === 'completed'));
+      // Cargar ventas completadas de TODOS los colegios (excluyendo históricas)
+      const allSalesData = await saleService.getAllSales({ status: 'completed' });
+      // Filtrar ventas históricas (migración) - no aplican cambios/devoluciones
+      const sales = allSalesData.filter(s => !s.is_historical);
+      setAllSales(sales);
+
+      // Crear mapeo sale_id -> school_id para operaciones posteriores
+      const schoolMap: Record<string, string> = {};
+      sales.forEach(sale => {
+        if (sale.school_id) schoolMap[sale.id] = sale.school_id;
+      });
+      setSaleSchoolMap(schoolMap);
     } catch (err) {
       console.error('Error loading sales:', err);
     }
   };
 
-  // Search sales when typing
+  // Buscar ventas por código, cliente o colegio
   useEffect(() => {
     if (!saleSearchTerm.trim()) {
-      setSearchResults(allSales.slice(0, 10));
+      setSearchResults(allSales.slice(0, 20));
       return;
     }
     const term = saleSearchTerm.toLowerCase();
     const filtered = allSales.filter(sale =>
       sale.code.toLowerCase().includes(term) ||
-      (sale.client_name && sale.client_name.toLowerCase().includes(term))
+      (sale.client_name && sale.client_name.toLowerCase().includes(term)) ||
+      (sale.school_name && sale.school_name.toLowerCase().includes(term))
     );
-    setSearchResults(filtered.slice(0, 10));
+    setSearchResults(filtered.slice(0, 20));
   }, [saleSearchTerm, allSales]);
 
   const handleSelectSale = async (sale: SaleListItem) => {
     try {
       setLoadingSale(true);
-      const fullSale = await saleService.getSaleWithItems(schoolId, sale.id);
+      // Usar endpoint global que no requiere school_id
+      const fullSale = await saleService.getSaleDetails(sale.id);
       setSelectedSale(fullSale);
       setShowSaleSearch(false);
       setShowChangeModal(true);
@@ -98,17 +106,26 @@ export default function SaleChanges() {
       setLoading(true);
       setError(null);
 
-      // Get all sales first
-      const sales = await saleService.getSales(schoolId);
+      // Cargar ventas completadas de TODOS los colegios (excluyendo históricas)
+      const allSalesData = await saleService.getAllSales({ status: 'completed' });
+      const sales = allSalesData.filter(s => !s.is_historical);
 
-      // Get changes for each sale
+      // Actualizar mapeo sale_id -> school_id
+      const schoolMap: Record<string, string> = {};
+      sales.forEach(sale => {
+        if (sale.school_id) schoolMap[sale.id] = sale.school_id;
+      });
+      setSaleSchoolMap(schoolMap);
+
+      // Cargar cambios de cada venta usando su school_id
       const allChanges: SaleChangeListItem[] = [];
       for (const sale of sales) {
+        if (!sale.school_id) continue;
         try {
-          const saleChanges = await saleChangeService.getSaleChanges(schoolId, sale.id);
+          const saleChanges = await saleChangeService.getSaleChanges(sale.school_id, sale.id);
           allChanges.push(...saleChanges);
-        } catch (err) {
-          console.error(`Error loading changes for sale ${sale.id}:`, err);
+        } catch {
+          // La venta no tiene cambios, continuar
         }
       }
 
@@ -140,6 +157,13 @@ export default function SaleChanges() {
   };
 
   const handleApprove = async (saleId: string, changeId: string, paymentMethod?: 'cash' | 'nequi' | 'transfer' | 'card') => {
+    // Obtener school_id del mapeo
+    const saleSchoolId = saleSchoolMap[saleId];
+    if (!saleSchoolId) {
+      setError('No se encontró el colegio de la venta');
+      return;
+    }
+
     if (!confirm('¿Confirmar aprobación de este cambio? Se ajustará el inventario automáticamente.')) {
       return;
     }
@@ -148,7 +172,7 @@ export default function SaleChanges() {
       setProcessingId(changeId);
       setError(null);
       setShowApproveModal(false);
-      await saleChangeService.approveChange(schoolId, saleId, changeId, paymentMethod);
+      await saleChangeService.approveChange(saleSchoolId, saleId, changeId, paymentMethod);
       setApproveChangeData(null);
       await loadAllChanges();
     } catch (err: any) {
@@ -160,6 +184,13 @@ export default function SaleChanges() {
   };
 
   const handleReject = async (saleId: string, changeId: string) => {
+    // Obtener school_id del mapeo
+    const saleSchoolId = saleSchoolMap[saleId];
+    if (!saleSchoolId) {
+      setError('No se encontró el colegio de la venta');
+      return;
+    }
+
     const reason = prompt('Motivo del rechazo (obligatorio):');
     if (!reason || reason.trim() === '') {
       alert('Debes proporcionar un motivo de rechazo');
@@ -169,7 +200,7 @@ export default function SaleChanges() {
     try {
       setProcessingId(changeId);
       setError(null);
-      await saleChangeService.rejectChange(schoolId, saleId, changeId, reason);
+      await saleChangeService.rejectChange(saleSchoolId, saleId, changeId, reason);
       await loadAllChanges();
     } catch (err: any) {
       console.error('Error rejecting change:', err);
@@ -361,7 +392,7 @@ export default function SaleChanges() {
                 <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar por código de venta o nombre de cliente..."
+                  placeholder="Buscar por código, cliente o colegio..."
                   value={saleSearchTerm}
                   onChange={(e) => setSaleSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -397,6 +428,11 @@ export default function SaleChanges() {
                     <p className="text-sm text-gray-600">
                       {sale.client_name || 'Sin cliente'} • {sale.items_count} items
                     </p>
+                    {sale.school_name && (
+                      <p className="text-xs text-blue-600 font-medium">
+                        {sale.school_name}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-400">
                       {formatDate(sale.sale_date)}
                     </p>
@@ -432,7 +468,7 @@ export default function SaleChanges() {
           }}
           saleId={selectedSale.id}
           saleItems={selectedSale.items}
-          schoolId={schoolId}
+          schoolId={selectedSale.school_id}
           onSuccess={handleChangeCreated}
         />
       )}

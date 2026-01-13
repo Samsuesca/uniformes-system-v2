@@ -6,7 +6,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SaleChangeModal from '../components/SaleChangeModal';
 import AddPaymentModal from '../components/AddPaymentModal';
-import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock, History, DollarSign, Banknote } from 'lucide-react';
+import ReceiptModal from '../components/ReceiptModal';
+import { ArrowLeft, Calendar, User, CreditCard, Package, Printer, AlertCircle, Loader2, RefreshCw, CheckCircle, XCircle, Clock, History, DollarSign, Banknote, Mail, Building2 } from 'lucide-react';
 import { formatDateTimeSpanish } from '../components/DatePicker';
 import { saleService } from '../services/saleService';
 import { saleChangeService } from '../services/saleChangeService';
@@ -14,52 +15,7 @@ import { clientService } from '../services/clientService';
 import { productService } from '../services/productService';
 import type { SaleItemWithProduct, Client, Product, SaleChangeListItem, SaleWithItems } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
-import { save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
 
-// Print styles
-const printStyles = `
-  @media print {
-    @page {
-      margin: 1cm;
-      size: letter;
-    }
-
-    body {
-      print-color-adjust: exact;
-      -webkit-print-color-adjust: exact;
-    }
-
-    .print-hidden {
-      display: none !important;
-    }
-
-    .hidden.print\\:block {
-      display: block !important;
-    }
-
-    /* Remove shadows and rounded corners for print */
-    .rounded-lg, .shadow-sm {
-      border-radius: 0 !important;
-      box-shadow: none !important;
-    }
-
-    /* Clean up table styles for print */
-    table {
-      page-break-inside: auto;
-    }
-
-    tr {
-      page-break-inside: avoid;
-      page-break-after: auto;
-    }
-
-    /* Ensure proper spacing */
-    #printable-section {
-      padding: 0 !important;
-    }
-  }
-`;
 
 export default function SaleDetail() {
   const { saleId } = useParams<{ saleId: string }>();
@@ -74,6 +30,8 @@ export default function SaleDetail() {
   const [error, setError] = useState<string | null>(null);
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Calculate pending balance
   const pendingBalance = sale ? Number(sale.total) - Number(sale.paid_amount || 0) : 0;
@@ -104,27 +62,30 @@ export default function SaleDetail() {
         return;
       }
 
-      // Load sale with items
-      const saleData = await saleService.getSaleWithItems(schoolId, saleId);
+      // Load sale with items (using global endpoint that doesn't require school_id)
+      const saleData = await saleService.getSaleDetails(saleId);
       setSale(saleData);
       setItems(saleData.items || []);
 
+      // Get the school_id from the sale itself
+      const saleSchoolId = saleData.school_id;
+
       // Load client info
-      if (saleData.client_id) {
-        const clientData = await clientService.getClient(schoolId, saleData.client_id);
+      if (saleData.client_id && saleSchoolId) {
+        const clientData = await clientService.getClient(saleSchoolId, saleData.client_id);
         setClient(clientData);
       }
 
       // Load all products info
-      if (saleData.items && saleData.items.length > 0) {
-        const allProducts = await productService.getProducts(schoolId);
+      if (saleData.items && saleData.items.length > 0 && saleSchoolId) {
+        const allProducts = await productService.getProducts(saleSchoolId);
         const productsMap = new Map<string, Product>();
         allProducts.forEach(p => productsMap.set(p.id, p));
         setProducts(productsMap);
       }
 
-      // Load sale changes
-      await loadChanges();
+      // Load sale changes (pass the school_id from the sale)
+      await loadChanges(saleSchoolId);
     } catch (err: any) {
       console.error('Error loading sale detail:', err);
       setError(err.response?.data?.detail || 'Error al cargar los detalles de la venta');
@@ -133,10 +94,12 @@ export default function SaleDetail() {
     }
   };
 
-  const loadChanges = async () => {
+  const loadChanges = async (saleSchoolId?: string) => {
     try {
       if (!saleId) return;
-      const changesData = await saleChangeService.getSaleChanges(schoolId, saleId);
+      const effectiveSchoolId = saleSchoolId || sale?.school_id || schoolId;
+      if (!effectiveSchoolId) return;
+      const changesData = await saleChangeService.getSaleChanges(effectiveSchoolId, saleId);
       setChanges(changesData);
     } catch (err: any) {
       console.error('Error loading changes:', err);
@@ -262,219 +225,23 @@ export default function SaleDetail() {
     loadChanges();
   };
 
-  const handlePrint = async () => {
-    console.log('🖨️ Print button clicked - INICIO');
-
-    try {
-      console.log('🖨️ Calling handleSaveReceipt...');
-      await handleSaveReceipt();
-      console.log('🖨️ handleSaveReceipt completed');
-    } catch (error) {
-      console.error('❌ Error in handlePrint:', error);
-      console.error('❌ Error stack:', error);
-      alert(`Error al guardar el recibo:\n\n${error instanceof Error ? error.message : String(error)}`);
-    }
+  const handlePrint = () => {
+    setIsReceiptModalOpen(true);
   };
 
-  const handleSaveReceipt = async () => {
-    console.log('💾 handleSaveReceipt - INICIO');
+  const handleSendEmail = async () => {
+    if (!sale || !client?.email || sendingEmail) return;
 
-    if (!sale) {
-      alert('No hay información de venta disponible');
-      return;
-    }
-
+    setSendingEmail(true);
     try {
-      // Generate HTML receipt
-      console.log('💾 Generating HTML...');
-      const receiptHtml = generateReceiptHTML();
-      console.log('💾 HTML generated, length:', receiptHtml.length);
-
-      // Open save dialog
-      console.log('💾 Opening save dialog...');
-      const filePath = await save({
-        defaultPath: `Recibo_${sale.code}.html`,
-        filters: [{
-          name: 'HTML',
-          extensions: ['html']
-        }]
-      });
-      console.log('💾 Dialog closed, filePath:', filePath);
-
-      if (filePath) {
-        console.log('💾 Writing file to:', filePath);
-        await writeTextFile(filePath, receiptHtml);
-        console.log('💾 File written successfully');
-        alert(`Recibo guardado en: ${filePath}\n\nPuedes abrirlo en tu navegador e imprimirlo desde ahí.`);
-      } else {
-        console.log('💾 User cancelled save dialog');
-      }
-    } catch (error) {
-      console.error('❌ Error saving receipt:', error);
-      alert(`Error al guardar el recibo: ${error}`);
+      const result = await saleService.sendReceiptEmail(schoolId, sale.id);
+      alert(result.message);
+    } catch (err: any) {
+      console.error('Error sending email:', err);
+      alert(err.response?.data?.detail || 'Error al enviar el email');
+    } finally {
+      setSendingEmail(false);
     }
-  };
-
-  const generateReceiptHTML = (): string => {
-    if (!sale) return '';
-
-    return `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recibo - ${sale.code}</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 20px auto;
-      padding: 20px;
-      color: #333;
-    }
-    .header {
-      text-align: center;
-      border-bottom: 2px solid #333;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
-    }
-    .header h1 {
-      margin: 0;
-      font-size: 32px;
-    }
-    .info-section {
-      margin-bottom: 30px;
-    }
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-bottom: 20px;
-    }
-    .info-item {
-      padding: 10px;
-      background: #f5f5f5;
-      border-radius: 5px;
-    }
-    .info-label {
-      font-size: 12px;
-      color: #666;
-      margin-bottom: 5px;
-    }
-    .info-value {
-      font-size: 16px;
-      font-weight: bold;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 30px;
-    }
-    th, td {
-      padding: 12px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background: #f5f5f5;
-      font-weight: bold;
-    }
-    .text-right {
-      text-align: right;
-    }
-    .totals {
-      margin-left: auto;
-      width: 300px;
-    }
-    .total-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
-      font-size: 20px;
-      font-weight: bold;
-      border-top: 2px solid #333;
-    }
-    @media print {
-      body {
-        margin: 0;
-        padding: 10px;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>Sistema de Uniformes</h1>
-    <p>Recibo de Venta</p>
-    <h2>${sale.code}</h2>
-    <p>${formatDate(sale.sale_date)}</p>
-  </div>
-
-  <div class="info-section">
-    <div class="info-grid">
-      <div class="info-item">
-        <div class="info-label">Cliente</div>
-        <div class="info-value">${client?.name || 'Sin cliente'}</div>
-        ${client?.student_name ? `<div style="font-size: 14px; color: #666;">Estudiante: ${client.student_name}</div>` : ''}
-      </div>
-      <div class="info-item">
-        <div class="info-label">Método de Pago</div>
-        <div class="info-value">${sale.payment_method
-          ? getPaymentMethodText(sale.payment_method)
-          : sale.payments && sale.payments.length > 0
-            ? [...new Set(sale.payments.map(p => p.payment_method))].map(m => getPaymentMethodText(m)).join(', ')
-            : 'Sin registrar'}</div>
-      </div>
-      <div class="info-item">
-        <div class="info-label">Estado</div>
-        <div class="info-value">${getStatusText(sale.status)}</div>
-      </div>
-      <div class="info-item">
-        <div class="info-label">Fecha</div>
-        <div class="info-value">${formatDate(sale.sale_date)}</div>
-      </div>
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Código</th>
-        <th>Producto</th>
-        <th class="text-right">Cantidad</th>
-        <th class="text-right">Precio Unit.</th>
-        <th class="text-right">Subtotal</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${items.map(item => `
-        <tr>
-          <td>${getProductCodeFromItem(item)}${item.is_global_product ? ' <span style="background:#f3e8ff;color:#7c3aed;padding:2px 6px;border-radius:4px;font-size:10px;">Global</span>' : ''}</td>
-          <td>${getProductNameFromItem(item)}</td>
-          <td class="text-right">${item.quantity}</td>
-          <td class="text-right">$${Number(item.unit_price).toLocaleString()}</td>
-          <td class="text-right">$${Number(item.subtotal).toLocaleString()}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <div class="totals">
-    <div class="total-row">
-      <span>Total:</span>
-      <span>$${Number(sale.total).toLocaleString()}</span>
-    </div>
-  </div>
-
-  ${sale.notes ? `
-  <div style="margin-top: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
-    <strong>Notas:</strong> ${sale.notes}
-  </div>
-  ` : ''}
-</body>
-</html>
-    `.trim();
   };
 
   if (loading) {
@@ -512,9 +279,7 @@ export default function SaleDetail() {
 
   return (
     <Layout>
-      <style>{printStyles}</style>
-
-      <div className="mb-6 print-hidden">
+      <div className="mb-6">
         <button
           onClick={() => navigate('/sales')}
           className="flex items-center text-gray-600 hover:text-gray-800 mb-4 transition"
@@ -553,6 +318,22 @@ export default function SaleDetail() {
               <Printer className="w-5 h-5 mr-2" />
               Imprimir Recibo
             </button>
+            {/* Send Email button - only show if client has email */}
+            {client?.email && (
+              <button
+                onClick={handleSendEmail}
+                disabled={sendingEmail}
+                className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center transition disabled:opacity-50"
+                title={`Enviar a ${client.email}`}
+              >
+                {sendingEmail ? (
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <Mail className="w-5 h-5 mr-2" />
+                )}
+                {sendingEmail ? 'Enviando...' : 'Enviar Email'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -572,7 +353,16 @@ export default function SaleDetail() {
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Información de la Venta</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+          {/* School */}
+          <div>
+            <div className="flex items-center text-sm text-gray-500 mb-1">
+              <Building2 className="w-4 h-4 mr-2" />
+              Colegio
+            </div>
+            <p className="font-medium text-gray-900">{sale.school_name || currentSchool?.name || '-'}</p>
+          </div>
+
           {/* Date */}
           <div>
             <div className="flex items-center text-sm text-gray-500 mb-1">
@@ -889,6 +679,16 @@ export default function SaleDetail() {
         schoolId={schoolId}
         saleCode={sale?.code || ''}
         pendingAmount={pendingBalance > 0 ? pendingBalance : Number(sale?.total || 0)}
+      />
+
+      {/* Receipt Modal */}
+      <ReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        type="sale"
+        sale={sale}
+        client={client}
+        schoolName={currentSchool?.name}
       />
     </Layout>
   );

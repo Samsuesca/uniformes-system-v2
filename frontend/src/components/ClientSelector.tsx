@@ -704,7 +704,9 @@ export default function ClientSelector({
 
       {/* Dropdown */}
       {isOpen && !disabled && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-hidden">
+        <div className={`absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden ${
+          showQuickCreate ? 'max-h-[420px]' : 'max-h-80'
+        }`}>
           {/* Quick actions */}
           <div className="p-2 border-b border-gray-100 flex gap-2">
             {allowNoClient && (
@@ -729,7 +731,7 @@ export default function ClientSelector({
 
           {/* Quick create form */}
           {showQuickCreate ? (
-            <div className="p-3 border-b border-gray-100 bg-blue-50">
+            <div className="p-3 border-b border-gray-100 bg-blue-50 max-h-[360px] overflow-y-auto">
               <h4 className="font-medium text-sm text-blue-800 mb-3 flex items-center gap-2">
                 <UserPlus className="w-4 h-4" />
                 Crear cliente rápido

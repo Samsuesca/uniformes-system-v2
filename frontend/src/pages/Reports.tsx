@@ -6,15 +6,19 @@ import Layout from '../components/Layout';
 import {
   BarChart3, TrendingUp, Package, Users, AlertTriangle, DollarSign,
   Loader2, AlertCircle, ShoppingBag, RefreshCw, Calendar, Filter,
-  ArrowUpRight, ArrowDownRight, Wallet, Receipt, PieChart, ScrollText
+  ArrowUpRight, ArrowDownRight, Wallet, Receipt, PieChart, ScrollText,
+  Scissors, Clock, CheckCircle
 } from 'lucide-react';
 import DatePicker from '../components/DatePicker';
 import { reportsService, type DashboardSummary, type TopProduct, type LowStockProduct, type TopClient, type SalesSummary, type DateFilters } from '../services/reportsService';
 import { useSchoolStore } from '../stores/schoolStore';
 import { globalAccountingService } from '../services/globalAccountingService';
+import { alterationService } from '../services/alterationService';
+import type { AlterationsSummary, AlterationListItem } from '../types/api';
+import { ALTERATION_TYPE_LABELS, ALTERATION_STATUS_LABELS, ALTERATION_STATUS_COLORS } from '../types/api';
 
 // Tab type
-type ReportTab = 'sales' | 'financial' | 'movements';
+type ReportTab = 'sales' | 'financial' | 'movements' | 'alterations';
 
 // Transaction types
 interface TransactionItem {
@@ -180,6 +184,12 @@ export default function Reports() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [balanceAccounts, setBalanceAccounts] = useState<any[]>([]);
 
+  // Alterations data (Alterations tab)
+  const [alterationsLoading, setAlterationsLoading] = useState(false);
+  const [alterationsError, setAlterationsError] = useState<string | null>(null);
+  const [alterationsSummary, setAlterationsSummary] = useState<AlterationsSummary | null>(null);
+  const [alterationsList, setAlterationsList] = useState<AlterationListItem[]>([]);
+
   const schoolId = currentSchool?.id || '';
 
   // Mark filters as ready after initial render
@@ -206,6 +216,9 @@ export default function Reports() {
       } else if (activeTab === 'movements') {
         // Movements tab is global
         loadMovementsLog();
+      } else if (activeTab === 'alterations') {
+        // Alterations tab is global
+        loadAlterationsReport();
       }
     }
   }, [activeFilters, schoolId, activeTab, filtersReady, selectedAccountId]);
@@ -298,6 +311,37 @@ export default function Reports() {
       setMovementsError(parsedError.userMessage);
     } finally {
       setMovementsLoading(false);
+    }
+  };
+
+  const loadAlterationsReport = async () => {
+    try {
+      setAlterationsLoading(true);
+      setAlterationsError(null);
+
+      const { startDate, endDate } = activeFilters;
+
+      const [summaryData, listData] = await Promise.all([
+        alterationService.getSummary(),
+        alterationService.getAll({
+          start_date: startDate,
+          end_date: endDate,
+          limit: 50
+        })
+      ]);
+
+      setAlterationsSummary(summaryData);
+      setAlterationsList(listData);
+    } catch (err: any) {
+      const parsedError = parseApiError(err);
+      console.error('[AlterationsReportError]', {
+        status: parsedError.status,
+        message: parsedError.technicalMessage,
+        originalError: err
+      });
+      setAlterationsError(parsedError.userMessage);
+    } finally {
+      setAlterationsLoading(false);
     }
   };
 
@@ -460,6 +504,17 @@ export default function Reports() {
           >
             <ScrollText className="w-4 h-4 inline mr-2" />
             Log de Movimientos
+          </button>
+          <button
+            onClick={() => setActiveTab('alterations')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition ${
+              activeTab === 'alterations'
+                ? 'border-orange-600 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Scissors className="w-4 h-4 inline mr-2" />
+            Arreglos
           </button>
         </nav>
       </div>
@@ -1251,6 +1306,191 @@ export default function Reports() {
                 </div>
               )}
             </div>
+          )}
+        </>
+      )}
+
+      {/* ===== ALTERATIONS TAB CONTENT ===== */}
+      {activeTab === 'alterations' && (
+        <>
+          {/* Loading State */}
+          {alterationsLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
+              <span className="ml-3 text-gray-600">Cargando datos de arreglos...</span>
+            </div>
+          )}
+
+          {/* Error State */}
+          {alterationsError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm text-red-700">{alterationsError}</p>
+                  <button
+                    onClick={loadAlterationsReport}
+                    className="mt-2 text-sm text-red-700 hover:text-red-800 underline"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Alterations Content */}
+          {!alterationsLoading && !alterationsError && (
+            <>
+              {/* Summary Cards */}
+              {alterationsSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                      <Scissors className="w-4 h-4" />
+                      Total
+                    </div>
+                    <p className="text-2xl font-semibold text-gray-900">{alterationsSummary.total_count}</p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-4 shadow-sm border border-yellow-100">
+                    <div className="flex items-center gap-2 text-yellow-700 text-sm mb-1">
+                      <Clock className="w-4 h-4" />
+                      Pendientes
+                    </div>
+                    <p className="text-2xl font-semibold text-yellow-700">{alterationsSummary.pending_count}</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-4 shadow-sm border border-blue-100">
+                    <div className="flex items-center gap-2 text-blue-700 text-sm mb-1">
+                      <Scissors className="w-4 h-4" />
+                      En Proceso
+                    </div>
+                    <p className="text-2xl font-semibold text-blue-700">{alterationsSummary.in_progress_count}</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-4 shadow-sm border border-green-100">
+                    <div className="flex items-center gap-2 text-green-700 text-sm mb-1">
+                      <CheckCircle className="w-4 h-4" />
+                      Listos
+                    </div>
+                    <p className="text-2xl font-semibold text-green-700">{alterationsSummary.ready_count}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                      <DollarSign className="w-4 h-4" />
+                      Ingresos
+                    </div>
+                    <p className="text-xl font-semibold text-gray-900">{formatCurrency(alterationsSummary.total_revenue)}</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-4 shadow-sm border border-red-100">
+                    <div className="flex items-center gap-2 text-red-700 text-sm mb-1">
+                      <DollarSign className="w-4 h-4" />
+                      Por Cobrar
+                    </div>
+                    <p className="text-xl font-semibold text-red-700">{formatCurrency(alterationsSummary.total_pending_payment)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Alterations Table */}
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-amber-50">
+                  <h2 className="text-lg font-semibold text-gray-800">
+                    Listado de Arreglos
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {getDateRangeLabel() || 'Todos los arreglos'}
+                  </p>
+                </div>
+
+                {alterationsList.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Código
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Cliente
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Prenda
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Tipo
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Estado
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Costo
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Saldo
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Recibido
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {alterationsList.map((alteration) => (
+                          <tr key={alteration.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="font-mono text-sm text-orange-600 font-medium">
+                                {alteration.code}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {alteration.client_display_name}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                              {alteration.garment_name}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">
+                                {ALTERATION_TYPE_LABELS[alteration.alteration_type]}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`px-2 py-1 text-xs rounded-full ${ALTERATION_STATUS_COLORS[alteration.status]}`}>
+                                {ALTERATION_STATUS_LABELS[alteration.status]}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right whitespace-nowrap text-sm font-medium text-gray-900">
+                              {formatCurrency(alteration.cost)}
+                            </td>
+                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                              {alteration.balance > 0 ? (
+                                <span className="text-sm font-medium text-red-600">
+                                  {formatCurrency(alteration.balance)}
+                                </span>
+                              ) : (
+                                <span className="text-sm text-green-600 flex items-center justify-end gap-1">
+                                  <CheckCircle className="w-4 h-4" />
+                                  Pagado
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                              {new Date(alteration.received_date).toLocaleDateString('es-CO', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-12 text-center text-gray-500">
+                    <Scissors className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                    <p>No hay arreglos para el período seleccionado</p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </>
       )}

@@ -4,12 +4,12 @@
 import { useEffect, useState, Fragment } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp, Mail } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Package, DollarSign, AlertCircle, Loader2, Clock, CheckCircle, XCircle, Truck, Edit2, Save, X, Ruler, ChevronDown, ChevronUp, Mail, Printer, Building2 } from 'lucide-react';
 import DatePicker, { formatDateSpanish } from '../components/DatePicker';
 import { orderService } from '../services/orderService';
 import type { OrderWithItems, OrderStatus, OrderItemStatus } from '../types/api';
 import { useSchoolStore } from '../stores/schoolStore';
-import ReceiptPrintButton from '../components/ReceiptPrintButton';
+import ReceiptModal from '../components/ReceiptModal';
 
 // Item status configuration
 const ITEM_STATUS_CONFIG: Record<OrderItemStatus, { label: string; color: string; bgColor: string; icon: string }> = {
@@ -51,8 +51,11 @@ export default function OrderDetail() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
 
-  // Get school_id from URL query param, fallback to currentSchool
-  const schoolId = searchParams.get('school_id') || currentSchool?.id || '';
+  // Receipt modal state
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  // Get school_id from the order itself (preferred), URL query param, or currentSchool as fallback
+  const getEffectiveSchoolId = () => order?.school_id || searchParams.get('school_id') || currentSchool?.id || '';
 
   // Toggle measurement visibility
   const toggleMeasurements = (itemId: string) => {
@@ -93,7 +96,8 @@ export default function OrderDetail() {
     try {
       setLoading(true);
       setError(null);
-      const data = await orderService.getOrder(schoolId, orderId!);
+      // Use global endpoint that doesn't require school_id
+      const data = await orderService.getOrderDetails(orderId!);
       setOrder(data);
     } catch (err: any) {
       console.error('Error loading order:', err);
@@ -152,7 +156,7 @@ export default function OrderDetail() {
 
     try {
       setProcessingStatus(true);
-      await orderService.updateStatus(schoolId, order.id, newStatus);
+      await orderService.updateStatus(getEffectiveSchoolId(), order.id, newStatus);
       await loadOrder();
     } catch (err: any) {
       console.error('Error updating status:', err);
@@ -173,7 +177,7 @@ export default function OrderDetail() {
 
     try {
       setPaymentLoading(true);
-      await orderService.addPayment(schoolId, order.id, {
+      await orderService.addPayment(getEffectiveSchoolId(), order.id, {
         amount,
         payment_method: paymentMethod,
       });
@@ -199,7 +203,7 @@ export default function OrderDetail() {
 
     try {
       setSavingDeliveryDate(true);
-      await orderService.updateOrder(schoolId, order.id, {
+      await orderService.updateOrder(getEffectiveSchoolId(), order.id, {
         delivery_date: newDeliveryDate || undefined,
       });
       setEditingDeliveryDate(false);
@@ -223,7 +227,7 @@ export default function OrderDetail() {
 
     try {
       setUpdatingItemStatus(itemId);
-      await orderService.updateItemStatus(schoolId, order.id, itemId, newStatus);
+      await orderService.updateItemStatus(getEffectiveSchoolId(), order.id, itemId, newStatus);
       // Reload order to get updated item statuses and potentially updated order status
       await loadOrder();
     } catch (err: any) {
@@ -248,7 +252,7 @@ export default function OrderDetail() {
       setEmailSuccess(null);
       setError(null);
 
-      const result = await orderService.sendReceiptEmail(schoolId, order.id);
+      const result = await orderService.sendReceiptEmail(getEffectiveSchoolId(), order.id);
 
       if (result.success) {
         setEmailSuccess(result.message || 'Correo enviado exitosamente');
@@ -264,9 +268,6 @@ export default function OrderDetail() {
       setSendingEmail(false);
     }
   };
-
-  // Get receipt URL for printing
-  const receiptUrl = order ? orderService.getReceiptUrl(schoolId, order.id) : '';
 
   // Check if client has email
   const clientHasEmail = order?.client_email || false;
@@ -327,11 +328,13 @@ export default function OrderDetail() {
           </div>
           <div className="flex gap-3">
             {/* Print Receipt Button */}
-            <ReceiptPrintButton
-              receiptUrl={receiptUrl}
-              label="Imprimir Recibo"
-              variant="outline"
-            />
+            <button
+              onClick={() => setIsReceiptModalOpen(true)}
+              className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center transition"
+            >
+              <Printer className="w-5 h-5 mr-2" />
+              Imprimir Recibo
+            </button>
 
             {/* Send Email Button - only show if client has email */}
             {clientHasEmail && (
@@ -460,15 +463,19 @@ export default function OrderDetail() {
         {/* Client Card */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Cliente</h2>
+          <div className="flex items-center mb-3">
+            <Building2 className="w-5 h-5 mr-2 text-gray-400" />
+            <span className="font-medium text-gray-900">{order.school_name || currentSchool?.name || '-'}</span>
+          </div>
           <div className="flex items-center">
             <User className="w-5 h-5 mr-2 text-gray-400" />
             <span className="font-medium text-gray-900">{order.client_name}</span>
           </div>
           {order.student_name && (
-            <p className="text-sm text-gray-600 mt-2">Estudiante: {order.student_name}</p>
+            <p className="text-sm text-gray-600 mt-2 ml-7">Estudiante: {order.student_name}</p>
           )}
           {order.client_phone && (
-            <p className="text-sm text-gray-600 mt-1">Tel: {order.client_phone}</p>
+            <p className="text-sm text-gray-600 mt-1 ml-7">Tel: {order.client_phone}</p>
           )}
         </div>
 
@@ -858,6 +865,15 @@ export default function OrderDetail() {
           </div>
         </div>
       )}
+
+      {/* Receipt Modal */}
+      <ReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        type="order"
+        order={order}
+        schoolName={currentSchool?.name}
+      />
     </Layout>
   );
 }

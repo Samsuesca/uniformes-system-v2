@@ -9,6 +9,8 @@ import { useUserRole, getRoleDisplayName } from '../hooks/useUserRole';
 import { DevelopmentBanner } from './EnvironmentIndicator';
 import { DraftsBar } from './DraftsBar';
 import { useDraftStore } from '../stores/draftStore';
+import { NotificationBell } from './NotificationBell';
+import { NotificationPanel } from './NotificationPanel';
 import {
   LayoutDashboard,
   Package,
@@ -32,9 +34,12 @@ import {
   Globe,
   MessageSquare,
   Wallet,
-  FolderOpen
+  FolderOpen,
+  Banknote,
+  Scissors
 } from 'lucide-react';
 import { useConfigStore } from '../stores/configStore';
+import { SYSTEM_VERSION, APP_VERSION } from '../config/version';
 
 interface LayoutProps {
   children: ReactNode;
@@ -50,18 +55,20 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  // Main
+  // Main - Dashboard y catálogo
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, category: 'main' },
   { name: 'Productos', path: '/products', icon: Package, category: 'main' },
-  // Operations
+  // Operations - Ventas y servicios del día a día
   { name: 'Clientes', path: '/clients', icon: Users, category: 'operations' },
   { name: 'Ventas', path: '/sales', icon: ShoppingCart, category: 'operations' },
-  { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw, category: 'operations' },
   { name: 'Encargos', path: '/orders', icon: FileText, category: 'operations' },
+  { name: 'Arreglos', path: '/alterations', icon: Scissors, requiresAccounting: true, category: 'operations' },
+  { name: 'Cambios/Devoluciones', path: '/sale-changes', icon: RefreshCw, category: 'operations' },
   { name: 'Pedidos Web', path: '/web-orders', icon: Globe, category: 'operations' },
   { name: 'PQRS', path: '/contacts', icon: MessageSquare, category: 'operations' },
-  // Finance (accounting access required)
+  // Finance - Contabilidad y administración financiera
   { name: 'Contabilidad', path: '/accounting', icon: Calculator, requiresAccounting: true, category: 'finance' },
+  { name: 'Nómina', path: '/payroll', icon: Banknote, requiresAccounting: true, category: 'finance' },
   { name: 'Reportes', path: '/reports', icon: BarChart3, requiresAccounting: true, category: 'finance' },
   { name: 'Cuentas de Pago', path: '/payment-accounts', icon: Wallet, requiresSuperuser: true, category: 'finance' },
   // Admin
@@ -297,6 +304,13 @@ export default function Layout({ children }: LayoutProps) {
               <LogOut className="w-4 h-4 mr-2" />
               Cerrar Sesión
             </button>
+
+            {/* Version Info */}
+            <div className="mt-2 text-center">
+              <span className="text-[10px] text-slate-500">
+                v{SYSTEM_VERSION} | App v{APP_VERSION}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -386,6 +400,12 @@ export default function Layout({ children }: LayoutProps) {
                   <span className="hidden sm:inline">Sin conexión</span>
                 </>
               )}
+            </div>
+
+            {/* Notifications */}
+            <div className="relative">
+              <NotificationBell />
+              <NotificationPanel />
             </div>
 
             {/* School Selector - Now labeled as "Vista de colegio" */}
