@@ -22,16 +22,21 @@ export interface Client {
   last_login?: string;
 }
 
+export type OrderSource = 'desktop_app' | 'web_portal' | 'physical_store';
+export type PaymentProofStatus = 'pending' | 'approved' | 'rejected';
+
 export interface ClientOrder {
   id: string;
   code: string;
   status: string;
+  source: OrderSource;  // Origen del pedido (web, tienda física, app desktop)
   total: number;
   balance: number;
   created_at: string;
   delivery_date?: string;
   items_count: number;
   payment_proof_url?: string;
+  payment_proof_status?: PaymentProofStatus;  // Estado del comprobante de pago
   items: {
     id: string;
     quantity: number;
@@ -183,4 +188,36 @@ export const getStatusColor = (status: string): string => {
     cancelled: 'bg-red-100 text-red-800',
   };
   return colors[status] || 'bg-gray-100 text-gray-800';
+};
+
+// Helper to get order source label in Spanish
+export const getSourceLabel = (source: OrderSource): string => {
+  const labels: Record<OrderSource, string> = {
+    desktop_app: 'Tienda',
+    web_portal: 'Web',
+    physical_store: 'Tienda Física',
+  };
+  return labels[source] || 'Tienda';
+};
+
+// Helper to get payment proof status label in Spanish
+export const getPaymentProofStatusLabel = (status?: PaymentProofStatus): string => {
+  if (!status) return 'Sin comprobante';
+  const labels: Record<PaymentProofStatus, string> = {
+    pending: 'Pendiente de revisión',
+    approved: 'Aprobado',
+    rejected: 'Rechazado',
+  };
+  return labels[status] || status;
+};
+
+// Helper to get payment proof status color
+export const getPaymentProofStatusColor = (status?: PaymentProofStatus): string => {
+  if (!status) return 'bg-gray-100 text-gray-600';
+  const colors: Record<PaymentProofStatus, string> = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    approved: 'bg-green-100 text-green-800',
+    rejected: 'bg-red-100 text-red-800',
+  };
+  return colors[status] || 'bg-gray-100 text-gray-600';
 };

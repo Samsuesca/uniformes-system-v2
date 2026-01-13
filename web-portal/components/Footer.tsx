@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Phone, Mail, MessageCircle, HelpCircle, MapPin, Clock, ExternalLink } from 'lucide-react';
+import { SYSTEM_VERSION, APP_VERSION } from '@/lib/version';
 
 // Puntos de venta - fácil de expandir en el futuro
 const STORE_LOCATIONS = [
@@ -119,6 +120,9 @@ export default function Footer() {
         <div className="border-t border-surface-200 pt-6 text-center">
           <p className="text-slate-500 text-sm">
             © {currentYear} Uniformes Consuelo Rios. Todos los derechos reservados.
+          </p>
+          <p className="text-slate-400 text-xs mt-1">
+            v{SYSTEM_VERSION} | Portal v{APP_VERSION}
           </p>
         </div>
       </div>

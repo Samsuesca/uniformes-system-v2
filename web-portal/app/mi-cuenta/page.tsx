@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, User, Clock, CheckCircle, AlertCircle, XCircle, Truck, Calendar, DollarSign, Upload, FileCheck } from 'lucide-react';
-import { useClientAuth, getStatusLabel, getStatusColor, type ClientOrder } from '@/lib/clientAuth';
+import { ArrowLeft, Package, User, Clock, CheckCircle, AlertCircle, XCircle, Truck, Calendar, DollarSign, Upload, Globe, Store } from 'lucide-react';
+import { useClientAuth, getStatusLabel, getStatusColor, getSourceLabel, getPaymentProofStatusLabel, getPaymentProofStatusColor, type ClientOrder } from '@/lib/clientAuth';
 import { formatNumber } from '@/lib/utils';
 import UploadPaymentProofModal from '@/components/UploadPaymentProofModal';
 
@@ -198,6 +198,19 @@ export default function MiCuentaPage() {
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(order.status)}`}>
                             {getStatusLabel(order.status)}
                           </span>
+                          {/* Origen del pedido */}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                            order.source === 'web_portal'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {order.source === 'web_portal' ? (
+                              <Globe className="w-3 h-3" />
+                            ) : (
+                              <Store className="w-3 h-3" />
+                            )}
+                            {getSourceLabel(order.source)}
+                          </span>
                         </div>
                         <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
                           <span className="flex items-center gap-1">
@@ -214,40 +227,71 @@ export default function MiCuentaPage() {
                           </span>
                         </div>
 
-                        {/* Payment Status */}
-                        <div className="mt-3">
-                          {order.payment_proof_url ? (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                                <FileCheck className="w-4 h-4" />
-                                <span className="font-medium">Comprobante enviado</span>
+                        {/* Payment Status - Solo mostrar para pedidos web */}
+                        {order.source === 'web_portal' && (
+                          <div className="mt-3">
+                            {order.payment_proof_url ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Estado del comprobante */}
+                                <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${getPaymentProofStatusColor(order.payment_proof_status)}`}>
+                                  {order.payment_proof_status === 'approved' ? (
+                                    <CheckCircle className="w-4 h-4" />
+                                  ) : order.payment_proof_status === 'rejected' ? (
+                                    <XCircle className="w-4 h-4" />
+                                  ) : (
+                                    <Clock className="w-4 h-4" />
+                                  )}
+                                  <span className="font-medium">{getPaymentProofStatusLabel(order.payment_proof_status)}</span>
+                                </div>
+                                {/* Mostrar botón de cambiar solo si está pendiente o rechazado */}
+                                {order.payment_proof_status !== 'approved' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedOrderForUpload(order.id);
+                                      setShowUploadModal(true);
+                                    }}
+                                    className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 hover:bg-blue-100 transition-colors font-medium"
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                    <span>Cambiar comprobante</span>
+                                  </button>
+                                )}
                               </div>
+                            ) : order.payment_proof_status === 'rejected' ? (
+                              // El comprobante fue rechazado y eliminado, mostrar mensaje y botón
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                  <XCircle className="w-4 h-4" />
+                                  <span className="font-medium">Comprobante rechazado - Sube uno nuevo</span>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedOrderForUpload(order.id);
+                                    setShowUploadModal(true);
+                                  }}
+                                  className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 hover:bg-brand-100 transition-colors font-medium"
+                                >
+                                  <Upload className="w-4 h-4" />
+                                  <span>Subir nuevo comprobante</span>
+                                </button>
+                              </div>
+                            ) : (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedOrderForUpload(order.id);
                                   setShowUploadModal(true);
                                 }}
-                                className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 hover:bg-blue-100 transition-colors font-medium"
+                                className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 hover:bg-brand-100 transition-colors font-medium"
                               >
                                 <Upload className="w-4 h-4" />
-                                <span>Cambiar comprobante</span>
+                                <span>Subir comprobante de pago</span>
                               </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrderForUpload(order.id);
-                                setShowUploadModal(true);
-                              }}
-                              className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 hover:bg-brand-100 transition-colors font-medium"
-                            >
-                              <Upload className="w-4 h-4" />
-                              <span>Subir comprobante de pago</span>
-                            </button>
-                          )}
-                        </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
