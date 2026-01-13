@@ -13,9 +13,11 @@ import {
   ShoppingCart,
   X,
   Filter,
+  Plus,
 } from 'lucide-react';
 import salesService from '@/lib/services/salesService';
 import schoolService from '@/lib/services/schoolService';
+import SaleModal from '@/components/vendor/SaleModal';
 import type {
   Sale,
   SaleWithItems,
@@ -120,7 +122,7 @@ export default function SalesPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState({
     amount: 0,
-    payment_method: 'cash' as PaymentMethod,
+    payment_method: '' as PaymentMethod | '',
     reference: '',
   });
   const [savingPayment, setSavingPayment] = useState(false);
@@ -128,8 +130,11 @@ export default function SalesPage() {
   // Change Approval Modal
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [selectedChange, setSelectedChange] = useState<SaleChange | null>(null);
-  const [approvePaymentMethod, setApprovePaymentMethod] = useState<PaymentMethod>('cash');
+  const [approvePaymentMethod, setApprovePaymentMethod] = useState<PaymentMethod | ''>('');
   const [savingApproval, setSavingApproval] = useState(false);
+
+  // New Sale Modal
+  const [showSaleModal, setShowSaleModal] = useState(false);
 
   // Get accessible schools based on user roles
   const getAccessibleSchools = () => {
@@ -211,7 +216,7 @@ export default function SalesPage() {
     const remaining = selectedSale.total - selectedSale.paid_amount;
     setPaymentData({
       amount: remaining > 0 ? remaining : 0,
-      payment_method: 'cash',
+      payment_method: '',
       reference: '',
     });
     setShowPaymentModal(true);
@@ -225,7 +230,7 @@ export default function SalesPage() {
     try {
       await salesService.addPayment(selectedSale.school_id, selectedSale.id, {
         amount: paymentData.amount,
-        payment_method: paymentData.payment_method,
+        payment_method: paymentData.payment_method as PaymentMethod,
         reference: paymentData.reference || undefined,
         create_accounting_entry: true,
       });
@@ -260,7 +265,7 @@ export default function SalesPage() {
         selectedSale.school_id,
         selectedSale.id,
         selectedChange.id,
-        { payment_method: approvePaymentMethod }
+        { payment_method: approvePaymentMethod as PaymentMethod }
       );
       setShowApproveModal(false);
       // Reload changes
@@ -298,14 +303,23 @@ export default function SalesPage() {
           <h1 className="text-2xl font-bold text-slate-900 font-display">Ventas</h1>
           <p className="text-slate-600 mt-1">Gestiona las ventas del sistema</p>
         </div>
-        <button
-          onClick={loadSales}
-          disabled={loading}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Actualizar
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadSales}
+            disabled={loading}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
+          <button
+            onClick={() => setShowSaleModal(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Venta
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -602,15 +616,15 @@ export default function SalesPage() {
                           </div>
                           <p className="text-sm text-slate-600">
                             Cantidad: {change.quantity}
-                            {change.price_difference !== 0 && (
+                            {Number(change.price_difference) !== 0 && (
                               <span
                                 className={
-                                  change.price_difference > 0
+                                  Number(change.price_difference) > 0
                                     ? 'text-green-600 ml-2'
                                     : 'text-red-600 ml-2'
                                 }
                               >
-                                Diferencia: {formatCurrency(change.price_difference)}
+                                Diferencia: {formatCurrency(Number(change.price_difference))}
                               </span>
                             )}
                           </p>
@@ -685,15 +699,19 @@ export default function SalesPage() {
                       payment_method: e.target.value as PaymentMethod,
                     })
                   }
-                  className="admin-input"
+                  className={`admin-input ${!paymentData.payment_method ? 'border-red-300 text-gray-400' : ''}`}
                   required
                 >
+                  <option value="" disabled>-- Seleccione método --</option>
                   {PAYMENT_METHODS.map((method) => (
                     <option key={method.value} value={method.value}>
                       {method.label}
                     </option>
                   ))}
                 </select>
+                {!paymentData.payment_method && (
+                  <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                )}
               </div>
 
               <div>
@@ -719,7 +737,7 @@ export default function SalesPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={savingPayment}
+                  disabled={savingPayment || !paymentData.payment_method}
                   className="btn-primary flex-1"
                 >
                   {savingPayment ? 'Guardando...' : 'Registrar Pago'}
@@ -739,15 +757,15 @@ export default function SalesPage() {
               {CHANGE_TYPE_LABELS[selectedChange.change_type]} - Cantidad:{' '}
               {selectedChange.quantity}
             </p>
-            {selectedChange.price_difference !== 0 && (
+            {Number(selectedChange.price_difference) !== 0 && (
               <p className="mb-4">
                 <span className="text-slate-600">Diferencia de precio: </span>
                 <span
                   className={`font-bold ${
-                    selectedChange.price_difference > 0 ? 'text-green-600' : 'text-red-600'
+                    Number(selectedChange.price_difference) > 0 ? 'text-green-600' : 'text-red-600'
                   }`}
                 >
-                  {formatCurrency(selectedChange.price_difference)}
+                  {formatCurrency(Number(selectedChange.price_difference))}
                 </span>
               </p>
             )}
@@ -757,14 +775,18 @@ export default function SalesPage() {
               <select
                 value={approvePaymentMethod}
                 onChange={(e) => setApprovePaymentMethod(e.target.value as PaymentMethod)}
-                className="admin-input"
+                className={`admin-input ${!approvePaymentMethod ? 'border-red-300 text-gray-400' : ''}`}
               >
+                <option value="" disabled>-- Seleccione método --</option>
                 {PAYMENT_METHODS.map((method) => (
                   <option key={method.value} value={method.value}>
                     {method.label}
                   </option>
                 ))}
               </select>
+              {!approvePaymentMethod && (
+                <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -776,7 +798,7 @@ export default function SalesPage() {
               </button>
               <button
                 onClick={handleApproveChange}
-                disabled={savingApproval}
+                disabled={savingApproval || !approvePaymentMethod}
                 className="btn-primary flex-1"
               >
                 {savingApproval ? 'Aprobando...' : 'Aprobar'}
@@ -785,6 +807,16 @@ export default function SalesPage() {
           </div>
         </div>
       )}
+
+      {/* New Sale Modal */}
+      <SaleModal
+        isOpen={showSaleModal}
+        onClose={() => setShowSaleModal(false)}
+        onSuccess={() => {
+          setShowSaleModal(false);
+          loadSales();
+        }}
+      />
     </div>
   );
 }

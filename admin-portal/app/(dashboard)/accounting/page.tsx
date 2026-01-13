@@ -69,7 +69,7 @@ export default function AccountingPage() {
   });
   const [paymentData, setPaymentData] = useState({
     amount: 0,
-    payment_method: 'cash' as PaymentMethod,
+    payment_method: '' as PaymentMethod | '',
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -120,7 +120,7 @@ export default function AccountingPage() {
     setSelectedExpense(expense);
     setPaymentData({
       amount: expense.balance,
-      payment_method: 'cash',
+      payment_method: '',
     });
     setFormError(null);
     setShowPayModal(true);
@@ -150,7 +150,10 @@ export default function AccountingPage() {
     setSaving(true);
 
     try {
-      await accountingService.payExpense(selectedExpense.id, paymentData);
+      await accountingService.payExpense(selectedExpense.id, {
+        ...paymentData,
+        payment_method: paymentData.payment_method as PaymentMethod,
+      });
       setShowPayModal(false);
       setSelectedExpense(null);
       loadData();
@@ -645,15 +648,19 @@ export default function AccountingPage() {
                   onChange={(e) =>
                     setPaymentData({ ...paymentData, payment_method: e.target.value as PaymentMethod })
                   }
-                  className="admin-input"
+                  className={`admin-input ${!paymentData.payment_method ? 'border-red-300 text-gray-400' : ''}`}
                   required
                 >
+                  <option value="" disabled>-- Seleccione método --</option>
                   {PAYMENT_METHODS.map((method) => (
                     <option key={method.value} value={method.value}>
                       {method.label}
                     </option>
                   ))}
                 </select>
+                {!paymentData.payment_method && (
+                  <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                )}
               </div>
 
               {formError && (
@@ -675,7 +682,7 @@ export default function AccountingPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || !paymentData.payment_method}
                   className="btn-primary flex-1"
                 >
                   {saving ? 'Procesando...' : 'Registrar Pago'}

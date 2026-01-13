@@ -115,7 +115,7 @@ export default function OrdersPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState({
     amount: 0,
-    payment_method: 'cash' as PaymentMethod,
+    payment_method: '' as PaymentMethod | '',
     reference: '',
   });
   const [savingPayment, setSavingPayment] = useState(false);
@@ -216,7 +216,7 @@ export default function OrdersPage() {
     const remaining = selectedOrder.balance;
     setPaymentData({
       amount: remaining > 0 ? remaining : 0,
-      payment_method: 'cash',
+      payment_method: '',
       reference: '',
     });
     setShowPaymentModal(true);
@@ -230,7 +230,7 @@ export default function OrdersPage() {
     try {
       await ordersService.addPayment(selectedOrder.school_id, selectedOrder.id, {
         amount: paymentData.amount,
-        payment_method: paymentData.payment_method,
+        payment_method: paymentData.payment_method as PaymentMethod,
         reference: paymentData.reference || undefined,
       });
       setShowPaymentModal(false);
@@ -777,15 +777,19 @@ export default function OrdersPage() {
                       payment_method: e.target.value as PaymentMethod,
                     })
                   }
-                  className="admin-input"
+                  className={`admin-input ${!paymentData.payment_method ? 'border-red-300 text-gray-400' : ''}`}
                   required
                 >
+                  <option value="" disabled>-- Seleccione método --</option>
                   {PAYMENT_METHODS.map((method) => (
                     <option key={method.value} value={method.value}>
                       {method.label}
                     </option>
                   ))}
                 </select>
+                {!paymentData.payment_method && (
+                  <p className="text-xs text-red-500 mt-1">Debe seleccionar un método de pago</p>
+                )}
               </div>
 
               <div>
@@ -811,7 +815,7 @@ export default function OrdersPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={savingPayment}
+                  disabled={savingPayment || !paymentData.payment_method}
                   className="btn-primary flex-1"
                 >
                   {savingPayment ? 'Guardando...' : 'Registrar Pago'}
