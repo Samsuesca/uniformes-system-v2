@@ -12,6 +12,7 @@ import {
   canModifyInventory,
   canCreateSales,
   canDeleteRecords,
+  canAccessAlterations,
 } from '../types/api';
 
 interface UseUserRoleResult {
@@ -27,6 +28,7 @@ interface UseUserRoleResult {
   canModifyInventory: boolean;
   canCreateSales: boolean;
   canDeleteRecords: boolean;
+  canAccessAlterations: boolean;
 
   // Role level check
   hasRoleOrHigher: (minRole: UserRole) => boolean;
@@ -47,6 +49,7 @@ export function useUserRole(): UseUserRoleResult {
         canModifyInventory: true,
         canCreateSales: true,
         canDeleteRecords: true,
+        canAccessAlterations: true,
         hasRoleOrHigher: () => true,
       };
     }
@@ -65,6 +68,7 @@ export function useUserRole(): UseUserRoleResult {
       canModifyInventory: canModifyInventory(role ?? undefined),
       canCreateSales: canCreateSales(role ?? undefined),
       canDeleteRecords: canDeleteRecords(role ?? undefined),
+      canAccessAlterations: canAccessAlterations(role ?? undefined),
       hasRoleOrHigher: (minRole: UserRole) => {
         if (!role) return false;
         return ROLE_HIERARCHY[role] >= ROLE_HIERARCHY[minRole];
