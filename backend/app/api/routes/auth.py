@@ -1,9 +1,10 @@
 """
 Authentication Endpoints
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request
 
 from app.api.dependencies import DatabaseSession, CurrentUser
+from app.core.limiter import limiter
 from app.schemas.user import (
     LoginRequest, LoginResponse, UserResponse, UserWithRoles,
     PasswordChange, UserSchoolRoleResponse
@@ -15,7 +16,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     login_data: LoginRequest,
     db: DatabaseSession
 ):
@@ -23,6 +26,7 @@ async def login(
     Login with username/email and password
 
     Returns JWT access token and user information including school roles.
+    Rate limited to 5 attempts per minute per IP.
     """
     user_service = UserService(db)
 

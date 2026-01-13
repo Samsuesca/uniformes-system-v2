@@ -250,3 +250,9 @@ site/
 # Ignore JS files compiled from TS in frontend src
 frontend/src/**/*.js
 !frontend/src/**/*.config.js
+
+# ============================================
+# User uploads (sensitive data)
+# ============================================
+# Payment proofs, documents, etc.
+backend/uploads/

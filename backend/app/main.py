@@ -6,8 +6,11 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from pathlib import Path
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.limiter import limiter
 
 logger = logging.getLogger(__name__)
 from app.api.routes import health, auth, schools, products, clients, sales, orders, inventory, users, reports, accounting, global_products, global_accounting, contacts, payment_accounts, delivery_zones, dashboard, documents, fixed_expenses, employees, payroll, alterations, notifications
@@ -26,10 +29,15 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version="2.0.0",
     description="Sistema de Gestión de Uniformes - API REST",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.ENV != "production" else None,
+    docs_url="/docs" if settings.ENV != "production" else None,
+    redoc_url="/redoc" if settings.ENV != "production" else None,
     lifespan=lifespan
 )
 
+# Rate limiter - asignar al estado de la app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Exception handler to log validation errors
 @app.exception_handler(RequestValidationError)
