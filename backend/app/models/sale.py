@@ -32,6 +32,7 @@ class SaleSource(str, enum.Enum):
     DESKTOP_APP = "desktop_app"  # Desktop POS application (Tauri)
     WEB_PORTAL = "web_portal"    # Web portal (customer self-service)
     API = "api"                  # Direct API integration
+    ADMIN_PORTAL = "admin_portal"  # Admin portal (backoffice)
 
 
 class Sale(Base):
