@@ -23,7 +23,7 @@ jobs:
             args: ''
             artifact_name: 'windows'
           - platform: 'macos-latest'
-            args: '--target universal-apple-darwin'
+            args: '--target aarch64-apple-darwin'
             artifact_name: 'macos'
 
     runs-on: ${{ matrix.platform }}
@@ -42,11 +42,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies (macOS)
+      - name: Install Apple Silicon target
         if: matrix.platform == 'macos-latest'
-        run: |
-          rustup target add aarch64-apple-darwin
-          rustup target add x86_64-apple-darwin
+        run: rustup target add aarch64-apple-darwin
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -78,5 +76,5 @@ jobs:
         with:
           name: uniformes-desktop-${{ matrix.artifact_name }}
           path: |
-            frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            frontend/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           retention-days: 30
