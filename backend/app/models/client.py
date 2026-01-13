@@ -81,6 +81,11 @@ class Client(Base):
 
     notes: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Welcome email tracking (sent on first transaction)
+    welcome_email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    welcome_email_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

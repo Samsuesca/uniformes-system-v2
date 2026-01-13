@@ -15,7 +15,7 @@ from app.models.product import (
 )
 from app.models.client import Client, ClientStudent, ClientType
 from app.models.sale import Sale, SaleItem, SalePayment, PaymentMethod, SaleStatus, SaleChange, ChangeType, ChangeStatus, SaleSource
-from app.models.order import Order, OrderItem, OrderStatus, DeliveryType
+from app.models.order import Order, OrderItem, OrderStatus, DeliveryType, PaymentProofStatus
 from app.models.delivery_zone import DeliveryZone
 from app.models.contact import Contact, ContactType, ContactStatus
 from app.models.payment_account import PaymentAccount, PaymentMethodType
@@ -30,8 +30,23 @@ from app.models.accounting import (
     BalanceEntry,
     AccountsReceivable,
     AccountsPayable,
+    # Expense Adjustment models
+    AdjustmentReason,
+    ExpenseAdjustment,
+)
+from app.models.fixed_expense import (
+    FixedExpense,
+    FixedExpenseType,
+    ExpenseFrequency,
 )
 from app.models.document import DocumentFolder, BusinessDocument
+from app.models.alteration import (
+    Alteration,
+    AlterationPayment,
+    AlterationType,
+    AlterationStatus,
+)
+from app.models.notification import Notification, NotificationType, ReferenceType
 
 __all__ = [
     "Base",
@@ -70,6 +85,7 @@ __all__ = [
     "OrderItem",
     "OrderStatus",
     "DeliveryType",
+    "PaymentProofStatus",
     # Delivery Zone models
     "DeliveryZone",
     # Contact models
@@ -92,7 +108,23 @@ __all__ = [
     "BalanceEntry",
     "AccountsReceivable",
     "AccountsPayable",
+    # Expense Adjustment models
+    "AdjustmentReason",
+    "ExpenseAdjustment",
+    # Fixed Expense models
+    "FixedExpense",
+    "FixedExpenseType",
+    "ExpenseFrequency",
     # Document models
     "DocumentFolder",
     "BusinessDocument",
+    # Alteration models
+    "Alteration",
+    "AlterationPayment",
+    "AlterationType",
+    "AlterationStatus",
+    # Notification models
+    "Notification",
+    "NotificationType",
+    "ReferenceType",
 ]

@@ -110,6 +110,12 @@ class Transaction(Base):
         ForeignKey("expenses.id", ondelete="SET NULL"),
         nullable=True
     )
+    alteration_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("alterations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
 
     # Balance account integration
     # Links transaction to the balance account it affects (Caja, Banco, etc.)
@@ -149,6 +155,7 @@ class Transaction(Base):
     sale: Mapped["Sale | None"] = relationship(back_populates="transactions")
     order: Mapped["Order | None"] = relationship(back_populates="transactions")
     expense: Mapped["Expense | None"] = relationship(back_populates="transaction")
+    alteration: Mapped["Alteration | None"] = relationship()
     created_by_user: Mapped["User | None"] = relationship()
     # Balance account relationships
     balance_account: Mapped["BalanceAccount | None"] = relationship(
@@ -223,6 +230,14 @@ class Expense(Base):
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     recurring_period: Mapped[str | None] = mapped_column(String(20))  # monthly, weekly, yearly
 
+    # Link to fixed expense template (if generated from one)
+    fixed_expense_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("fixed_expenses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # Audit
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -242,6 +257,15 @@ class Expense(Base):
         nullable=False
     )
 
+    # Payment info (filled when expense is paid)
+    payment_method: Mapped[str | None] = mapped_column(String(20))  # cash, nequi, transfer, etc
+    payment_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_accounts.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     # Relationships
     school: Mapped["School | None"] = relationship(back_populates="expenses")
     transaction: Mapped["Transaction | None"] = relationship(
@@ -249,6 +273,17 @@ class Expense(Base):
         uselist=False
     )
     created_by_user: Mapped["User | None"] = relationship()
+    payment_account: Mapped["BalanceAccount | None"] = relationship(
+        foreign_keys=[payment_account_id]
+    )
+    fixed_expense_template: Mapped["FixedExpense | None"] = relationship(
+        back_populates="generated_expenses"
+    )
+    adjustments: Mapped[list["ExpenseAdjustment"]] = relationship(
+        back_populates="expense",
+        cascade="all, delete-orphan",
+        order_by="ExpenseAdjustment.adjusted_at.desc()"
+    )
 
     @property
     def balance(self) -> Decimal:
@@ -628,6 +663,128 @@ class AccountsReceivable(Base):
 
     def __repr__(self) -> str:
         return f"<AccountsReceivable(${self.amount} - Paid: ${self.amount_paid})>"
+
+
+class AdjustmentReason(str, enum.Enum):
+    """Reasons for expense adjustments"""
+    AMOUNT_CORRECTION = "amount_correction"       # Corrección de monto
+    ACCOUNT_CORRECTION = "account_correction"     # Corrección de cuenta contable
+    BOTH_CORRECTION = "both_correction"           # Corrección de monto y cuenta
+    ERROR_REVERSAL = "error_reversal"             # Reversión completa por error
+    PARTIAL_REFUND = "partial_refund"             # Reembolso parcial
+
+
+class ExpenseAdjustment(Base):
+    """
+    Expense adjustment record for rollbacks and corrections.
+
+    Tracks changes to paid expenses including:
+    - Amount corrections (partial or full)
+    - Account corrections (moving payment between accounts)
+    - Complete reversals (undoing the entire payment)
+    - Partial refunds
+
+    Each adjustment creates compensatory BalanceEntries to maintain
+    accounting integrity.
+    """
+    __tablename__ = "expense_adjustments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    expense_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("expenses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Adjustment details
+    reason: Mapped[AdjustmentReason] = mapped_column(
+        SQLEnum(
+            AdjustmentReason,
+            name="adjustment_reason_enum",
+            values_callable=lambda x: [e.value for e in x],
+            create_constraint=False
+        ),
+        nullable=False
+    )
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Previous values (before adjustment)
+    previous_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    previous_amount_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    previous_payment_method: Mapped[str | None] = mapped_column(String(20))
+    previous_payment_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_accounts.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # New values (after adjustment)
+    new_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    new_amount_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    new_payment_method: Mapped[str | None] = mapped_column(String(20))
+    new_payment_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_accounts.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Delta (net change in payment)
+    adjustment_delta: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        comment="Net change in amount_paid (positive = refund to account, negative = additional payment)"
+    )
+
+    # Balance entry references (for audit trail)
+    # These entries are the compensatory movements created by this adjustment
+    refund_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Balance entry for refund/reversal (positive entry)"
+    )
+    new_payment_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("balance_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Balance entry for new payment (negative entry, account correction)"
+    )
+
+    # Audit
+    adjusted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    adjusted_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    expense: Mapped["Expense"] = relationship(back_populates="adjustments")
+    previous_payment_account: Mapped["BalanceAccount | None"] = relationship(
+        foreign_keys=[previous_payment_account_id]
+    )
+    new_payment_account: Mapped["BalanceAccount | None"] = relationship(
+        foreign_keys=[new_payment_account_id]
+    )
+    refund_entry: Mapped["BalanceEntry | None"] = relationship(
+        foreign_keys=[refund_entry_id]
+    )
+    new_payment_entry: Mapped["BalanceEntry | None"] = relationship(
+        foreign_keys=[new_payment_entry_id]
+    )
+    adjusted_by_user: Mapped["User | None"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<ExpenseAdjustment({self.reason.value}: ${self.previous_amount_paid} -> ${self.new_amount_paid})>"
 
 
 class AccountsPayable(Base):

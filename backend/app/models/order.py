@@ -36,6 +36,13 @@ class DeliveryType(str, enum.Enum):
     DELIVERY = "delivery"  # Domicilio
 
 
+class PaymentProofStatus(str, enum.Enum):
+    """Estado del comprobante de pago"""
+    PENDING = "pending"      # Pendiente de revisión
+    APPROVED = "approved"    # Aprobado/Verificado
+    REJECTED = "rejected"    # Rechazado
+
+
 class Order(Base):
     """Custom orders with personalized measurements"""
     __tablename__ = "orders"
@@ -112,6 +119,10 @@ class Order(Base):
 
     # Payment proof for web orders (manual verification)
     payment_proof_url: Mapped[str | None] = mapped_column(String(500))
+    payment_proof_status: Mapped[PaymentProofStatus | None] = mapped_column(
+        SQLEnum(PaymentProofStatus, name="payment_proof_status_enum", values_callable=lambda x: [e.value for e in x]),
+        nullable=True  # NULL si no hay comprobante subido
+    )
     payment_notes: Mapped[str | None] = mapped_column(Text)  # Client notes about payment
 
     # Delivery information
@@ -185,10 +196,18 @@ class OrderItem(Base):
         nullable=False,
         index=True
     )
-    garment_type_id: Mapped[uuid.UUID] = mapped_column(
+    # For school products - garment_type_id references garment_types
+    garment_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("garment_types.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,  # Nullable because global products use global_garment_type_id
+        index=True
+    )
+    # For global products - global_garment_type_id references global_garment_types
+    global_garment_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("global_garment_types.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True
     )
     # product_id is optional - only set when order is fulfilled from inventory
@@ -198,6 +217,14 @@ class OrderItem(Base):
         nullable=True,
         index=True
     )
+    # For global products (shared inventory)
+    global_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("global_products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    is_global_product: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     quantity: Mapped[int] = mapped_column(nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
@@ -226,8 +253,10 @@ class OrderItem(Base):
 
     # Relationships
     order: Mapped["Order"] = relationship(back_populates="items")
-    garment_type: Mapped["GarmentType"] = relationship()
+    garment_type: Mapped["GarmentType | None"] = relationship()
+    global_garment_type: Mapped["GlobalGarmentType | None"] = relationship()
     product: Mapped["Product | None"] = relationship(back_populates="order_items")
+    global_product: Mapped["GlobalProduct | None"] = relationship()
 
     def __repr__(self) -> str:
         return f"<OrderItem(order_id='{self.order_id}', product_id='{self.product_id}', quantity={self.quantity})>"
