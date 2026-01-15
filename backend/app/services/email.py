@@ -308,6 +308,149 @@ def send_activation_email(email: str, token: str, name: str) -> bool:
         return False
 
 
+def send_order_ready_email(
+    email: str,
+    name: str,
+    order_code: str,
+    school_name: str = ""
+) -> bool:
+    """
+    Send email to client when their order is ready for pickup.
+
+    Args:
+        email: Client email address
+        name: Client name
+        order_code: Order code (e.g., ENC-2026-0001)
+        school_name: School name for context (optional)
+    """
+    if not settings.RESEND_API_KEY:
+        print(f"[DEV] Order ready email for {email} - Order #{order_code}")
+        return True
+
+    resend.api_key = settings.RESEND_API_KEY
+
+    try:
+        school_text = f" del colegio {school_name}" if school_name else ""
+        portal_url = "https://uniformesconsuelorios.com"
+
+        resend.Emails.send({
+            "from": settings.EMAIL_FROM,
+            "to": [email],
+            "subject": f"¡Tu pedido {order_code} está listo! - Uniformes Consuelo Rios",
+            "html": f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                </head>
+                <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+                    <div style="max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <!-- Header -->
+                        <div style="background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%); padding: 40px 20px; text-align: center;">
+                            <h1 style="color: #C9A227; margin: 0; font-size: 28px;">Uniformes Consuelo Rios</h1>
+                        </div>
+
+                        <!-- Content -->
+                        <div style="padding: 40px 30px; background-color: #f9fafb;">
+                            <div style="text-align: center; margin-bottom: 30px;">
+                                <span style="font-size: 60px;">🎉</span>
+                            </div>
+
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0; text-align: center;">
+                                ¡Hola {name}!
+                            </h2>
+
+                            <div style="background-color: #d1fae5; border: 2px solid #10b981; border-radius: 12px; padding: 25px; margin: 25px 0; text-align: center;">
+                                <p style="color: #065f46; font-size: 18px; font-weight: bold; margin: 0 0 10px 0;">
+                                    ¡Tu pedido está listo para recoger!
+                                </p>
+                                <p style="color: #047857; font-size: 24px; font-weight: bold; margin: 0; letter-spacing: 2px;">
+                                    {order_code}
+                                </p>
+                                {f'<p style="color: #065f46; font-size: 14px; margin: 10px 0 0 0;">{school_text}</p>' if school_text else ''}
+                            </div>
+
+                            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0; text-align: center;">
+                                Tu encargo de uniformes{school_text} ya está terminado y listo para que lo recojas en nuestra tienda.
+                            </p>
+
+                            <div style="background-color: #fef3c7; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                                <p style="color: #92400e; font-weight: bold; margin: 0 0 10px 0;">
+                                    📋 Recuerda traer:
+                                </p>
+                                <ul style="color: #78350f; margin: 0; padding-left: 20px;">
+                                    <li>Tu número de pedido: <strong>{order_code}</strong></li>
+                                    <li>Documento de identidad</li>
+                                    <li>Saldo pendiente (si aplica)</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Contact Info -->
+                        <div style="padding: 30px; background-color: #1f2937; color: white;">
+                            <h3 style="color: #C9A227; margin: 0 0 20px 0; font-size: 18px; text-align: center;">
+                                📍 ¿Dónde recogemos?
+                            </h3>
+
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="padding: 8px 0; vertical-align: top; width: 30px;">
+                                        <span style="font-size: 18px;">🏠</span>
+                                    </td>
+                                    <td style="padding: 8px 0; color: #e5e7eb;">
+                                        <strong>Dirección:</strong><br>
+                                        Calle 56 D #26 BE 04<br>
+                                        Villas de San José, Boston - Barrio Sucre<br>
+                                        Medellín, Colombia
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; vertical-align: top;">
+                                        <span style="font-size: 18px;">🕐</span>
+                                    </td>
+                                    <td style="padding: 8px 0; color: #e5e7eb;">
+                                        <strong>Horario:</strong><br>
+                                        Lunes a Viernes: 8:00 AM - 6:00 PM<br>
+                                        Sábado: 9:00 AM - 2:00 PM
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; vertical-align: top;">
+                                        <span style="font-size: 18px;">📞</span>
+                                    </td>
+                                    <td style="padding: 8px 0; color: #e5e7eb;">
+                                        <strong>WhatsApp:</strong><br>
+                                        <a href="https://wa.me/573105997451" style="color: #C9A227; text-decoration: none;">+57 310 599 7451</a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div style="text-align: center; margin-top: 20px;">
+                                <a href="{portal_url}/mis-pedidos"
+                                   style="display: inline-block; background-color: #C9A227; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                                    Ver Mi Pedido en el Portal
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div style="padding: 20px; text-align: center; background-color: #111827;">
+                            <p style="color: #9ca3af; margin: 0; font-size: 12px;">
+                                © 2026 Uniformes Consuelo Rios. Todos los derechos reservados.
+                            </p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            """
+        })
+        print(f"✅ Order ready email sent to {email} for order #{order_code}")
+        return True
+    except Exception as e:
+        print(f"❌ Error sending order ready email: {e}")
+        return False
+
+
 def send_welcome_with_activation_email(email: str, token: str, name: str, transaction_type: str = "encargo") -> bool:
     """
     Send welcome email on first transaction with activation link and business info.

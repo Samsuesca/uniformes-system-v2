@@ -499,6 +499,11 @@ class OrderService(SchoolIsolatedService[Order]):
             notification_service = NotificationService(self.db)
             await notification_service.notify_order_status_changed(order, old_status, new_status.value)
 
+        # === EMAIL TO CLIENT ===
+        # Send email when order is ready for pickup
+        if order and new_status == OrderStatus.READY and old_status != OrderStatus.READY.value:
+            await self._send_order_ready_email(order)
+
         return order
 
     async def update_order(
@@ -1389,6 +1394,56 @@ class OrderService(SchoolIsolatedService[Order]):
             client.welcome_email_sent = False
             client.welcome_email_sent_at = None
             await self.db.flush()
+            return False
+
+    async def _send_order_ready_email(self, order: Order) -> bool:
+        """
+        Send email to client when their order is ready for pickup.
+
+        Args:
+            order: Order object with client loaded
+
+        Returns:
+            True if email was sent, False otherwise
+        """
+        from app.services.email import send_order_ready_email
+        from app.models.school import School
+
+        # Get client
+        result = await self.db.execute(
+            select(Client).where(Client.id == order.client_id)
+        )
+        client = result.scalar_one_or_none()
+
+        if not client:
+            print(f"[ORDER] No client found for order {order.code}, skipping ready email")
+            return False
+
+        if not client.email:
+            print(f"[ORDER] Client {client.name} has no email, skipping ready notification")
+            return False
+
+        # Get school name
+        school_result = await self.db.execute(
+            select(School).where(School.id == order.school_id)
+        )
+        school = school_result.scalar_one_or_none()
+        school_name = school.name if school else ""
+
+        try:
+            sent = send_order_ready_email(
+                email=client.email,
+                name=client.name,
+                order_code=order.code,
+                school_name=school_name
+            )
+            if sent:
+                print(f"✅ [ORDER] Ready notification sent to {client.email} for order {order.code}")
+            else:
+                print(f"⚠️ [ORDER] Failed to send ready notification to {client.email}")
+            return sent
+        except Exception as e:
+            print(f"❌ [ORDER] Error sending ready notification: {e}")
             return False
 
     async def cancel_order(
